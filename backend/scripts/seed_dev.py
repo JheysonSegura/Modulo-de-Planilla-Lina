@@ -21,7 +21,7 @@ from app.models import Empresa, Rol, Usuario, UsuarioEmpresa
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 EMPRESA_RUC = "0-0-0-DEV"
-USUARIO_EMAIL = "dev@nomina.local"
+USUARIO_EMAIL = "dev@nomina.internal"  # ".local" es un TLD reservado (RFC 6762), pydantic.EmailStr lo rechaza
 USUARIO_PASSWORD = "dev12345"
 
 

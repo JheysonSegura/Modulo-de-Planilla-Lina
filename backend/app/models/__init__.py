@@ -1,4 +1,5 @@
 from app.models.auditoria import AuditoriaCambio
+from app.models.auth import RefreshToken
 from app.models.base import Base
 from app.models.empleados import Contrato, Empleado, HistorialSalarial
 from app.models.empresas import Empresa, UsuarioEmpresa
@@ -29,4 +30,5 @@ __all__ = [
     "ProvisionVacaciones",
     "Liquidacion",
     "AuditoriaCambio",
+    "RefreshToken",
 ]

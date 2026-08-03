@@ -7,7 +7,13 @@ from app.core.config import settings
 from app.models import Base
 
 config = context.config
-config.set_main_option("sqlalchemy.url", settings.database_url)
+# Las migraciones corren con el rol de superusuario: crean tablas, roles y
+# grants que el rol de aplicación (settings.database_url) no tiene permiso
+# de hacer. Si algo ya configuró sqlalchemy.url en este Config (p.ej. los
+# tests, para apuntar a una BD de prueba distinta), se respeta eso en vez
+# de pisarlo.
+if not config.get_main_option("sqlalchemy.url"):
+    config.set_main_option("sqlalchemy.url", settings.database_url_admin)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
