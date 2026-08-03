@@ -12,7 +12,7 @@ from app.core import deps as deps_module
 from app.core.config import settings
 from app.core.security import hash_password
 from app.main import app
-from app.models import Empleado, Empresa, Rol, Usuario, UsuarioEmpresa
+from app.models import Empleado, Empresa, Rol, SalarioMinimoVigente, Usuario, UsuarioEmpresa
 
 TEST_DB_NAME = "nomina_test"
 BACKEND_DIR = os.path.join(os.path.dirname(__file__), "..")
@@ -130,3 +130,41 @@ def crear_empleado(db, empresa: Empresa, nombre: str, identificacion: str) -> Em
     db.commit()
     db.refresh(empleado)
     return empleado
+
+
+def crear_salario_minimo(
+    db,
+    fecha_inicio,
+    monto_mensual,
+    region: str = "Nacional",
+    fecha_fin=None,
+) -> SalarioMinimoVigente:
+    # salario_minimo_vigente es dato global (no por empresa): se limpia
+    # antes de sembrar para que un test no choque con rangos de fecha que
+    # dejó otro test en la misma BD de test compartida entre casos.
+    db.query(SalarioMinimoVigente).delete()
+    fila = SalarioMinimoVigente(
+        region=region,
+        monto_mensual=monto_mensual,
+        fecha_inicio=fecha_inicio,
+        fecha_fin=fecha_fin,
+        decreto_ref="Decreto Ejecutivo N.13 (dato de prueba)",
+    )
+    db.add(fila)
+    db.commit()
+    db.refresh(fila)
+    return fila
+
+
+def login_y_seleccionar(client, usuario: Usuario, empresa: Empresa, password: str = "Secreta123!") -> dict:
+    """Hace login y selecciona `empresa` como activa; devuelve los headers
+    con el access_token ya listo para usar contra endpoints con RLS."""
+    resp = client.post("/auth/login", json={"email": usuario.email, "password": password})
+    assert resp.status_code == 200, resp.text
+    headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
+
+    resp = client.post(
+        "/auth/seleccionar-empresa", json={"empresa_id": str(empresa.id)}, headers=headers
+    )
+    assert resp.status_code == 200, resp.text
+    return {"Authorization": f"Bearer {resp.json()['access_token']}"}

@@ -3,6 +3,9 @@
 .env.*
 !.env.example
 
+# Credenciales locales (nunca deben commitearse)
+CREDENCIALES-DEV.txt
+
 # Python
 __pycache__/
 *.py[cod]
