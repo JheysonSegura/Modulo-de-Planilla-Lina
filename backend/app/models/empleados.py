@@ -1,0 +1,111 @@
+import datetime
+import decimal
+import uuid
+
+from sqlalchemy import Date, DateTime, ForeignKey, Numeric, String, Text, UniqueConstraint
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.sql import func
+
+from app.models.base import Base
+
+
+class Empleado(Base):
+    __tablename__ = "empleados"
+    __table_args__ = (
+        UniqueConstraint(
+            "empresa_id", "tipo_identificacion", "identificacion",
+            name="uq_empleados_empresa_identificacion",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.uuid_generate_v4()
+    )
+    tipo_identificacion: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default="cedula"
+    )
+    identificacion: Mapped[str] = mapped_column(String(30), nullable=False)
+    nombre_completo: Mapped[str] = mapped_column(String(200), nullable=False)
+    fecha_nacimiento: Mapped[datetime.date | None] = mapped_column(Date)
+    fecha_nacionalidad: Mapped[str | None] = mapped_column(String(50))
+    email_personal: Mapped[str | None] = mapped_column(String(150))
+    telefono: Mapped[str | None] = mapped_column(String(30))
+    direccion: Mapped[str | None] = mapped_column(Text)
+    numero_seguro_social: Mapped[str | None] = mapped_column(String(30))
+    estado: Mapped[str] = mapped_column(String(20), nullable=False, server_default="activo")
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    empresa_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("empresas.id")
+    )
+
+    contratos: Mapped[list["Contrato"]] = relationship(back_populates="empleado")
+
+
+class Contrato(Base):
+    __tablename__ = "contratos"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.uuid_generate_v4()
+    )
+    empleado_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("empleados.id"), nullable=False
+    )
+    tipo_contrato: Mapped[str] = mapped_column(String(30), nullable=False)
+    cargo: Mapped[str] = mapped_column(String(150), nullable=False)
+    departamento: Mapped[str | None] = mapped_column(String(150))
+    fecha_inicio: Mapped[datetime.date] = mapped_column(Date, nullable=False)
+    fecha_fin_pactada: Mapped[datetime.date | None] = mapped_column(Date)
+    fecha_fin_real: Mapped[datetime.date | None] = mapped_column(Date)
+    jornada_horas_semana: Mapped[decimal.Decimal] = mapped_column(
+        Numeric(5, 2), nullable=False, server_default="48"
+    )
+    periodicidad_pago: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default="quincenal"
+    )
+    fecha_registro_mitradel: Mapped[datetime.date | None] = mapped_column(Date)
+    estado: Mapped[str] = mapped_column(String(20), nullable=False, server_default="vigente")
+    motivo_terminacion: Mapped[str | None] = mapped_column(String(50))
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    empresa_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("empresas.id")
+    )
+
+    empleado: Mapped["Empleado"] = relationship(back_populates="contratos")
+    historial_salarial: Mapped[list["HistorialSalarial"]] = relationship(
+        back_populates="contrato"
+    )
+
+
+class HistorialSalarial(Base):
+    """Separado de 'contratos' porque el salario puede cambiar sin que
+    cambie el contrato, y el ISR + la cláusula de variación >30% de la
+    Ley 462 necesitan ver esta historia completa."""
+
+    __tablename__ = "historial_salarial"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.uuid_generate_v4()
+    )
+    contrato_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("contratos.id"), nullable=False
+    )
+    salario_base: Mapped[decimal.Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    fecha_vigencia_desde: Mapped[datetime.date] = mapped_column(Date, nullable=False)
+    fecha_vigencia_hasta: Mapped[datetime.date | None] = mapped_column(Date)
+    motivo: Mapped[str | None] = mapped_column(String(100))
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    contrato: Mapped["Contrato"] = relationship(back_populates="historial_salarial")
