@@ -6,6 +6,10 @@ from sqlalchemy.orm import Session
 from app.models import Empresa, Rol, UsuarioEmpresa
 
 
+def get(db: Session, empresa_id: uuid.UUID) -> Empresa | None:
+    return db.get(Empresa, empresa_id)
+
+
 def get_membresia_activa(
     db: Session, usuario_id: uuid.UUID, empresa_id: uuid.UUID
 ) -> UsuarioEmpresa | None:

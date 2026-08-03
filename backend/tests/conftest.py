@@ -138,13 +138,19 @@ def crear_salario_minimo(
     monto_mensual,
     region: str = "Nacional",
     fecha_fin=None,
+    actividad: str | None = None,
+    limpiar: bool = True,
 ) -> SalarioMinimoVigente:
-    # salario_minimo_vigente es dato global (no por empresa): se limpia
-    # antes de sembrar para que un test no choque con rangos de fecha que
-    # dejó otro test en la misma BD de test compartida entre casos.
-    db.query(SalarioMinimoVigente).delete()
+    # salario_minimo_vigente es dato global (no por empresa): por defecto
+    # se limpia antes de sembrar para que un test no choque con rangos de
+    # fecha que dejó otro test en la misma BD de test compartida entre
+    # casos. limpiar=False permite sembrar varias filas a propósito (para
+    # probar la resolución multi-región).
+    if limpiar:
+        db.query(SalarioMinimoVigente).delete()
     fila = SalarioMinimoVigente(
         region=region,
+        actividad=actividad,
         monto_mensual=monto_mensual,
         fecha_inicio=fecha_inicio,
         fecha_fin=fecha_fin,

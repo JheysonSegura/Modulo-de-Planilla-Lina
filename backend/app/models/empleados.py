@@ -2,7 +2,7 @@ import datetime
 import decimal
 import uuid
 
-from sqlalchemy import Date, DateTime, ForeignKey, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -71,6 +71,15 @@ class Contrato(Base):
     fecha_registro_mitradel: Mapped[datetime.date | None] = mapped_column(Date)
     estado: Mapped[str] = mapped_column(String(20), nullable=False, server_default="vigente")
     motivo_terminacion: Mapped[str | None] = mapped_column(String(50))
+    # Excepción explícita y auditable a la validación de salario mínimo
+    # (ej. pasantía formal). Nunca se infiere de tipo_contrato: el
+    # tratamiento legal de estos casos no está confirmado con el contador
+    # (ver migración 0009_exencion_salario_minimo). El caso de medio
+    # tiempo NO usa este flag, se prorratea por jornada_horas_semana.
+    exento_salario_minimo: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
+    motivo_exencion_salario_minimo: Mapped[str | None] = mapped_column(String(200))
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

@@ -21,6 +21,11 @@ class Empresa(Base):
     dv: Mapped[str | None] = mapped_column(String(5))
     numero_patronal_css: Mapped[str | None] = mapped_column(String(30))
     clase_riesgo: Mapped[str | None] = mapped_column(String(20))
+    # Región y actividad económica del Decreto Ejecutivo N.13: de qué fila
+    # de salario_minimo_vigente depende esta empresa cuando hay más de una
+    # vigente a la vez (ver app/services/salario_minimo_service.py).
+    region: Mapped[str | None] = mapped_column(String(100))
+    actividad_economica: Mapped[str | None] = mapped_column(String(150))
     direccion: Mapped[str | None] = mapped_column(Text)
     telefono: Mapped[str | None] = mapped_column(String(30))
     email_contacto: Mapped[str | None] = mapped_column(String(150))

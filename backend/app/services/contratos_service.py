@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.models import Contrato, HistorialSalarial
 from app.repositories import contratos as contratos_repo
 from app.repositories import empleados as empleados_repo
+from app.repositories import empresas as empresas_repo
 from app.repositories import historial_salarial as historial_repo
 from app.schemas.contratos import CambiarSalarioRequest, ContratoCreate, ContratoUpdate
 from app.services.salario_minimo_service import validar_salario_minimo
@@ -21,7 +22,13 @@ def crear_contrato(
 
     # Salario mínimo vigente A LA FECHA DE INICIO del contrato, no al
     # salario mínimo actual (para poder registrar contratos retroactivos).
-    validar_salario_minimo(db, data.fecha_inicio, data.salario_base)
+    # Se prorratea por jornada; si el contrato está marcado exento
+    # (ej. pasantía formal, ver ContratoCreate) no se valida en absoluto.
+    if not data.exento_salario_minimo:
+        empresa = empresas_repo.get(db, empresa_id)
+        validar_salario_minimo(
+            db, empresa, data.fecha_inicio, data.salario_base, data.jornada_horas_semana
+        )
 
     campos_contrato = data.model_dump(exclude={"salario_base"})
     contrato = Contrato(empresa_id=empresa_id, empleado_id=empleado_id, **campos_contrato)
@@ -86,8 +93,17 @@ def cambiar_salario(
         )
 
     # Salario mínimo vigente a la fecha en que empieza a regir el nuevo
-    # salario (no al salario mínimo actual).
-    validar_salario_minimo(db, data.fecha_vigencia_desde, data.salario_base)
+    # salario (no al salario mínimo actual). Respeta la misma exención
+    # del contrato (no se puede "esquivar" el flag cambiando el salario).
+    if not contrato.exento_salario_minimo:
+        empresa = empresas_repo.get(db, contrato.empresa_id)
+        validar_salario_minimo(
+            db,
+            empresa,
+            data.fecha_vigencia_desde,
+            data.salario_base,
+            contrato.jornada_horas_semana,
+        )
 
     # No se sobrescribe: se cierra el registro vigente y se abre uno
     # nuevo, para que cualquier cálculo de un período pasado siga viendo
