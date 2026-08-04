@@ -55,6 +55,13 @@ class MovimientoPlanillaOut(BaseModel):
     seguro_educativo_patronal: decimal.Decimal
     riesgo_profesional_patronal: decimal.Decimal
     isr_retenido: decimal.Decimal
+    # Auditoría del cálculo de ISR (Fase 7) -- para que el contador
+    # pueda reconstruir a mano cada monto antes de validar el módulo.
+    isr_renta_anual_proyectada: decimal.Decimal | None
+    isr_impuesto_anual_proyectado: decimal.Decimal | None
+    isr_decimo_tratamiento: str | None
+    isr_numero_periodo_anio: int | None
+    isr_periodos_restantes_anio: int | None
     otras_deducciones: decimal.Decimal
     salario_neto: decimal.Decimal
     conceptos_variables: list[ConceptoVariableOut] = []

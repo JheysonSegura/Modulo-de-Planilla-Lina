@@ -2,7 +2,7 @@ import datetime
 import decimal
 import uuid
 
-from sqlalchemy import Date, DateTime, ForeignKey, Numeric, String, Text
+from sqlalchemy import Date, DateTime, ForeignKey, Numeric, SmallInteger, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -65,6 +65,15 @@ class MovimientoPlanilla(Base):
     isr_retenido: Mapped[decimal.Decimal] = mapped_column(
         Numeric(12, 2), nullable=False, server_default="0"
     )
+    # Snapshot de auditoría del cálculo de ISR (Fase 7): permite
+    # reconstruir a mano qué fórmula se aplicó sin adivinar, crítico
+    # porque este módulo necesita validación del contador antes de
+    # producción (ver app/services/planilla_service.py).
+    isr_renta_anual_proyectada: Mapped[decimal.Decimal | None] = mapped_column(Numeric(12, 2))
+    isr_impuesto_anual_proyectado: Mapped[decimal.Decimal | None] = mapped_column(Numeric(12, 2))
+    isr_decimo_tratamiento: Mapped[str | None] = mapped_column(String(20))
+    isr_numero_periodo_anio: Mapped[int | None] = mapped_column(SmallInteger)
+    isr_periodos_restantes_anio: Mapped[int | None] = mapped_column(SmallInteger)
     otras_deducciones: Mapped[decimal.Decimal] = mapped_column(
         Numeric(12, 2), nullable=False, server_default="0"
     )

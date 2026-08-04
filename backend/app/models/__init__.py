@@ -9,7 +9,13 @@ from app.models.liquidaciones import Liquidacion
 from app.models.planillas import ConceptoVariable, MovimientoPlanilla, Planilla
 from app.models.provisiones import ProvisionDecimo, ProvisionVacaciones
 from app.models.roles import Rol
-from app.models.tasas import SalarioMinimoVigente, TasaRiesgoProfesional, TasaVigente, TramoIsr
+from app.models.tasas import (
+    ParametroIsr,
+    SalarioMinimoVigente,
+    TasaRiesgoProfesional,
+    TasaVigente,
+    TramoIsr,
+)
 from app.models.usuarios import Usuario
 
 __all__ = [
@@ -25,6 +31,7 @@ __all__ = [
     "TasaVigente",
     "TasaRiesgoProfesional",
     "TramoIsr",
+    "ParametroIsr",
     "SalarioMinimoVigente",
     "Planilla",
     "MovimientoPlanilla",

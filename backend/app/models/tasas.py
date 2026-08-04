@@ -1,7 +1,7 @@
 import datetime
 import decimal
 
-from sqlalchemy import Date, DateTime, Numeric, String
+from sqlalchemy import Boolean, Date, DateTime, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -56,6 +56,25 @@ class TramoIsr(Base):
     impuesto_base: Mapped[decimal.Decimal] = mapped_column(
         Numeric(12, 2), nullable=False, server_default="0"
     )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class ParametroIsr(Base):
+    """Parámetro nacional (no por empresa, CLAUDE.md sección 2) que
+    decide si el décimo tercer mes se integra a la base gravable del
+    ISR o se trata como exento. Deliberadamente sin ninguna fila
+    sembrada hasta que el contador lo confirme -- ver migración
+    0014_parametros_isr y app/services/planilla_service.py."""
+
+    __tablename__ = "parametros_isr"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    decimo_incluido_en_base_gravable: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    fecha_inicio: Mapped[datetime.date] = mapped_column(Date, nullable=False)
+    fecha_fin: Mapped[datetime.date | None] = mapped_column(Date)
+    fuente_legal: Mapped[str | None] = mapped_column(String(150))
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

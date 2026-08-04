@@ -1,3 +1,4 @@
+import calendar
 import datetime
 import decimal
 import uuid
@@ -20,8 +21,15 @@ from app.repositories import empresas as empresas_repo
 from app.repositories import historial_salarial as historial_repo
 from app.repositories import horas_extra as horas_extra_repo
 from app.repositories import movimientos_planilla as movimientos_repo
+from app.repositories import parametros_isr as parametros_isr_repo
 from app.repositories import planillas as planillas_repo
 from app.repositories import tasas as tasas_repo
+from app.repositories import tramos_isr as tramos_isr_repo
+
+# Períodos de pago por año según el tipo de planilla (no
+# contratos.periodicidad_pago -- el motor de Fase 6 es genérico por
+# rango de fechas, y el ISR sigue el mismo criterio).
+PERIODOS_POR_ANIO = {"mensual": 12, "quincenal": 24}
 
 # Mes comercial de 30 días (Art. 54 CT, CLAUDE.md sección 5): cualquier
 # prorrateo usa salario_mensual/30, nunca los días calendario reales.
@@ -201,7 +209,9 @@ def _calcular_movimiento_de_contrato(
         if tasa_riesgo is not None:
             riesgo_profesional_patronal = (base_gravable * tasa_riesgo.tasa).quantize(_CENTAVO)
 
-    isr_retenido = _calcular_isr_retenido(base_gravable, periodo_fin)
+    isr_retenido, isr_auditoria = _calcular_isr_retenido(
+        db, contrato, tipo, periodo_inicio, periodo_fin, salario_mensual
+    )
 
     salario_neto = (
         salario_bruto - css_empleado - seguro_educativo_empleado - isr_retenido - otras_deducciones
@@ -217,6 +227,11 @@ def _calcular_movimiento_de_contrato(
         seguro_educativo_patronal=seguro_educativo_patronal,
         riesgo_profesional_patronal=riesgo_profesional_patronal,
         isr_retenido=isr_retenido,
+        isr_renta_anual_proyectada=isr_auditoria["isr_renta_anual_proyectada"],
+        isr_impuesto_anual_proyectado=isr_auditoria["isr_impuesto_anual_proyectado"],
+        isr_decimo_tratamiento=isr_auditoria["isr_decimo_tratamiento"],
+        isr_numero_periodo_anio=isr_auditoria["isr_numero_periodo_anio"],
+        isr_periodos_restantes_anio=isr_auditoria["isr_periodos_restantes_anio"],
         otras_deducciones=otras_deducciones,
         salario_neto=salario_neto,
     )
@@ -234,9 +249,105 @@ def _factor_obligatorio(db: Session, tipo_tasa: str, fecha: datetime.date) -> de
     return tasa.tasa
 
 
-def _calcular_isr_retenido(base_gravable: decimal.Decimal, fecha: datetime.date) -> decimal.Decimal:
-    """Placeholder deliberado: el ISR se implementa en una fase aparte
-    (CLAUDE.md sección 6 -- anualización, y su interacción todavía sin
-    confirmar con el décimo). Vive como paso aislado del pipeline para
-    que esa fase lo reemplace sin tocar el resto de este servicio."""
-    return _CERO
+def _calcular_isr_retenido(
+    db: Session,
+    contrato: Contrato,
+    tipo: str,
+    periodo_inicio: datetime.date,
+    periodo_fin: datetime.date,
+    salario_mensual_vigente: decimal.Decimal,
+) -> tuple[decimal.Decimal, dict]:
+    """ISR por el método documentado en CLAUDE.md sección 6: (1)
+    proyectar renta gravable anual, (2) restar CSS/SE de esa base, (3)
+    aplicar tramos_isr, (4) prorratear el impuesto anual entre los
+    períodos de pago restantes, reconciliando contra lo ya retenido
+    este año (ajuste progresivo).
+
+    ⚠️ Pendiente de validación con el contador antes de producción
+    (CLAUDE.md sección 6, instrucción explícita del usuario en Fase 7).
+    Solo se anualiza el salario fijo recurrente -- horas extra y
+    conceptos variables del período no se proyectan a 12 meses, no hay
+    garantía de que se repitan.
+    """
+    numero_periodo, periodos_por_anio = _numero_periodo_fiscal(tipo, periodo_inicio, periodo_fin)
+    periodos_restantes = periodos_por_anio - numero_periodo + 1
+
+    renta_bruta_anual = salario_mensual_vigente * decimal.Decimal("12")
+
+    parametro = parametros_isr_repo.obtener_vigente(db, periodo_fin)
+    if parametro is None:
+        # Estado normal de esta fase: nadie ha confirmado el
+        # tratamiento del décimo todavía. No se suma nada a la base
+        # (numéricamente como 'exento'), pero se marca distinto para
+        # no confundir "sin confirmar" con una decisión legal tomada.
+        decimo_tratamiento = "no_configurado"
+    elif parametro.decimo_incluido_en_base_gravable:
+        decimo_tratamiento = "integrado"
+        # El décimo son 3 partidas que suman un mes de salario al año
+        # (CLAUDE.md sección 4); se usa el salario mensual vigente
+        # como estimado de ese mes adicional.
+        renta_bruta_anual += salario_mensual_vigente
+    else:
+        decimo_tratamiento = "exento"
+
+    tasa_css_se_empleado = _factor_obligatorio(
+        db, "css_empleado", periodo_fin
+    ) + _factor_obligatorio(db, "seguro_educativo_empleado", periodo_fin)
+    css_se_anual_proyectado = renta_bruta_anual * tasa_css_se_empleado
+    renta_neta_anual = renta_bruta_anual - css_se_anual_proyectado
+
+    tramo = tramos_isr_repo.obtener_tramo_aplicable(db, renta_neta_anual, periodo_fin)
+    if tramo is None:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"No hay un tramo de ISR vigente para el {periodo_fin.isoformat()} que cubra una "
+            f"renta neta anual de {renta_neta_anual}. Verifica el seed de tramos_isr.",
+        )
+    impuesto_anual_proyectado = (
+        tramo.impuesto_base + (renta_neta_anual - tramo.monto_desde) * tramo.tasa_marginal
+    ).quantize(_CENTAVO)
+
+    ya_retenido_este_anio = movimientos_repo.sumar_isr_retenido_del_anio(
+        db, contrato.id, periodo_inicio.year
+    )
+
+    isr_periodo = max(
+        _CERO,
+        (impuesto_anual_proyectado - ya_retenido_este_anio) / decimal.Decimal(periodos_restantes),
+    ).quantize(_CENTAVO)
+
+    auditoria = {
+        "isr_renta_anual_proyectada": renta_bruta_anual.quantize(_CENTAVO),
+        "isr_impuesto_anual_proyectado": impuesto_anual_proyectado,
+        "isr_decimo_tratamiento": decimo_tratamiento,
+        "isr_numero_periodo_anio": numero_periodo,
+        "isr_periodos_restantes_anio": periodos_restantes,
+    }
+    return isr_periodo, auditoria
+
+
+def _numero_periodo_fiscal(
+    tipo: str, periodo_inicio: datetime.date, periodo_fin: datetime.date
+) -> tuple[int, int]:
+    """Número de período (1-12 mensual, 1-24 quincenal) y períodos por
+    año, asumiendo que el rango calza con un mes calendario completo o
+    una quincena estándar (1-15 / 16-fin de mes). Si no calza, rechaza
+    explícitamente en vez de adivinar -- el ISR depende de este número
+    para prorratear correctamente."""
+    ultimo_dia_mes = calendar.monthrange(periodo_inicio.year, periodo_inicio.month)[1]
+
+    if tipo == "mensual":
+        if periodo_inicio.day == 1 and periodo_fin == periodo_inicio.replace(day=ultimo_dia_mes):
+            return periodo_inicio.month, PERIODOS_POR_ANIO["mensual"]
+    elif tipo == "quincenal":
+        if periodo_inicio.day == 1 and periodo_fin == periodo_inicio.replace(day=15):
+            return (periodo_inicio.month - 1) * 2 + 1, PERIODOS_POR_ANIO["quincenal"]
+        if periodo_inicio.day == 16 and periodo_fin == periodo_inicio.replace(day=ultimo_dia_mes):
+            return (periodo_inicio.month - 1) * 2 + 2, PERIODOS_POR_ANIO["quincenal"]
+
+    raise HTTPException(
+        status.HTTP_422_UNPROCESSABLE_ENTITY,
+        f"El período {periodo_inicio.isoformat()} a {periodo_fin.isoformat()} no calza con un "
+        "mes calendario completo ni con una quincena estándar (1-15 o 16-fin de mes); no se "
+        "puede determinar el número de período fiscal para calcular el ISR.",
+    )
