@@ -1,6 +1,15 @@
 from fastapi import FastAPI
 
-from app.routers import auth, contratos, empleados, empresas, health, horas_extra
+from app.routers import (
+    auth,
+    conceptos_variables_pendientes,
+    contratos,
+    empleados,
+    empresas,
+    health,
+    horas_extra,
+    planillas,
+)
 
 app = FastAPI(title="Nómina Panamá API")
 
@@ -10,3 +19,5 @@ app.include_router(empresas.router)
 app.include_router(empleados.router)
 app.include_router(contratos.router)
 app.include_router(horas_extra.router)
+app.include_router(conceptos_variables_pendientes.router)
+app.include_router(planillas.router)

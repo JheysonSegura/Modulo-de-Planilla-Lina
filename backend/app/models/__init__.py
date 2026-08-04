@@ -1,6 +1,7 @@
 from app.models.auditoria import AuditoriaCambio
 from app.models.auth import RefreshToken
 from app.models.base import Base
+from app.models.conceptos_variables_pendientes import ConceptoVariablePendiente
 from app.models.empleados import Contrato, Empleado, HistorialSalarial
 from app.models.empresas import Empresa, UsuarioEmpresa
 from app.models.horas_extra import RegistroHorasExtra
@@ -28,6 +29,7 @@ __all__ = [
     "Planilla",
     "MovimientoPlanilla",
     "ConceptoVariable",
+    "ConceptoVariablePendiente",
     "ProvisionDecimo",
     "ProvisionVacaciones",
     "Liquidacion",

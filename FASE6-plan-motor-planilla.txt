@@ -1,0 +1,181 @@
+FASE 6 - MOTOR DE PLANILLA MENSUAL/QUINCENAL
+================================================================
+Nomina Panama - plan aprobado el 2026-08-04
+
+CONTEXTO
+--------
+El backend ya tenia empleados/contratos con historial salarial
+(Fase 4), tasas CSS/SE sembradas por vigencia (Fase 2) y horas extra
+auditables por periodo (Fase 5). Faltaba el motor que orquesta todo
+eso en movimientos_planilla por periodo. El esquema de referencia
+(db/schema_nomina_panama.sql) ya define planillas / movimientos_planilla
+/ conceptos_variables, asi que esta fase reutiliza esas tablas, no las
+reinventa.
+
+DECISIONES TOMADAS CON EL USUARIO
+------------------------------------
+1. Motor generico por rango de fechas: el servicio recibe
+   tipo: 'mensual' | 'quincenal' + periodo_inicio/periodo_fin
+   explicitos y procesa todos los contratos que se solapan con ese
+   rango, sin restringir a un valor de contratos.periodicidad_pago.
+2. Nueva tabla de captura previa para bonos/comisiones/descuentos
+   puntuales (conceptos_variables.movimiento_planilla_id es NOT NULL:
+   no puede existir un concepto variable antes de que exista un
+   movimiento). Simetrica a registro_horas_extra (Fase 5).
+3. Base gravable de CSS/SE = salario base del periodo + horas extra
+   del periodo + TODOS los conceptos variables tipo 'ingreso'. Los
+   tipo 'deduccion' bajan el neto pero no la base.
+4. Idempotencia: generar dos veces la misma
+   (empresa_id, tipo, periodo_inicio, periodo_fin) sin haber anulado
+   la anterior devuelve 409.
+
+REGLA DEL MES COMERCIAL DE 30 DIAS (consecuencia de la decision 1)
+---------------------------------------------------------------------
+CLAUDE.md seccion 5 ya cerro la regla: cualquier prorrateo usa
+salario_mensual / 30, nunca los dias calendario reales. Con un motor
+generico por rango de fechas, esto obliga a distinguir dos casos por
+contrato:
+
+- El contrato cubre el periodo completo (fecha_inicio <= periodo_inicio
+  y fecha_fin_real es NULL o >= periodo_fin):
+  salario_base_periodo = salario_vigente si tipo == 'mensual', o
+  salario_vigente / 2 si tipo == 'quincenal' (exactamente 15 de 30
+  dias comerciales) -- NUNCA se usan los dias calendario reales del
+  rango (un rango 16-31 de un mes de 31 dias sigue pagando medio
+  salario, no 16/30).
+- El contrato NO cubre el periodo completo (ingreso/egreso a mitad):
+  se prorratea por dias calendario REALES trabajados dentro del
+  periodo x (salario_vigente / 30).
+
+La tasa vigente (CSS/SE) y el salario vigente se resuelven a la fecha
+periodo_fin (fecha de cierre del periodo), no a la fecha actual.
+
+QUE CONTRATOS ENTRAN
+----------------------
+contrato.fecha_inicio <= periodo_fin AND (contrato.fecha_fin_real IS
+NULL OR contrato.fecha_fin_real >= periodo_inicio) -- no se filtra por
+estado='vigente': un contrato recien terminado dentro del periodo
+igual trabajo esos dias y debe cobrarlos (la liquidacion final es una
+fase futura separada, no se toca aqui).
+
+LADO PATRONAL - CSS Y SEGURO EDUCATIVO PATRONAL SI SE CALCULAN
+-------------------------------------------------------------------
+Confirmado explicitamente con el usuario tras una alarma valida sobre
+el costo patronal: css_patronal (escalonado por Ley 462:
+13.25%->14.25%->15.25%) y seguro_educativo_patronal (1.5%) se
+calculan con las mismas tasas vigentes ya sembradas en Fase 2, sobre
+la misma base gravable que el lado empleado. NO son placeholders.
+
+Lo unico que queda pendiente es riesgo_profesional_patronal: depende
+de tasas_riesgo_profesional por clase de riesgo (I-V), tabla que nunca
+se sembro en ninguna fase anterior porque no existe todavia la tabla
+oficial de la CSS ni la clasificacion de riesgo real de la empresa. Se
+trata igual que los tramos de ISR (CLAUDE.md secciones 4/6): la
+formula ya esta lista para usarlo en cuanto exista el dato, pero
+mientras tanto queda en 0 documentado como pendiente -- explicitamente,
+no por descuido, sin bloquear la generacion de la planilla.
+
+ISR Y DECIMO - EXCLUIDOS, DEJADOS "ENCHUFABLES"
+---------------------------------------------------
+isr_retenido se calcula con una funcion _calcular_isr_retenido(...)
+que por ahora siempre devuelve Decimal("0") (coincide con el
+server_default de la columna). Vive como un paso explicito y aislado
+del pipeline para que la fase de ISR la reemplace sin tocar el resto.
+Decimo no se toca en absoluto.
+
+DISENO DE DATOS
+------------------
+
+Migracion 0012 (revision id acortado a "0012_conceptos_var_pendientes"
+porque alembic_version.version_num es VARCHAR(32)) - tabla
+conceptos_variables_pendientes:
+
+  id                          UUID PK
+  empresa_id                  UUID FK empresas NOT NULL   (RLS)
+  contrato_id                 UUID FK contratos NOT NULL
+  fecha                       DATE NOT NULL
+  tipo                        VARCHAR(20) NOT NULL   'ingreso' | 'deduccion'
+  codigo                      VARCHAR(50) NOT NULL   'bono','comision','descuento_puntual', etc.
+  descripcion                 TEXT
+  monto                       NUMERIC(12,2) NOT NULL
+  aplicado                    BOOLEAN NOT NULL DEFAULT false
+  movimiento_planilla_id      UUID FK movimientos_planilla NULL   (se llena al aplicarse)
+  registrado_por_usuario_id   UUID FK usuarios NULL
+  created_at, updated_at      TIMESTAMPTZ
+
+RLS: ENABLE + FORCE, misma politica de aislamiento por empresa_id que
+registro_horas_extra (migracion 0011).
+
+No se crearon tablas nuevas para planillas/movimientos_planilla/
+conceptos_variables: ya existian desde 0001_schema_base con
+empresa_id+RLS en planillas (migracion 0002/0006); movimientos_planilla
+y conceptos_variables heredan el aislamiento via FK a planillas
+(decision ya documentada en db/migracion_multiempresa.sql).
+
+CAPAS DE CODIGO
+------------------
+- Modelo: app/models/conceptos_variables_pendientes.py
+- Repositorios: conceptos_variables_pendientes.py, planillas.py,
+  movimientos_planilla.py, conceptos_variables.py (nuevos); se
+  extendio contratos.py (listar_vigentes_en_periodo) y tasas.py
+  (obtener_tasa_riesgo_profesional_vigente).
+- Servicio: app/services/planilla_service.py
+    generar_planilla(...)                  orquesta todo el flujo
+    _calcular_movimiento_de_contrato(...)   calculo por contrato
+    _calcular_isr_retenido(...)             hook, retorna 0 por ahora
+  app/services/conceptos_variables_pendientes_service.py (CRUD)
+- Schemas: app/schemas/planillas.py, app/schemas/conceptos_variables_pendientes.py
+- Routers:
+    POST   /planillas/generar
+    GET    /planillas/{id}
+    GET    /planillas/{id}/movimientos
+    POST   /contratos/{id}/conceptos-variables-pendientes
+    GET    /contratos/{id}/conceptos-variables-pendientes
+    DELETE /contratos/{id}/conceptos-variables-pendientes/{id}
+
+TESTS (backend/tests/test_planillas.py)
+-------------------------------------------
+Contra Postgres real, patron ya establecido:
+1. Planilla mensual con 3 empleados distintos en una sola corrida:
+   - Empleado A: salario fijo simple, cubre el periodo completo.
+   - Empleado B: horas extra (Fase 5) + un concepto variable pendiente
+     (bono), verifica base gravable ampliada y desglose de conceptos.
+   - Empleado C: contrato que inicia a mitad del periodo, verifica
+     prorrateo por dias reales x salario_vigente/30.
+2. Generar la misma planilla dos veces -> segunda vez 409.
+3. Planilla quincenal sobre un rango de 16 dias calendario reales
+   (segunda quincena de un mes de 31 dias) -> salario_base_periodo =
+   salario_vigente/2 exacto, NO proporcional a los 16 dias reales.
+
+VALIDACION MANUAL (curl contra el backend real, dev)
+--------------------------------------------------------
+3 empleados creados a mano + un 4to contrato preexistente de sesiones
+anteriores que el motor tambien recogio correctamente (confirma que el
+filtro de contratos vigentes funciona sobre datos reales, no solo los
+armados a proposito). Montos verificados a mano, todos cuadraron:
+  Empleado A (fijo $900): css_empleado=87.75, css_patronal=119.25,
+    se_empleado=11.25, se_patronal=13.50, neto=801.00
+  Empleado B (horas extra + bono, $720 base): bruto=777.50,
+    css_empleado=75.81, css_patronal=103.02, neto=691.97
+  Empleado C (ingreso a mitad de mes): base_periodo=360.00 (12 dias x
+    $30/dia), neto=320.40
+
+LIMPIEZA POST-VALIDACION
+----------------------------
+Se eliminaron los 3 empleados/contratos de prueba manual creados para
+esta validacion. Ademas, a pedido del usuario, se limpio basura de
+sesiones anteriores que no era de esta fase: empleados/contratos de
+prueba manual sueltos (Juan Perez, Prueba Salario Minimo, Pasante
+Prueba), un usuario duplicado huerfano dev@nomina.local (previo a que
+seed_dev.py se corrigiera a .internal) y 23 refresh_tokens acumulados
+de sesiones de prueba. Se conservo intacto salario_minimo_vigente
+(605.00 Nacional, referencia real confirmada, no es basura de prueba).
+
+VERIFICACION
+---------------
+- docker compose exec -T backend alembic upgrade head
+- docker compose run --rm backend pytest -v (29/29 pasan, suite
+  completa, no solo el archivo nuevo)
+- Planilla de prueba con 2-3 empleados via curl contra el backend
+  real, montos validados a mano.
+- Commit hecho a pedido explicito del usuario.
