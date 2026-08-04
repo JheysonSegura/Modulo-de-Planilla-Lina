@@ -133,8 +133,14 @@ def test_planilla_mensual_con_tres_empleados_distintos(client, db):
     assert decimal.Decimal(str(mov_a["css_patronal"])) == decimal.Decimal("119.25")
     assert decimal.Decimal(str(mov_a["seguro_educativo_patronal"])) == decimal.Decimal("13.50")
     assert decimal.Decimal(str(mov_a["riesgo_profesional_patronal"])) == decimal.Decimal("0.00")
-    assert decimal.Decimal(str(mov_a["isr_retenido"])) == decimal.Decimal("0.00")
-    assert decimal.Decimal(str(mov_a["salario_neto"])) == decimal.Decimal("801.00")
+    # ISR (Fase 7, método confirmado por el contador 2026-08-04): bruto
+    # anual con décimo = 900*13=11700 -> ya supera el exento de 11000
+    # (a diferencia de Fase 6, donde 900*12=10800 quedaba exento).
+    # impuesto=(11700-11000)*0.15=105.00; periodo=marzo (numero 3 de
+    # 12), restantes=10 -> isr=105.00/10=10.50.
+    assert decimal.Decimal(str(mov_a["isr_impuesto_anual_proyectado"])) == decimal.Decimal("105.00")
+    assert decimal.Decimal(str(mov_a["isr_retenido"])) == decimal.Decimal("10.50")
+    assert decimal.Decimal(str(mov_a["salario_neto"])) == decimal.Decimal("790.50")
     assert mov_a["conceptos_variables"] == []
 
     # --- Empleado B: horas extra + bono ---
@@ -146,6 +152,10 @@ def test_planilla_mensual_con_tres_empleados_distintos(client, db):
     assert decimal.Decimal(str(mov_b["seguro_educativo_empleado"])) == decimal.Decimal("9.72")
     assert decimal.Decimal(str(mov_b["css_patronal"])) == decimal.Decimal("103.02")
     assert decimal.Decimal(str(mov_b["seguro_educativo_patronal"])) == decimal.Decimal("11.66")
+    # Bruto anual con décimo = 720*13=9360, sigue bajo el exento de
+    # 11000 (el ISR se anualiza sobre el salario fijo, no sobre las
+    # horas extra/bono de este período puntual -- ver Fase 7).
+    assert decimal.Decimal(str(mov_b["isr_retenido"])) == decimal.Decimal("0.00")
     assert decimal.Decimal(str(mov_b["salario_neto"])) == decimal.Decimal("691.97")
     codigos_b = {c["codigo"] for c in mov_b["conceptos_variables"]}
     assert codigos_b == {"hora_extra", "bono"}
@@ -160,7 +170,11 @@ def test_planilla_mensual_con_tres_empleados_distintos(client, db):
     assert decimal.Decimal(str(mov_c["salario_bruto"])) == decimal.Decimal("360.00")
     assert decimal.Decimal(str(mov_c["css_empleado"])) == decimal.Decimal("35.10")
     assert decimal.Decimal(str(mov_c["seguro_educativo_empleado"])) == decimal.Decimal("4.50")
-    assert decimal.Decimal(str(mov_c["salario_neto"])) == decimal.Decimal("320.40")
+    # El ISR se anualiza sobre el salario_mensual_vigente completo
+    # (900.00), no sobre el salario_base_periodo ya prorrateado
+    # (360.00) -- mismo cálculo que el empleado A: isr=10.50.
+    assert decimal.Decimal(str(mov_c["isr_retenido"])) == decimal.Decimal("10.50")
+    assert decimal.Decimal(str(mov_c["salario_neto"])) == decimal.Decimal("309.90")
 
 
 def test_generar_planilla_duplicada_para_el_mismo_periodo_es_rechazada(client, db):

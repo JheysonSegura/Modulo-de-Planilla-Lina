@@ -257,17 +257,23 @@ def _calcular_isr_retenido(
     periodo_fin: datetime.date,
     salario_mensual_vigente: decimal.Decimal,
 ) -> tuple[decimal.Decimal, dict]:
-    """ISR por el método documentado en CLAUDE.md sección 6: (1)
-    proyectar renta gravable anual, (2) restar CSS/SE de esa base, (3)
-    aplicar tramos_isr, (4) prorratear el impuesto anual entre los
-    períodos de pago restantes, reconciliando contra lo ya retenido
-    este año (ajuste progresivo).
+    """ISR por el método CONFIRMADO por el contador el 2026-08-04 (caso
+    numérico verificado: $2,500/mes -> $32,500 bruto anual con décimo
+    -> $21,500 excedente sobre $11,000 -> 15% -> $3,225.00/año ->
+    $268.75/mes -- ver CLAUDE.md sección 5 y FASE7-plan-isr.txt):
+    (1) proyectar renta bruta anual = salario_mensual × 13 (12 meses +
+    décimo, ver más abajo), (2) restar el tramo exento y aplicar la
+    tasa marginal sobre el excedente -- **sin restar CSS/SE de la
+    base, a diferencia de lo que documentaba originalmente CLAUDE.md**
+    sección 6 antes de esta confirmación --, (3) prorratear el
+    impuesto anual entre los períodos de pago restantes, reconciliando
+    contra lo ya retenido este año (ajuste progresivo).
 
-    ⚠️ Pendiente de validación con el contador antes de producción
-    (CLAUDE.md sección 6, instrucción explícita del usuario en Fase 7).
-    Solo se anualiza el salario fijo recurrente -- horas extra y
-    conceptos variables del período no se proyectan a 12 meses, no hay
-    garantía de que se repitan.
+    Las cifras exactas de tramos_isr siguen sin validación formal del
+    contador; el método sí está confirmado. Solo se anualiza el
+    salario fijo recurrente -- horas extra y conceptos variables del
+    período no se proyectan a 12 meses, no hay garantía de que se
+    repitan.
     """
     numero_periodo, periodos_por_anio = _numero_periodo_fiscal(tipo, periodo_inicio, periodo_fin)
     periodos_restantes = periodos_por_anio - numero_periodo + 1
@@ -276,35 +282,34 @@ def _calcular_isr_retenido(
 
     parametro = parametros_isr_repo.obtener_vigente(db, periodo_fin)
     if parametro is None:
-        # Estado normal de esta fase: nadie ha confirmado el
-        # tratamiento del décimo todavía. No se suma nada a la base
-        # (numéricamente como 'exento'), pero se marca distinto para
-        # no confundir "sin confirmar" con una decisión legal tomada.
+        # No debería pasar desde la migración 0015 (decimo confirmado
+        # e integrado); si algún día no hay parámetro vigente para la
+        # fecha (ej. período anterior al seed), se marca explícito en
+        # vez de asumir en silencio que el décimo es exento.
         decimo_tratamiento = "no_configurado"
     elif parametro.decimo_incluido_en_base_gravable:
         decimo_tratamiento = "integrado"
         # El décimo son 3 partidas que suman un mes de salario al año
         # (CLAUDE.md sección 4); se usa el salario mensual vigente
-        # como estimado de ese mes adicional.
+        # como estimado de ese mes adicional (12 + 1 = 13 meses).
         renta_bruta_anual += salario_mensual_vigente
     else:
         decimo_tratamiento = "exento"
 
-    tasa_css_se_empleado = _factor_obligatorio(
-        db, "css_empleado", periodo_fin
-    ) + _factor_obligatorio(db, "seguro_educativo_empleado", periodo_fin)
-    css_se_anual_proyectado = renta_bruta_anual * tasa_css_se_empleado
-    renta_neta_anual = renta_bruta_anual - css_se_anual_proyectado
+    # Confirmado por el contador: el excedente gravable se calcula
+    # directo sobre la renta bruta anual (con décimo incluido), sin
+    # restar CSS/SE de esa base.
+    renta_gravable_anual = renta_bruta_anual
 
-    tramo = tramos_isr_repo.obtener_tramo_aplicable(db, renta_neta_anual, periodo_fin)
+    tramo = tramos_isr_repo.obtener_tramo_aplicable(db, renta_gravable_anual, periodo_fin)
     if tramo is None:
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
             f"No hay un tramo de ISR vigente para el {periodo_fin.isoformat()} que cubra una "
-            f"renta neta anual de {renta_neta_anual}. Verifica el seed de tramos_isr.",
+            f"renta gravable anual de {renta_gravable_anual}. Verifica el seed de tramos_isr.",
         )
     impuesto_anual_proyectado = (
-        tramo.impuesto_base + (renta_neta_anual - tramo.monto_desde) * tramo.tasa_marginal
+        tramo.impuesto_base + (renta_gravable_anual - tramo.monto_desde) * tramo.tasa_marginal
     ).quantize(_CENTAVO)
 
     ya_retenido_este_anio = movimientos_repo.sumar_isr_retenido_del_anio(

@@ -36,16 +36,15 @@ Todas las tasas y tramos viven en BD (`tasas_vigentes`, `tramos_isr`, `salario_m
 - 1.25% empleado / 1.5% patronal
 
 ### ISR (Impuesto Sobre la Renta)
-- Tabla progresiva, **pendiente de validar cifras exactas con contador antes de producción**
+- Tabla progresiva, cifras de los tramos (0/15%/25%, umbrales $11,000/$50,000) sin validar formalmente con el contador todavía, pero el **método de cálculo sí está confirmado** (ver sección 6, confirmado por el contador el 2026-08-04 con un caso numérico verificado).
 - Exento hasta $11,000 anuales
 - 15% entre $11,001 y $50,000
 - 25% sobre el excedente de $50,000
-- Ver sección 6 — la lógica de anualización y su interacción con el décimo aún no está cerrada.
 
 ### Décimo Tercer Mes
 - 3 partidas: abril, agosto, diciembre
 - Cuotas especiales de CSS: 7.25% (trabajador) / 10.75% (patronal), en vez de las cuotas normales
-- Tratamiento ISR del décimo: **no asumir un lado sin confirmación del contador** (ver sección 6 — hay fuentes que lo dan como exento y otras que lo integran a la base anualizada).
+- **Tratamiento ISR del décimo: CONFIRMADO por el contador (2026-08-04) — se integra a la base anualizada** como un mes adicional de salario (12 meses regulares + 1 de décimo = 13). Ver sección 6.
 
 ### Vacaciones
 - 30 días por cada 11 meses trabajados = 1 día por cada 11 días trabajados
@@ -63,11 +62,18 @@ Todas las tasas y tramos viven en BD (`tasas_vigentes`, `tramos_isr`, `salario_m
   - Límites legales: máx. 3h extra/día, 9h/semana — el exceso sobre esos límites lleva +75% adicional
   - Recargo por día especial: domingo/descanso +50%, feriado/duelo nacional +150%
   - **Cuando coinciden varios recargos (ej. hora extra nocturna en domingo), se aplican en cascada (multiplicativos), nunca se suman.** Ejemplo: hora extra nocturna (+50%) que además cae domingo (+50%) no es +100%, es `valor_hora × 1.5 × 1.5`.
+- **Registro de horas extra**: implementado en `registro_horas_extra` (Fase 5) — detalle auditable por tipo de hora/día, con el cálculo en cascada trazable en `app/services/horas_extra_service.py`.
+- **ISR (confirmado por el contador el 2026-08-04, con caso numérico verificado — ver `app/services/planilla_service.py::_calcular_isr_retenido` y `FASE7-plan-isr.txt`)**:
+  1. Renta bruta anual proyectada = `salario_mensual_vigente × 13` (12 meses regulares + 1 de décimo — el décimo **sí** se integra a la base, no es exento).
+  2. **No se resta CSS/SE de esa base.** El excedente gravable se calcula directo sobre la renta bruta anual (con décimo incluido).
+  3. Se resta el tramo exento ($11,000) y se aplica la tasa marginal del tramo correspondiente sobre el excedente (ver `tramos_isr`).
+  4. El impuesto anual resultante se prorratea entre los períodos de pago **restantes** del año, reconciliando contra lo ya retenido en períodos previos del mismo año calendario (ajuste progresivo) para que un cambio de salario a mitad de año no sub ni sobre-retenga.
+  - Caso de verificación del contador: salario $2,500/mes → bruto anual con décimo $32,500 → excedente sobre $11,000 = $21,500 → 15% = $3,225.00 anual → $268.75/mes.
+  - Las cifras exactas de los tramos (`tramos_isr`) siguen sin validación formal del contador — el **método** de cálculo sí está confirmado.
 
 ## 6. Pendiente de diseñar / cerrar
 
-- **Tabla `registro_horas_extra`**: detalle auditable de horas trabajadas por tipo (diurna/nocturna/mixta) y tipo de día (ordinario/domingo/feriado), para que el cálculo en cascada quede trazable. Propuesta, no creada aún.
-- **Lógica de ISR**: cómo se anualiza el salario, cómo interactúa con el décimo, y cómo se prorratea la retención por período de pago. El método general usado en Panamá es: (1) proyectar renta gravable anual, (2) restar CSS/SE de esa base, (3) aplicar la tabla de tramos, (4) dividir el impuesto anual entre los períodos de pago restantes del año. **El tratamiento del décimo dentro de esta base tiene fuentes contradictorias — impleméntalo como parámetro configurable (flag), no como regla fija**, hasta que el contador lo confirme.
+- Nada pendiente de diseño en ISR/horas extra a la fecha (2026-08-04) — ver sección 5.
 
 ## 7. Convenciones de código
 

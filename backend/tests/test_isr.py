@@ -4,6 +4,14 @@ import uuid
 
 from tests.conftest import crear_empresa, crear_salario_minimo, crear_usuario, login_y_seleccionar, vincular
 
+# Método confirmado por el contador el 2026-08-04 (ver CLAUDE.md
+# sección 5 y FASE7-plan-isr.txt): renta bruta anual = salario_mensual
+# x 13 (12 meses + décimo, sembrado como confirmado en la migración
+# 0015_seed_decimo_isr), sin restar CSS/SE de esa base -- el excedente
+# sobre $11,000 se grava directo con la tasa marginal del tramo.
+# Caso de verificación del contador: $2,500/mes -> $32,500 bruto anual
+# -> $21,500 excedente -> 15% -> $3,225.00/año -> $268.75/mes.
+
 
 def _sufijo() -> str:
     return uuid.uuid4().hex[:8]
@@ -77,15 +85,15 @@ def test_empleado_exento_bajo_11000_anuales(client, db):
     assert resp.status_code == 201, resp.text
     mov = _unico_movimiento(client, headers, resp.json()["id"])
 
-    # bruto anual 800*12=9600, neto tras CSS/SE (11%) = 8544 -> tramo exento
-    assert decimal.Decimal(str(mov["isr_renta_anual_proyectada"])) == decimal.Decimal("9600.00")
+    # bruto anual con décimo: 800*13=10400 <= 11000 -> tramo exento
+    assert decimal.Decimal(str(mov["isr_renta_anual_proyectada"])) == decimal.Decimal("10400.00")
     assert decimal.Decimal(str(mov["isr_impuesto_anual_proyectado"])) == decimal.Decimal("0.00")
     assert decimal.Decimal(str(mov["isr_retenido"])) == decimal.Decimal("0.00")
     assert mov["isr_numero_periodo_anio"] == 1
     assert mov["isr_periodos_restantes_anio"] == 12
-    # Sin parametros_isr sembrado (estado normal de esta fase): nunca
-    # se confunde con una decisión legal ya tomada ('exento').
-    assert mov["isr_decimo_tratamiento"] == "no_configurado"
+    # Confirmado por el contador (migración 0015): el décimo se
+    # integra a la base, sembrado como parámetro nacional vigente.
+    assert mov["isr_decimo_tratamiento"] == "integrado"
 
 
 def test_empleado_en_tramo_15_por_ciento(client, db):
@@ -98,9 +106,11 @@ def test_empleado_en_tramo_15_por_ciento(client, db):
     assert resp.status_code == 201, resp.text
     mov = _unico_movimiento(client, headers, resp.json()["id"])
 
-    # bruto 24000, neto 21360 -> impuesto=(21360-11000)*0.15=1554.00 -> /12=129.50
-    assert decimal.Decimal(str(mov["isr_impuesto_anual_proyectado"])) == decimal.Decimal("1554.00")
-    assert decimal.Decimal(str(mov["isr_retenido"])) == decimal.Decimal("129.50")
+    # bruto anual con décimo: 2000*13=26000 -> impuesto=(26000-11000)*0.15=2250.00 -> /12=187.50
+    assert decimal.Decimal(str(mov["isr_renta_anual_proyectada"])) == decimal.Decimal("26000.00")
+    assert decimal.Decimal(str(mov["isr_impuesto_anual_proyectado"])) == decimal.Decimal("2250.00")
+    assert decimal.Decimal(str(mov["isr_retenido"])) == decimal.Decimal("187.50")
+    assert mov["isr_decimo_tratamiento"] == "integrado"
 
 
 def test_empleado_en_tramo_25_por_ciento(client, db):
@@ -113,9 +123,28 @@ def test_empleado_en_tramo_25_por_ciento(client, db):
     assert resp.status_code == 201, resp.text
     mov = _unico_movimiento(client, headers, resp.json()["id"])
 
-    # bruto 72000, neto 64080 -> impuesto=5850+(64080-50000)*0.25=9370.00 -> /12=780.83
-    assert decimal.Decimal(str(mov["isr_impuesto_anual_proyectado"])) == decimal.Decimal("9370.00")
-    assert decimal.Decimal(str(mov["isr_retenido"])) == decimal.Decimal("780.83")
+    # bruto anual con décimo: 6000*13=78000 -> impuesto=5850+(78000-50000)*0.25=12850.00 -> /12=1070.83
+    assert decimal.Decimal(str(mov["isr_renta_anual_proyectada"])) == decimal.Decimal("78000.00")
+    assert decimal.Decimal(str(mov["isr_impuesto_anual_proyectado"])) == decimal.Decimal("12850.00")
+    assert decimal.Decimal(str(mov["isr_retenido"])) == decimal.Decimal("1070.83")
+
+
+def test_caso_verificado_por_el_contador_2500_mensual(client, db):
+    """Caso exacto que el contador validó a mano el 2026-08-04:
+    $2,500/mes -> $32,500 bruto anual con décimo -> $21,500 excedente
+    sobre $11,000 -> 15% -> $3,225.00/año -> $268.75/mes."""
+    headers = _preparar_empresa(db, client)
+    _crear_empleado_con_contrato(client, headers, "2500.00")
+
+    resp = _generar_planilla(
+        client, headers, "mensual", datetime.date(2025, 1, 1), datetime.date(2025, 1, 31)
+    )
+    assert resp.status_code == 201, resp.text
+    mov = _unico_movimiento(client, headers, resp.json()["id"])
+
+    assert decimal.Decimal(str(mov["isr_renta_anual_proyectada"])) == decimal.Decimal("32500.00")
+    assert decimal.Decimal(str(mov["isr_impuesto_anual_proyectado"])) == decimal.Decimal("3225.00")
+    assert decimal.Decimal(str(mov["isr_retenido"])) == decimal.Decimal("268.75")
 
 
 def test_cambio_de_salario_a_mitad_de_anio_reconcilia_contra_lo_ya_retenido(client, db):
@@ -127,11 +156,11 @@ def test_cambio_de_salario_a_mitad_de_anio_reconcilia_contra_lo_ya_retenido(clie
     )
     assert resp_enero.status_code == 201, resp_enero.text
     mov_enero = _unico_movimiento(client, headers, resp_enero.json()["id"])
-    # bruto 36000, neto 32040 -> impuesto=(32040-11000)*0.15=3156.00 -> /12=263.00
+    # bruto anual con décimo: 3000*13=39000 -> impuesto=(39000-11000)*0.15=4200.00 -> /12=350.00
     assert decimal.Decimal(str(mov_enero["isr_impuesto_anual_proyectado"])) == decimal.Decimal(
-        "3156.00"
+        "4200.00"
     )
-    assert decimal.Decimal(str(mov_enero["isr_retenido"])) == decimal.Decimal("263.00")
+    assert decimal.Decimal(str(mov_enero["isr_retenido"])) == decimal.Decimal("350.00")
 
     resp_cambio = client.post(
         f"/contratos/{contrato_id}/salario",
@@ -146,15 +175,15 @@ def test_cambio_de_salario_a_mitad_de_anio_reconcilia_contra_lo_ya_retenido(clie
     assert resp_febrero.status_code == 201, resp_febrero.text
     mov_febrero = _unico_movimiento(client, headers, resp_febrero.json()["id"])
 
-    # bruto 60000, neto 53400 -> impuesto=5850+(53400-50000)*0.25=6700.00
+    # bruto anual con décimo: 5000*13=65000 -> impuesto=5850+(65000-50000)*0.25=9600.00
     assert decimal.Decimal(str(mov_febrero["isr_impuesto_anual_proyectado"])) == decimal.Decimal(
-        "6700.00"
+        "9600.00"
     )
     assert mov_febrero["isr_numero_periodo_anio"] == 2
     assert mov_febrero["isr_periodos_restantes_anio"] == 11
-    # Ajuste progresivo: (6700.00 - 263.00 ya retenido en enero) / 11 = 585.18,
-    # NO 6700.00/12 (eso ignoraría lo ya retenido y sub-retendría el año).
-    assert decimal.Decimal(str(mov_febrero["isr_retenido"])) == decimal.Decimal("585.18")
+    # Ajuste progresivo: (9600.00 - 350.00 ya retenido en enero) / 11 = 840.91,
+    # NO 9600.00/12 (eso ignoraría lo ya retenido y sub-retendría el año).
+    assert decimal.Decimal(str(mov_febrero["isr_retenido"])) == decimal.Decimal("840.91")
 
 
 def test_periodo_no_alineado_a_mes_o_quincena_estandar_es_rechazado(client, db):

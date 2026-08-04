@@ -1,185 +1,168 @@
 FASE 7 - ISR: ANUALIZACION, PRORRATEO E INTERACCION CON EL DECIMO
 ================================================================
 Nomina Panama - plan aprobado el 2026-08-04
+CORREGIDO Y CONFIRMADO POR EL CONTADOR el mismo dia (2026-08-04)
 
 ADVERTENCIA
 -----------
-Este modulo NO debe pasar a produccion sin validacion del contador
-(instruccion explicita del usuario). Objetivo de esta fase: dejar la
-logica implementada, testeada con casos numericos conocidos, y
-completamente auditable -- no darla por "cerrada" legalmente.
+Las cifras exactas de tramos_isr siguen sin validacion FORMAL del
+contador. El METODO de calculo si esta confirmado (ver mas abajo, con
+un caso numerico verificado por el contador).
 
 CONTEXTO
 --------
-CLAUDE.md seccion 6 dejaba pendiente el calculo de ISR: como se
-anualiza el salario, como interactua con el decimo (fuentes
-contradictorias), y como se prorratea la retencion. El motor de
+CLAUDE.md seccion 6 dejaba pendiente el calculo de ISR. El motor de
 planilla (Fase 6) dejo un hook explicito _calcular_isr_retenido(...)
 que siempre devolvia Decimal("0"), documentado para que esta fase lo
 reemplazara sin tocar el resto del pipeline.
 
-DECISIONES TOMADAS CON EL USUARIO
----------------------------------
-1. Base de proyeccion anual: solo se anualiza el salario fijo
-   recurrente (salario_base vigente del contrato). Horas extra y
-   conceptos variables del periodo NO se proyectan a 12 meses -- no
-   hay garantia de que se repitan.
-2. Reconciliacion (ajuste progresivo): cada periodo se calcula
-   (impuesto_anual_proyectado - ISR ya retenido este anio para este
-   contrato) / periodos restantes. Si el salario cambia a mitad de
-   anio, cada periodo se autoajusta contra lo realmente retenido antes.
-3. Flag del decimo: vive en un parametro NACIONAL con vigencia por
-   fecha (coherente con CLAUDE.md seccion 2 -- tasas legales
-   nacionales, nunca por empresa), no en empresas.
-4. Alineacion de periodos: se asume que periodo_inicio/periodo_fin
-   calzan con mes calendario (mensual) o primera/segunda quincena
-   (quincenal). Si no calzan, el calculo de ISR rechaza explicitamente
-   (422) en vez de adivinar el numero de periodo.
+La primera version de esta fase se implemento siguiendo la lectura
+literal de CLAUDE.md seccion 6 ("proyectar renta anual, RESTAR CSS/SE
+de esa base, aplicar tramos, prorratear"), con el decimo detras de un
+parametro configurable sin sembrar (estado 'no_configurado'). El mismo
+dia, el usuario comparto los resultados con su contador, quien dio un
+caso numerico completo que corrigio dos puntos del diseno original.
 
-DISENO DEL CALCULO (PASO A PASO)
----------------------------------
-1. Renta bruta anual proyectada = salario_vigente.salario_base x 12
-   (siempre x12, sin importar si la planilla es mensual o quincenal).
-   Se usa el salario del contrato, no el salario_base_periodo ya
-   prorrateado, para no distorsionar la proyeccion cuando el contrato
-   no cubre el periodo completo.
-2. Decimo (parametro nacional, tabla parametros_isr):
-   - Si hay parametro vigente con decimo_incluido_en_base_gravable =
-     true: se suma un mes de salario (definicion legal del decimo) a
-     la renta bruta anual.
-   - Si el parametro dice false: no se suma nada (exento).
-   - Si NO hay ningun parametro vigente sembrado (estado por defecto
-     de esta fase): no se suma nada (numericamente igual que
-     "exento"), pero se marca explicitamente isr_decimo_tratamiento =
-     'no_configurado' -- nunca 'exento'. No bloquea la generacion de
-     planillas mientras se espera confirmacion.
-3. CSS/SE anual proyectado = renta bruta anual x (css_empleado +
-   seguro_educativo_empleado vigentes a periodo_fin).
-4. Renta neta anual gravable = renta bruta anual - CSS/SE anual
-   proyectado (paso 2 del metodo documentado en CLAUDE.md seccion 6).
-5. Tramo aplicable: primer tramo (ordenado por monto_desde ascendente)
-   donde monto_hasta IS NULL OR renta_neta_anual <= monto_hasta. Esto
-   hace que $11,000 exactos caigan en el tramo exento (0%), coherente
-   con "exento HASTA $11,000" de CLAUDE.md seccion 4.
-   impuesto_anual = tramo.impuesto_base + (renta_neta_anual -
+CASO DE VERIFICACION DEL CONTADOR
+-----------------------------------
+"Si la persona gana $2,500 mensuales (salario bruto), esto arroja
+$32,500 porque en Panama se paga 12 meses de salario mas uno que se
+divide en tres partes que es el decimo tercer mes. Cuando resto los
+$11,000.00 le queda un salario anual que paga ISR por la suma de
+$21,500.00, le calculo el 15% que indica la ley, el pago de ISR anual
+es de $3,225.00, esto lo divido entre 12 pagos mensuales y me arroja
+que debo pagar $268.75 mensual por ISR."
+
+  2,500 x 13                = 32,500.00   (12 meses + decimo)
+  32,500 - 11,000 (exento)  = 21,500.00
+  21,500 x 15%               = 3,225.00   (impuesto anual)
+  3,225 / 12                 =   268.75   (retencion mensual)
+
+QUE CORRIGIO ESTE CASO
+------------------------
+1. El decimo SI se integra a la base anualizada (13 meses, no 12) --
+   ya no es "pendiente de confirmar", es la regla real.
+2. NO se resta CSS/SE de la base antes de aplicar el tramo. La lectura
+   original de CLAUDE.md seccion 6 ("restar CSS/SE de esa base") no
+   coincide con el metodo real: el excedente gravable se calcula
+   directo sobre el bruto anual (con decimo), sin ese descuento.
+   CLAUDE.md ya se actualizo para reflejar esto (secciones 4 y 5).
+
+DECISIONES QUE SE MANTUVIERON SIN CAMBIO
+-------------------------------------------
+1. Base de proyeccion anual: solo se anualiza el salario fijo
+   recurrente. Horas extra y conceptos variables del periodo NO se
+   proyectan a 12 meses.
+2. Reconciliacion (ajuste progresivo): cada periodo se calcula
+   (impuesto_anual_proyectado - ISR ya retenido este anio) / periodos
+   restantes.
+3. El tratamiento del decimo vive en un parametro NACIONAL con
+   vigencia por fecha (parametros_isr) -- ahora SEMBRADO como
+   confirmado (migracion 0015), en vez de sin sembrar.
+4. Alineacion de periodos: se asume mes calendario o quincena
+   estandar; si no calza, 422 explicito.
+
+DISENO DEL CALCULO (PASO A PASO, VERSION CONFIRMADA)
+-------------------------------------------------------
+1. Renta bruta anual proyectada = salario_vigente.salario_base x 12,
+   mas un mes adicional de decimo (parametro parametros_isr, sembrado
+   como true) = efectivamente x13.
+2. Se resta el tramo exento ($11,000) y se aplica la tasa marginal del
+   tramo correspondiente sobre el excedente -- SIN restar CSS/SE.
+   impuesto_anual = tramo.impuesto_base + (renta_bruta_anual -
    tramo.monto_desde) x tramo.tasa_marginal.
-   (Verificado: continuidad en los bordes -- a $50,000 exactos da
-   $5,850, que es justo el impuesto_base del tramo siguiente.)
-6. Numero de periodo y periodos restantes, derivados de periodo_inicio
-   y tipo de la planilla (no de contratos.periodicidad_pago):
-   - mensual: requiere periodo_inicio.day==1 y periodo_fin=ultimo dia
-     del mes -> numero_periodo = mes (1-12), periodos_por_anio = 12.
-   - quincenal: requiere (dia 1 a 15) o (dia 16 a fin de mes) ->
-     numero_periodo de 1 a 24, periodos_por_anio = 24.
-   - Si no calza -> HTTPException 422 explicito.
-   - periodos_restantes = periodos_por_anio - numero_periodo + 1.
-7. ISR ya retenido este anio = suma de movimientos_planilla.isr_retenido
-   de este mismo contrato, de planillas con periodo_inicio en el mismo
-   anio calendario y estado != 'anulada'.
-8. ISR del periodo = max(0, (impuesto_anual_proyectado -
+   Tramo aplicable: primer tramo (monto_desde ascendente) donde
+   monto_hasta IS NULL OR renta <= monto_hasta ($11,000 exactos caen
+   en el tramo exento).
+3. Numero de periodo y periodos restantes, derivados de periodo_inicio
+   y tipo de la planilla:
+   - mensual: numero_periodo = mes (1-12), periodos_por_anio = 12.
+   - quincenal: numero_periodo de 1 a 24, periodos_por_anio = 24.
+   - Si el rango no calza con mes/quincena estandar -> 422 explicito.
+4. ISR ya retenido este anio = suma de movimientos_planilla.isr_retenido
+   de este mismo contrato, planillas del mismo anio calendario,
+   estado != 'anulada'.
+5. ISR del periodo = max(0, (impuesto_anual_proyectado -
    ya_retenido_este_anio) / periodos_restantes), redondeado a centavo.
-   Nunca negativo.
 
 AUDITABILIDAD
 -------------
-Columnas nuevas en movimientos_planilla (mismo criterio que
-registro_horas_extra en Fase 5 -- guardar valores intermedios como
-snapshot):
+Columnas en movimientos_planilla (snapshot, igual criterio que
+registro_horas_extra en Fase 5):
   isr_renta_anual_proyectada       NUMERIC(12,2)
   isr_impuesto_anual_proyectado    NUMERIC(12,2)
   isr_decimo_tratamiento           VARCHAR(20)  'exento'|'integrado'|'no_configurado'
   isr_numero_periodo_anio          SMALLINT
   isr_periodos_restantes_anio      SMALLINT
-Expuestas tambien en MovimientoPlanillaOut (API) para compartir con el
-contador.
+Expuestas tambien en MovimientoPlanillaOut (API).
 
 DISENO DE DATOS
 ----------------
-Migracion 0013 (isr_auditoria_movimientos): ALTER TABLE
-movimientos_planilla agregando las 5 columnas de arriba, nullable.
-
-Migracion 0014 (parametros_isr): tabla nueva, parametro nacional sin
-empresa_id ni RLS (igual que tasas_vigentes/tramos_isr):
-  id SERIAL PK
-  decimo_incluido_en_base_gravable BOOLEAN NOT NULL
-  fecha_inicio DATE NOT NULL
-  fecha_fin DATE
-  fuente_legal VARCHAR(150)
-  created_at TIMESTAMPTZ
-DELIBERADAMENTE SIN NINGUNA FILA SEMBRADA -- mismo criterio que
-tramos_isr en la migracion 0003 ("pendiente de validar con contador").
-Sembrar el valor real cuando el contador confirme es una migracion de
-una sola linea, no requiere tocar codigo.
+Migracion 0013 (isr_auditoria_movimientos): columnas de arriba en
+movimientos_planilla, nullable.
+Migracion 0014 (parametros_isr): tabla nacional sin empresa_id ni RLS
+(igual que tasas_vigentes/tramos_isr), originalmente sin fila sembrada.
+Migracion 0015 (seed_decimo_isr): siembra
+decimo_incluido_en_base_gravable=true, fecha_inicio=2025-01-01,
+fuente_legal referenciando esta confirmacion del contador.
 
 CAPAS DE CODIGO
 ----------------
-- Repositorios: app/repositories/tramos_isr.py (nuevo),
-  app/repositories/parametros_isr.py (nuevo); se extendio
-  movimientos_planilla.py (sumar_isr_retenido_del_anio).
+- Repositorios: app/repositories/tramos_isr.py,
+  app/repositories/parametros_isr.py; movimientos_planilla.py
+  extendido con sumar_isr_retenido_del_anio.
 - Servicio: app/services/planilla_service.py
-    _calcular_isr_retenido(...)   reemplaza el placeholder de Fase 6
-    _numero_periodo_fiscal(...)   deriva numero de periodo y valida
-                                   alineacion, o rechaza con 422
+    _calcular_isr_retenido(...)   version confirmada (sin resta CSS/SE)
+    _numero_periodo_fiscal(...)   deriva numero de periodo o rechaza 422
 - Schemas: app/schemas/planillas.py -> MovimientoPlanillaOut con los
   5 campos de auditoria ISR.
-- Sin endpoints nuevos: parametros_isr se siembra por migracion cuando
-  el contador confirme, igual que tasas_vigentes/tramos_isr.
+- Sin endpoints nuevos: parametros_isr se siembra por migracion.
 
 TESTS (backend/tests/test_isr.py)
 ----------------------------------
-Contra Postgres real, 34/34 pasan (29 previos + 5 nuevos), SIN
-regresion en Fase 6 (los salarios $900/$720 usados ahi quedan exentos
-incluso con ISR real activo):
-1. Exento ($800/mes -> bruto $9,600 -> neto $8,544) -> isr=0.00
-2. Tramo 15% ($2,000/mes -> neto $21,360) -> impuesto_anual=$1,554.00
-   -> isr=$129.50
-3. Tramo 25% ($6,000/mes -> neto $64,080) -> impuesto_anual=$9,370.00
-   -> isr=$780.83
-4. Cambio de salario a mitad de anio: enero $3,000/mes
-   (impuesto_anual=$3,156.00, isr_enero=$263.00) -> cambia a $5,000
-   desde febrero (impuesto_anual=$6,700.00) -> isr_febrero =
-   (6700.00-263.00)/11 = $585.18, confirma el ajuste progresivo.
-5. Periodo no alineado a mes/quincena estandar -> 422 explicito.
-6. Sin parametros_isr sembrado -> isr_decimo_tratamiento ==
-   'no_configurado', no bloquea la planilla.
+Contra Postgres real, 35/35 pasan (29 previos + 6 de ISR), recalculados
+con el metodo confirmado:
+1. Exento ($800/mes -> bruto con decimo $10,400 <= 11,000) -> isr=0.00
+2. Tramo 15% ($2,000/mes -> bruto $26,000) -> impuesto=$2,250.00 ->
+   isr=$187.50
+3. Tramo 25% ($6,000/mes -> bruto $78,000) -> impuesto=$12,850.00 ->
+   isr=$1,070.83
+4. Caso exacto del contador ($2,500/mes) -> bruto $32,500 ->
+   impuesto=$3,225.00 -> isr=$268.75
+5. Cambio de salario a mitad de anio: enero $3,000/mes
+   (impuesto=$4,200.00, isr_enero=$350.00) -> cambia a $5,000 desde
+   febrero (impuesto=$9,600.00) -> isr_febrero =
+   (9600.00-350.00)/11 = $840.91, confirma el ajuste progresivo.
+6. Periodo no alineado a mes/quincena estandar -> 422 explicito.
+
+Nota: la Fase 6 (test_planillas.py) tambien se actualizo -- con decimo
+integrado, el salario de $900/mes usado ahi ($900x13=$11,700) ya
+supera el exento de $11,000 (antes, con x12=$10,800, quedaba exento).
+Se recalcularon esos montos esperados; sin regresion real, solo
+numeros distintos porque ahora el ISR es real.
 
 VALIDACION MANUAL (curl contra el backend real, dev)
 -----------------------------------------------------
-Empleado A (Tramo 15%, $2,500/mes): renta neta anual $26,700 ->
-  impuesto_anual $2,355.00 -> isr=$196.25/mes.
-Empleado B (cambio de salario):
-  Enero $3,000/mes: renta neta $32,040 -> impuesto_anual $3,156.00 ->
-    isr_enero=$263.00
-  Sube a $5,000/mes desde febrero: renta neta $53,400 -> impuesto_anual
-    $6,700.00 -> isr_febrero = (6700.00-263.00)/11 = $585.18 (NO
-    6700.00/12, que ignoraria lo ya retenido).
-  Control de sanidad: el empleado A (sin cambio de salario) retuvo
-    exactamente $196.25 tanto en enero como en febrero -- la
-    reconciliacion es matematicamente estable cuando el salario no
-    cambia (2355/12 = 196.25 = (2355-196.25)/11).
-Todos los montos verificados a mano contra la formula, coinciden
-exactos con lo que devolvio la API. isr_decimo_tratamiento salio
-'no_configurado' en todos los casos, nunca confundido con 'exento'.
+Reproduccion exacta del caso del contador: salario $2,500/mes ->
+isr_renta_anual_proyectada=32500.00, isr_impuesto_anual_proyectado=
+3225.00, isr_retenido=268.75, isr_decimo_tratamiento=integrado.
+Coincide exacto con la API real, no solo con los tests.
 
 Se limpiaron todos los empleados/contratos/planillas de prueba
-generados para esta validacion.
+generados para esta validacion (tanto la ronda inicial como la de
+verificacion del caso del contador).
 
 VERIFICACION
 ------------
 - docker compose exec -T backend alembic upgrade head (migraciones
-  0013 y 0014)
-- docker compose run --rm backend pytest -v (34/34 pasan, suite
+  0013, 0014, 0015)
+- docker compose run --rm backend pytest -v (35/35 pasan, suite
   completa)
-- Planillas de prueba via curl, incluyendo cambio de salario entre dos
-  meses, montos verificados a mano.
+- Caso del contador reproducido via curl contra el backend real.
 
-PENDIENTE ANTES DE PRODUCCION (no negociable, instruccion del usuario)
------------------------------------------------------------------------
-Compartir estos resultados con el contador y confirmar:
-  - Las cifras exactas de tramos_isr (ya marcadas "pendiente de
-    validar" desde la migracion 0003, Fase 2).
-  - El tratamiento del decimo en la base del ISR (exento vs
-    integrado) para sembrar parametros_isr.
-  - El metodo de anualizacion/reconciliacion aqui implementado.
-No sembrar parametros_isr ni dar este modulo por cerrado sin esa
-confirmacion.
+PENDIENTE ANTES DE PRODUCCION
+-------------------------------
+El METODO de calculo esta confirmado. Sigue pendiente que el contador
+valide formalmente las cifras exactas de tramos_isr (los umbrales
+$11,000/$50,000 y las tasas 15%/25% -- ya documentados en CLAUDE.md
+pero sin la validacion formal que se le dio al metodo).
