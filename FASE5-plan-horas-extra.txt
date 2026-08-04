@@ -1,0 +1,142 @@
+FASE 5 - REGISTRO DE HORAS EXTRA (tabla + calculo en cascada)
+================================================================
+Nomina Panama - plan aprobado el 2026-08-04
+
+CONTEXTO
+--------
+CLAUDE.md seccion 6 dejaba pendiente la tabla registro_horas_extra y su
+logica de calculo, para que los recargos en cascada (Art. 33/36/48/49
+del Codigo de Trabajo) quedaran trazables. Se validaron los articulos
+33, 36, 48 y 49 directamente contra codigo-detrabajo.pdf (agregado al
+repo por el usuario). Confirman al pie de la letra los porcentajes ya
+cerrados en CLAUDE.md seccion 5:
+
+  - Art. 33: +25% diurna, +50% nocturna o prolongacion de mixta
+    iniciada en diurno, +75% prolongacion de nocturna o de mixta
+    iniciada en nocturno.
+  - Art. 36: maximo 3h extra/dia, 9h/semana; el excedente lleva +75%
+    de recargo adicional.
+  - Art. 48: trabajo en domingo/descanso semanal +50%.
+  - Art. 49: trabajo en feriado/duelo nacional +150%.
+
+DECISIONES DE DISENO TOMADAS CON EL USUARIO
+---------------------------------------------
+1. tipo_hora usa las 3 bandas ya colapsadas en CLAUDE.md (diurna /
+   nocturna / prolongacion_nocturna), no los 5 escenarios literales
+   del Art. 33.
+2. El tope diario (3h) y semanal (9h) se consume en ORDEN DE REGISTRO
+   (FIFO): lo que sobra al final de llenar el cupo es lo que lleva el
+   +75% adicional del Art. 36, sin importar su tipo_hora/tipo_dia.
+3. Cada alta/edicion/baja de un registro RECALCULA TODA LA SEMANA ISO
+   de ese contrato (orden por fecha, luego por orden de creacion) para
+   mantener correcta la atribucion dentro/exceso.
+4. Los recargos se siembran en tasas_vigentes con fecha_inicio =
+   2025-01-01, igual que las demas tasas ya sembradas (migracion 0003),
+   por consistencia.
+
+Nota sobre quincenas: contratos.periodicidad_pago (Fase 4) ya soporta
+'quincenal' (pagos los dias 15 y 30). Esta fase registra horas extra
+por DIA CALENDARIO y las agrupa por SEMANA ISO (los topes legales son
+semanales, no quincenales). La suma de horas extra dentro de una
+quincena especifica para armar la planilla de pago queda para la
+futura Fase 6 (nomina/planilla), que leera registro_horas_extra
+filtrando por rango de fechas.
+
+DISENO DE DATOS
+----------------
+
+Migracion 0010 - seed de recargos en tasas_vigentes (reutiliza la
+tabla existente, no crea una tabla de tasas nueva):
+
+  tipo_tasa                              | tasa | fuente_legal
+  ----------------------------------------|------|------------------
+  recargo_hextra_diurna                  | 0.25 | Art. 33 num. 1 CT
+  recargo_hextra_nocturna                | 0.50 | Art. 33 num. 2 CT
+  recargo_hextra_prolongacion_nocturna   | 0.75 | Art. 33 num. 3 CT
+  recargo_dia_domingo_descanso           | 0.50 | Art. 48 CT
+  recargo_dia_feriado_duelo              | 1.50 | Art. 49 CT
+  recargo_exceso_limite_horas_extra      | 0.75 | Art. 36 CT
+
+Migracion 0011 - tabla registro_horas_extra:
+
+  id                        UUID PK
+  empresa_id                UUID FK empresas NOT NULL   (RLS)
+  contrato_id                UUID FK contratos NOT NULL
+  fecha                      DATE NOT NULL               dia calendario trabajado
+  tipo_hora                  VARCHAR(30) NOT NULL        diurna | nocturna | prolongacion_nocturna
+  tipo_dia                   VARCHAR(30) NOT NULL DEFAULT 'ordinario'
+                                                          ordinario | domingo_descanso | feriado_duelo_nacional
+  horas                      NUMERIC(5,2) NOT NULL
+  horas_dentro_limite        NUMERIC(5,2) NOT NULL
+  horas_exceso_limite        NUMERIC(5,2) NOT NULL DEFAULT 0
+  valor_hora_ordinaria       NUMERIC(10,4) NOT NULL      snapshot: salario_vigente/30/8
+  factor_tipo_hora           NUMERIC(6,4) NOT NULL       snapshot de la tasa usada
+  factor_tipo_dia            NUMERIC(6,4) NOT NULL DEFAULT 0
+  factor_exceso_limite       NUMERIC(6,4) NOT NULL DEFAULT 0
+  monto_dentro_limite        NUMERIC(12,2) NOT NULL
+  monto_exceso_limite        NUMERIC(12,2) NOT NULL DEFAULT 0
+  monto_calculado            NUMERIC(12,2) NOT NULL      = monto_dentro_limite + monto_exceso_limite
+  registrado_por_usuario_id  UUID FK usuarios NULL
+  observaciones               TEXT NULL
+  created_at, updated_at     TIMESTAMPTZ
+
+RLS: ENABLE + FORCE ROW LEVEL SECURITY, misma politica de aislamiento
+por empresa_id que el resto de tablas operativas.
+
+Los campos valor_hora_ordinaria / factor_* / monto_* son snapshots
+calculados en el momento del recalculo (no se recalculan leyendo
+tasas_vigentes de nuevo despues), para que el registro quede trazable
+aunque cambien las tasas o el salario a futuro.
+
+CAPAS DE CODIGO
+-----------------
+- Modelo: app/models/horas_extra.py -> RegistroHorasExtra
+- Repositorios: app/repositories/horas_extra.py y app/repositories/tasas.py
+- Servicio: app/services/horas_extra_service.py
+    registrar_hora_extra(...)      inserta el registro crudo y dispara el recalculo
+    _recalcular_semana(...)         recorre la semana ISO en orden FIFO,
+                                     aplica la cascada multiplicativa
+                                     (nunca sumada) de recargos
+    eliminar_registro(...)          borra y vuelve a recalcular la semana
+- Schemas: app/schemas/horas_extra.py
+- Router: app/routers/horas_extra.py
+    POST   /contratos/{contrato_id}/horas-extra
+    GET    /contratos/{contrato_id}/horas-extra
+    DELETE /contratos/{contrato_id}/horas-extra/{id}
+
+FORMULA DE CASCADA (nunca aditiva)
+------------------------------------
+monto_dentro_limite = horas_dentro_limite * valor_hora_ordinaria
+                       * (1 + factor_tipo_hora) * (1 + factor_tipo_dia)
+
+monto_exceso_limite = horas_exceso_limite * valor_hora_ordinaria
+                       * (1 + factor_tipo_hora) * (1 + factor_tipo_dia)
+                       * (1 + factor_exceso_limite)
+
+Ejemplo (hora extra nocturna en domingo): valor_hora * 1.5 * 1.5,
+NUNCA valor_hora * 2.0.
+
+TESTS (backend/tests/test_horas_extra.py)
+--------------------------------------------
+Contra Postgres real (nunca mocks), patron ya establecido en el
+proyecto:
+  1. Hora extra diurna simple -> +25%.
+  2. Hora extra nocturna -> +50%.
+  3. Hora extra nocturna en domingo -> verifica cascada multiplicativa.
+  4. Hora extra en feriado -> +150% de dia sobre el recargo de tipo_hora.
+  5. Exceso sobre el limite semanal de 9h -> el tramo excedente lleva
+     el +75% adicional en cascada.
+  6. Mismo dia con 2h diurna + 2h nocturna (total 4h, tope 3h/dia):
+     el excedente cae en el segundo renglon registrado (FIFO), sin
+     importar su tipo.
+  7. Insertar un registro de un dia anterior dentro de una semana ISO
+     ya calculada: confirma que los montos de registros previos de
+     esa semana se actualizan (recalculo retroactivo).
+
+VERIFICACION
+-------------
+- docker compose run --rm backend pytest tests/test_horas_extra.py -v
+- Validar a mano los casos 3 y 5 contra la formula del Codigo de
+  Trabajo antes de cerrar la fase.
+- Prueba manual con curl/TestClient contra el backend real.
+- No se hace commit hasta que el usuario lo pida explicitamente.

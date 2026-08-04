@@ -3,6 +3,7 @@ from app.models.auth import RefreshToken
 from app.models.base import Base
 from app.models.empleados import Contrato, Empleado, HistorialSalarial
 from app.models.empresas import Empresa, UsuarioEmpresa
+from app.models.horas_extra import RegistroHorasExtra
 from app.models.liquidaciones import Liquidacion
 from app.models.planillas import ConceptoVariable, MovimientoPlanilla, Planilla
 from app.models.provisiones import ProvisionDecimo, ProvisionVacaciones
@@ -19,6 +20,7 @@ __all__ = [
     "Empleado",
     "Contrato",
     "HistorialSalarial",
+    "RegistroHorasExtra",
     "TasaVigente",
     "TasaRiesgoProfesional",
     "TramoIsr",
