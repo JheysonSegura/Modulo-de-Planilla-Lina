@@ -9,6 +9,7 @@ from app.routers import (
     empresas,
     health,
     horas_extra,
+    liquidaciones,
     planillas,
     vacaciones,
 )
@@ -25,3 +26,4 @@ app.include_router(conceptos_variables_pendientes.router)
 app.include_router(planillas.router)
 app.include_router(decimo.router)
 app.include_router(vacaciones.router)
+app.include_router(liquidaciones.router)

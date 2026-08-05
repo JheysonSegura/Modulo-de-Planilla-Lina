@@ -21,6 +21,9 @@ class Liquidacion(Base):
     )
     fecha_terminacion: Mapped[datetime.date] = mapped_column(Date, nullable=False)
     motivo: Mapped[str] = mapped_column(String(50), nullable=False)
+    salario_pendiente: Mapped[decimal.Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, server_default="0"
+    )
     decimo_proporcional: Mapped[decimal.Decimal] = mapped_column(
         Numeric(12, 2), nullable=False, server_default="0"
     )
@@ -31,6 +34,9 @@ class Liquidacion(Base):
         Numeric(12, 2), nullable=False, server_default="0"
     )
     indemnizacion: Mapped[decimal.Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, server_default="0"
+    )
+    prima_antiguedad: Mapped[decimal.Decimal] = mapped_column(
         Numeric(12, 2), nullable=False, server_default="0"
     )
     otras_deducciones: Mapped[decimal.Decimal] = mapped_column(

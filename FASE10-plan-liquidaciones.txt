@@ -1,0 +1,211 @@
+FASE 10 - LIQUIDACIONES (FINIQUITO)
+================================================================
+Nomina Panama - plan aprobado el 2026-08-05 (marcada "Pedir plan primero")
+
+FUENTE LEGAL
+------------
+Codigo de Trabajo, Titulo VI "Terminacion de las Relaciones de
+Trabajo" (Art. 210-229D). Se extrajo el texto real de
+codigo-detrabajo.pdf via pdftotext (dos extracciones: con -layout para
+tablas, sin -layout para el orden logico de columnas en el capitulo de
+indemnizaciones, que en el PDF esta en dos columnas y -layout las
+entremezclaba). No se construyo nada de memoria/CLAUDE.md -- el mismo
+rigor que se aplico con el decimo en Fase 8.
+
+ARTICULOS CLAVE REVISADOS
+------------------------------
+- Art. 210: 8 causas de terminacion (mutuo consentimiento, expiracion
+  de plazo, conclusion de obra, muerte, prolongacion de suspension,
+  despido justificado/renuncia, decision unilateral del empleador).
+- Art. 213: causas justificadas de despido (A. disciplinarias,
+  B. no imputables, C. economicas).
+- Art. 214: preaviso de 30 dias (o su pago) para ciertas categorias
+  de trabajadores en despidos del Art. 212/213-A/B/C-1.
+- Art. 222: renuncia voluntaria del trabajador, sin indemnizacion,
+  con aviso de 15 dias (penalidad de 1 semana si no avisa -- NO
+  modelada en esta fase).
+- Art. 223: renuncia JUSTIFICADA (culpa del empleador) -> da derecho
+  a la indemnizacion del Art. 225, igual que un despido injustificado.
+- Art. 224: PRIMA DE ANTIGUEDAD -- 1 semana de salario por año
+  laborado, proporcional el año incompleto, para TODO contrato POR
+  TIEMPO INDEFINIDO, "cualquiera que sea la causa de terminacion".
+  Concepto legal DISTINTO de la indemnizacion del Art. 225 (esto no
+  estaba en el schema original, ver mas abajo).
+- Art. 225: indemnizacion por despido injustificado/renuncia
+  justificada, 3 escalas historicas (A: antes de 2-abr-1972, B: desde
+  esa fecha bajo el sistema viejo, C: relaciones iniciadas despues de
+  la Ley 44/1995). Solo la escala C aplica a relaciones vigentes hoy:
+  3.4 semanas/año en los primeros 10 años + 1 semana/año adicional
+  despues. Tambien aplica a despido por causa economica (Art. 213-C,
+  por disposicion expresa del propio Art. 225 in fine).
+- Art. 226: salario base de la prima de antiguedad = promedio de la
+  remuneracion percibida durante los ULTIMOS CINCO AÑOS trabajados.
+- Art. 149 (referenciado por el Art. 226 para la indemnizacion): salario
+  base de las indemnizaciones = promedio de lo percibido (ordinario +
+  extraordinario efectivamente trabajado) durante los ULTIMOS SEIS
+  MESES O TREINTA DIAS, el que sea MAS FAVORABLE al trabajador.
+- Art. 227: contratos por tiempo DEFINIDO o por obra determinada,
+  terminados SIN JUSTA CAUSA antes del vencimiento -> indemnizacion =
+  salarios que faltaban del plazo (NO la escala del 225, que es solo
+  para indefinidos).
+- Art. 229A-D: fondo de cesantia -- mecanismo de FINANCIAMIENTO
+  (aportes trimestrales patronales a un fideicomiso) para pagar prima
+  de antiguedad/indemnizacion. No afecta el MONTO que recibe el
+  trabajador al liquidarse, solo de donde sale el dinero -- fuera de
+  alcance de esta fase (es un tema de aportes periodicos, no de
+  calculo del finiquito puntual).
+- Art. 219/220: salarios caidos -- solo aplican en proceso judicial de
+  reintegro. Fuera de alcance administrativo.
+
+DOS DECISIONES DEL USUARIO QUE AMPLIARON EL ALCANCE INICIAL
+-------------------------------------------------------------------
+Propuestas en el plan y confirmadas via AskUserQuestion antes de
+escribir codigo:
+
+1. En vez de la simplificacion que usan decimo/vacaciones (salario_base
+   del segmento vigente de historial_salarial), se implemento el
+   promedio REAL del Art. 149 CT usando movimientos_planilla.salario_bruto
+   historico (que ya incluye horas extra + variables de ingreso, ver
+   planilla_service.py). Mas trabajo, mas fiel a la ley.
+
+2. Se incluyo tambien el Art. 227 (contratos definidos/por obra
+   terminados antes de tiempo) en el alcance de esta fase, en vez de
+   dejarlo para despues.
+
+BRECHA DE ESQUEMA ENCONTRADA Y RESUELTA CON EL USUARIO
+-------------------------------------------------------------
+La tabla `liquidaciones` (existia desde el schema base de Fase 2) tenia
+columnas para decimo_proporcional/vacaciones_pendientes/preaviso/
+indemnizacion/otras_deducciones, pero NO tenia:
+  - salario_pendiente (dias del periodo en curso no pagados via
+    planilla regular).
+  - prima_antiguedad (Art. 224 -- concepto legal DISTINTO de la
+    indemnizacion del Art. 225, obligatorio para todo indefinido sin
+    importar el motivo).
+
+Se le pregunto al usuario como resolverlo (mezclar prima de antiguedad
+dentro de "indemnizacion" perdiendo trazabilidad, o agregar 2 columnas
+nuevas). Decision: agregar las columnas via migracion
+0021_liquidaciones, que tambien le agrega RLS (la tabla nunca la tuvo,
+mismo hueco que tenian provisiones_decimo/provisiones_vacaciones antes
+de sus migraciones de Fase 8/9).
+
+BUG DE DISEÑO PROPIO ENCONTRADO Y CORREGIDO ANTES DE ESCRIBIR TESTS
+---------------------------------------------------------------------------
+Al armar un caso de prueba con numeros limpios para la prima de
+antiguedad, se detecto que el promedio de 5 años del Art. 226 se
+diluia incorrectamente: la formula original dividia la suma de
+remuneracion encontrada en movimientos_planilla entre los MESES DE
+ANTIGUEDAD TEORICA del contrato (fecha_terminacion - contrato.fecha_inicio),
+no entre los meses que realmente tienen datos de movimientos_planilla.
+Esto significa que un contrato con 3 años de antiguedad real pero solo
+2 meses de planillas cargadas en este sistema (ej. una empresa que
+recien empieza a usar la app) habria dividido entre 36 meses en vez de
+2, dando un promedio artificialmente bajo.
+
+Se corrigio agregando movimientos_repo.obtener_fecha_minima_periodo
+(MIN(periodo_inicio) de los movimientos en la ventana de 5 años) y
+promediando sobre el tramo real [fecha_minima_encontrada,
+fecha_terminacion], acotado por contrato.fecha_inicio. Documentado en
+el codigo y en CLAUDE.md. Este bug NUNCA llego a ejecutarse contra
+Postgres -- se detecto en el diseño, antes de escribir el primer test.
+
+DISEÑO DE DATOS
+------------------
+Migracion 0021_liquidaciones:
+  ALTER TABLE liquidaciones ADD COLUMN salario_pendiente NUMERIC(12,2)...
+  ALTER TABLE liquidaciones ADD COLUMN prima_antiguedad NUMERIC(12,2)...
+  ENABLE/FORCE ROW LEVEL SECURITY + politica de aislamiento por
+  empresa_id (mismo patron que 0016/0020).
+
+CAPAS DE CODIGO
+------------------
+- Modelo: app/models/liquidaciones.py (+2 columnas)
+- Repositorio: app/repositories/liquidaciones.py (crear/get/listar)
+- Repositorio extendido: app/repositories/movimientos_planilla.py
+    sumar_salario_bruto_periodo(...)      Art. 149/226
+    obtener_fecha_minima_periodo(...)     fix del bug de dilucion
+    obtener_ultimo_periodo_fin_pagado(...) salario pendiente
+- Servicio: app/services/liquidaciones_service.py
+    _salario_mensual_vigente / _salario_diario_vigente
+    _salario_base_indemnizacion(...)      Art. 149 (max 6meses/30dias)
+    _salario_base_prima_antiguedad(...)   Art. 226 (5 años, tramo real)
+    _calcular_salario_pendiente(...)
+    _calcular_prima_antiguedad(...)       Art. 224
+    _indemnizacion_escala_c(...)          Art. 225-C
+    _calcular_indemnizacion(...)          rama indefinido/definido/obra
+    _calcular_preaviso(...)               Art. 214
+    generar_liquidacion(...)              orquesta todo + termina el contrato
+  Reutiliza decimo_service.actualizar_provision/listar_provisiones y
+  vacaciones_service.actualizar_provision TAL CUAL -- CERO logica de
+  decimo/vacaciones duplicada aqui, tal como pidio el usuario.
+- Schemas: app/schemas/liquidaciones.py
+- Router: app/routers/liquidaciones.py, registrado en main.py
+    POST /contratos/{id}/liquidacion
+    GET  /contratos/{id}/liquidaciones
+
+TESTS (backend/tests/test_liquidaciones.py)
+----------------------------------------------
+Contra Postgres real, 56/56 pasan (49 previos + 7 nuevos):
+1. renuncia_voluntaria: sin indemnizacion ni preaviso. Total $241.19
+   (decimo/vacaciones $109.09 c/u, prima antiguedad $23.01).
+2. despido_justificado: MISMO resultado exacto que renuncia_voluntaria
+   ($241.19) -- confirma que la distincion real es la CAUSA, no quien
+   inicio la separacion.
+3. despido_injustificado: + indemnizacion ($119.98) + preaviso
+   ($1,200.00) + salario pendiente ($600.00, porque la fecha de
+   terminacion cae despues del cierre de la ultima planilla). Total
+   $2,277.53.
+4. Comparacion directa despido_injustificado vs renuncia_voluntaria
+   (2 empresas distintas para no chocar con el mismo periodo de
+   planilla): confirma que salario pendiente/decimo/vacaciones/prima
+   antiguedad son IDENTICOS entre ambos, y que solo indemnizacion +
+   preaviso difieren.
+5. Contrato DEFINIDO despedido injustificadamente antes de tiempo
+   (Art. 227): sin prima de antiguedad (no es indefinido), indemnizacion
+   = 319 dias restantes del plazo x $40.00 = $12,760.00. Total $14,894.54.
+6. Contrato OBRA_DETERMINADA con despido injustificado -> 422 (sin
+   fecha de fin estimable).
+7. Generar liquidacion termina el contrato (estado='terminado',
+   fecha_fin_real, motivo_terminacion); segunda liquidacion sobre el
+   mismo contrato -> 409.
+
+VALIDACION MANUAL (curl contra el backend real, dev)
+--------------------------------------------------------
+Contrato $1,200/mes indefinido desde 2025-01-01, planilla mensual de
+enero generada, liquidacion por despido_injustificado el 2025-02-15:
+  salario_pendiente=600.00, decimo_proporcional=167.27,
+  vacaciones_pendientes=167.27, prima_antiguedad=23.01,
+  indemnizacion=119.98, preaviso=1200.00, monto_total=2277.53.
+Coincide exacto con el calculo a mano y con el test correspondiente.
+
+Se limpiaron liquidaciones/provisiones/movimientos/planilla/historial/
+contrato/empleado de prueba (batch unico FK-safe, orden: liquidaciones
+-> provisiones_vacaciones -> provisiones_decimo -> movimientos_planilla
+-> planillas -> historial_salarial -> contratos -> empleados).
+
+VERIFICACION
+---------------
+- docker compose run --rm backend alembic upgrade head (migracion 0021)
+- docker compose run --rm backend pytest -q (56/56 pasan)
+- Validacion manual con curl contra el backend real (ver arriba)
+
+PENDIENTE -- EXPLICITO DEL USUARIO, NO NEGOCIABLE
+---------------------------------------------------------------------
+"Valida con tu contador los conceptos incluidos antes de usar esto en
+un caso real." Este modulo NO debe darse por cerrado sin esa
+confirmacion -- mismo tratamiento que recibieron ISR (antes de la
+confirmacion del contador/DGI) y decimo (antes de la confirmacion del
+contador) en fases anteriores.
+
+Limitaciones conocidas, documentadas, no bloqueantes:
+- Penalidad del Art. 222 (renuncia sin aviso de 15 dias, 1 semana de
+  salario a favor del empleador) no modelada.
+- Salarios caidos (Art. 219/220, contencioso judicial) fuera de
+  alcance administrativo.
+- Art. 227 solo cubre despido_injustificado en contratos definidos;
+  no hay fundamento revisado para renuncia_justificada/despido_causa_economica
+  en ese tipo de contrato, se dejan en indemnizacion=0.
+- El promedio del Art. 149/226 cae al salario_base vigente si no hay
+  historial de movimientos_planilla para el contrato (ej. liquidacion
+  sin haber corrido nomina nunca en este sistema).

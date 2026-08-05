@@ -65,6 +65,19 @@ Todas las tasas y tramos viven en BD (`tasas_vigentes`, `tramos_isr`, `salario_m
 - **Limitación conocida:** varias filas del decreto se dividen por OCUPACIÓN específica dentro de una empresa (ej. conductores de buses, talladores de casino, abogados, técnicos de salud), no por tamaño. La resolución automática (`salario_minimo_service._elegir_fila_aplicable`) es a nivel EMPRESA (`empresas.actividad_economica`), no por empleado/contrato — una empresa con roles mixtos no puede seleccionar automáticamente la fila de ocupación correcta por ahora. Revisar si algún cliente real lo necesita antes de construir un override por contrato.
 - La fila placeholder de $605/mes (referencia general, ya no vigente) sigue en BD con `fecha_fin = 2026-01-15` para poder calcular retroactivamente el 1-15 de enero de 2026.
 
+### Liquidaciones (finiquito)
+- Base legal: Código de Trabajo, Título VI (Art. 210-229D), verificado contra `código-detrabajo.pdf` el 2026-08-05 — ver `FASE10-plan-liquidaciones.txt` para el detalle artículo por artículo.
+- **Implementado** (Fase 10, `app/services/liquidaciones_service.py`, `POST /contratos/{id}/liquidacion`), reutilizando `decimo_service`/`vacaciones_service` sin duplicar su lógica:
+  - **Salario pendiente**: días desde el último `periodo_fin` pagado hasta la fecha de terminación.
+  - **Décimo proporcional** y **vacaciones proporcionales**: siempre aplican, vía `decimo_service.actualizar_provision` / `vacaciones_service.actualizar_provision`.
+  - **Prima de antigüedad** (Art. 224 CT): 1 semana de salario por año, proporcional — SOLO `tipo_contrato == "indefinido"`, cualquiera que sea el motivo. Salario base (Art. 226): promedio real de `movimientos_planilla.salario_bruto` de hasta los últimos 5 años **trabajados** (ventana ajustada al tramo con datos reales, no a la antigüedad teórica completa, para no diluir el promedio con historia sin planillas cargadas en el sistema).
+  - **Indemnización**: solo si `motivo ∈ {despido_injustificado, renuncia_justificada, despido_causa_economica}`. Para `indefinido`: escala Art. 225-C (3.4 semanas/año en los primeros 10 años + 1 semana/año adicional), salario base Art. 149 = `max(promedio 6 meses, promedio 30 días)` de `movimientos_planilla.salario_bruto` real (incluye horas extra). Para `definido` con `fecha_fin_pactada`: Art. 227, salarios del plazo restante. Para `obra_determinada`: rechaza con 422 (sin fecha de fin estimable).
+  - **Preaviso** (Art. 214): 30 días de salario, solo si `motivo ∈ {despido_injustificado, despido_causa_economica}`.
+  - Ambos promedios (Art. 149 y Art. 226) caen al `salario_base` vigente si no hay `movimientos_planilla` histórico para ese contrato (documentado, sin validar con el contador).
+- **Motivos soportados**: `renuncia_voluntaria`, `renuncia_justificada`, `despido_justificado`, `despido_causa_economica`, `despido_injustificado`, `mutuo_acuerdo`.
+- **Limitaciones documentadas, no bloqueantes**: no se modela la penalidad del Art. 222 (renuncia sin aviso de 15 días), ni salarios caídos (Art. 219/220, contencioso judicial), ni Art. 227 para `renuncia_justificada`/`despido_causa_economica` en contratos definidos (solo para `despido_injustificado`).
+- **⚠️ El usuario pidió explícitamente validar estos conceptos con su contador antes de usar el módulo en un caso real** — no tratar como cerrado sin esa confirmación, mismo criterio que ISR/décimo antes de sus confirmaciones reales.
+
 ## 5. Lógica de cálculo ya cerrada — no reabrir sin razón
 
 - **Mes comercial de 30 días**: el salario mensual fijo se paga completo sin importar si el mes calendario tiene 30 o 31 días (Art. 54 CT). Para **cualquier** prorrateo (ingreso a mitad de mes, ausencias, liquidaciones, horas extra) se usa `salario_diario = salario_mensual / 30` — **nunca** los días reales del mes calendario.
@@ -86,7 +99,7 @@ Todas las tasas y tramos viven en BD (`tasas_vigentes`, `tramos_isr`, `salario_m
 ## 6. Pendiente de diseñar / cerrar
 
 - Nada pendiente de diseño en ISR/horas extra/décimo a la fecha (2026-08-05) — ver sección 5. ISR cerrado en método y cifras de tramos (contador + DGI). Décimo cerrado en fórmula, fechas de pago y CSS especial (contador).
-- Sigue pendiente: **validar formalmente** la tasa de riesgo profesional patronal (método sembrado e implementado — ver sección 4 — pero la interpretación del factor 0.07 del Art. 51 no está confirmada con un aviso real de la CSS), y el override por contrato para filas de salario mínimo divididas por ocupación específica (ver sección 4).
+- Sigue pendiente: **validar formalmente** la tasa de riesgo profesional patronal (método sembrado e implementado — ver sección 4 — pero la interpretación del factor 0.07 del Art. 51 no está confirmada con un aviso real de la CSS), el override por contrato para filas de salario mínimo divididas por ocupación específica (ver sección 4), y **validar con el contador los conceptos de Liquidaciones** (Fase 10, ver sección 4) antes de usarlos en un caso real.
 
 ## 7. Convenciones de código
 
