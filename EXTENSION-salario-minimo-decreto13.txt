@@ -1,0 +1,179 @@
+EXTENSION - SALARIO MINIMO REAL (DECRETO EJECUTIVO N.13, 31-DIC-2025)
+================================================================
+Nomina Panama - plan aprobado el 2026-08-05
+
+FUENTE LEGAL
+------------
+El usuario agrego al repo el PDF oficial de la Gaceta Oficial Digital
+N.30438 (6 de enero de 2026), que publica el Decreto Ejecutivo N.13 de
+31 de diciembre de 2025 (Ministerio de Trabajo y Desarrollo Laboral).
+Fija las nuevas tasas de salario minimo en todo el territorio nacional,
+vigente desde el 16 de enero de 2026 (Articulo 5), derogando el
+Decreto Ejecutivo N.01 de 10 de enero de 2024. Se leyo el PDF completo
+(texto nativo, no escaneado) y se transcribio la tabla del Articulo 2.
+
+REEMPLAZA: la referencia general de $605.00/mes (migracion
+0007_seed_salario_minimo), que siempre estuvo marcada como incompleta
+en CLAUDE.md y en memoria.
+
+DOS BRECHAS DE DISENO REALES ENCONTRADAS AL LEER EL DECRETO
+-------------------------------------------------------------
+El esquema anterior (salario_minimo_vigente con region/actividad) no
+alcanzaba para representar el decreto real. Se resolvieron con
+AskUserQuestion ANTES de escribir codigo (mismo criterio que Fase 5/6/7):
+
+1. TARIFA POR HORA, NO MENSUAL. Casi toda la tabla del decreto es por
+   hora (excepto Trabajador Domestico, que es mensual). El campo
+   monto_hora ya existia en el esquema pero el servicio de validacion
+   nunca lo usaba. Decision del usuario: convertir a mensual con
+   monto_hora x 8 x 30 (mismo mes comercial de 30 dias y jornada de 8h
+   ya usado en todo el proyecto para salario_diario, Art. 54 CT).
+
+2. TAMANO DE EMPRESA. Muchas actividades se dividen en "Pequena
+   Empresa" / "Gran Empresa", con un umbral de empleados que VARIA por
+   sector (11 en la mayoria, 15/14 en firmas de abogados/contabilidad,
+   16 en industrias manufactureras). Decision del usuario: campo
+   MANUAL en empresas.tamano_empresa (igual patron que region /
+   actividad_economica ya existentes) -- el admin lo declara, el
+   sistema NO cuenta empleados para inferirlo.
+
+Una tercera brecha (division por OCUPACION especifica dentro de una
+empresa: conductores de buses, talladores de casino, abogados,
+tecnicos de salud, etc.) se decidio dejar como limitacion conocida:
+los datos se cargan igual, pero la resolucion sigue siendo a nivel
+EMPRESA (empresas.actividad_economica), no por empleado/contrato.
+Revisar si algun cliente real la necesita antes de construir un
+override por contrato -- no se construyo especulativamente.
+
+TRANSCRIPCION: REGLAS DE EXPANSION FILA -> FILAS DB
+------------------------------------------------------
+- Actividad marcada "(NACIONAL)" en el decreto (tarifa unica) -> UNA
+  fila con region='Nacional'.
+- Actividad con columnas Region 1 / Region 2 -> DOS filas.
+- "Zona Libre de Colon": el decreto no publica tarifa para Region 2
+  (guion) -> solo se inserta la fila de Region 1.
+- Division por tamano de empresa -> mismo actividad, dos filas con
+  tamano_empresa = 'Pequena Empresa' / 'Gran Empresa' (VALORES
+  CANONICOS, ver bug abajo).
+- Division por ocupacion -> el nombre de la ocupacion se incorpora al
+  propio texto de actividad (ej. "Casinos - Talladores, Gerente de
+  Casino..." vs "Casinos - Seguridad, Aseadores..."); no hay columna
+  separada.
+- Trabajador Domestico: unica fila MENSUAL del decreto ($350 Region 1
+  / $320 Region 2), monto_hora=NULL.
+
+Resultado: 98 actividades transcritas -> 146 filas en BD (51 Nacional +
+48 Region 1 + 47 Region 2), sin duplicados (verificado
+programaticamente antes de aplicar la migracion).
+
+BUG REAL ENCONTRADO Y CORREGIDO EN LA MISMA SESION
+-----------------------------------------------------
+La primera version de la migracion 0018 metio el detalle del umbral de
+empleados DENTRO del propio valor de tamano_empresa (ej. 'Gran Empresa
+(11 empleados o mas)', 'Gran Empresa (16 empleados o mas)', 'Gran
+Empresa (15 empleados o mas)' -- texto DISTINTO por sector). Esto
+rompia el match exacto contra el campo manual que la empresa declara
+via PATCH /empresas/actual (que se espera sea siempre uno de los dos
+valores canonicos 'Pequena Empresa' / 'Gran Empresa').
+
+Se detecto ANTES de terminar la validacion manual con curl, al armar
+el caso de prueba y notar que los valores no iban a coincidir. Se
+corrigio con:
+  1. docker compose run --rm backend alembic downgrade 0017_tamano_empresa
+  2. Normalizacion de los 12 valores afectados a los 2 canonicos
+  3. docker compose run --rm backend alembic upgrade head
+  4. Re-verificacion completa (pytest + curl)
+
+Leccion documentada en memoria (feedback_flujo_fases): al transcribir
+datos legales con texto descriptivo variable, separar el valor usado
+para matching/seleccion automatica del texto puramente descriptivo.
+
+DISENO DE DATOS
+------------------
+Migracion 0017_tamano_empresa: ALTER TABLE agrega
+salario_minimo_vigente.tamano_empresa y empresas.tamano_empresa
+(ambas VARCHAR(50), nullable), mismo patron que
+0008_empresa_region_actividad.
+
+Migracion 0018_seed_decreto13:
+  - Cierra la fila placeholder de 0007 con fecha_fin='2026-01-15' (NO
+    se borra -- sigue siendo valida para calcular retroactivamente el
+    1-15 de enero de 2026, periodo que el decreto nuevo no cubre).
+  - Inserta las 146 filas, fecha_inicio='2026-01-16', fecha_fin=NULL,
+    decreto_ref='Decreto Ejecutivo N.13 de 31 de diciembre de 2025'.
+  - Los datos viven en una lista de tuplas Python dentro de la propia
+    migracion (no interpolacion manual fila por fila) para evitar
+    errores de transcripcion en ~150 renglones.
+
+NOTA: los IDs de revision se mantuvieron cortos
+(0017_tamano_empresa, 0018_seed_decreto13) porque la columna
+alembic_version.version_num es VARCHAR(32) -- el primer intento con
+nombres descriptivos largos (0017_salario_minimo_tamano_empresa,
+34 caracteres) fallo con StringDataRightTruncation. Alembic hizo
+rollback limpio de la transaccion fallida (transactional DDL), asi que
+no dejo estado inconsistente.
+
+CAPAS DE CODIGO
+------------------
+- Modelos: app/models/tasas.py (SalarioMinimoVigente.tamano_empresa),
+  app/models/empresas.py (Empresa.tamano_empresa)
+- Schemas: app/schemas/empresas.py (EmpresaOut, EmpresaUpdate)
+- Router/servicio de empresas: sin cambios -- actualizar_empresa_activa
+  ya usa model_dump(exclude_unset=True) + setattr generico, el campo
+  nuevo funciono sin tocar routers/empresas.py
+- Servicio: app/services/salario_minimo_service.py
+    validar_salario_minimo: calcula monto_base_mensual desde
+      monto_mensual o (monto_hora x 8 x 30); pasa
+      empresa.tamano_empresa a la resolucion.
+    _elegir_fila_aplicable: prioridad actividad -> region/Nacional ->
+      tamano_empresa; ambiguo (None) si no hay forma segura de elegir.
+    _resolver_por_region_y_tamano: nueva funcion auxiliar.
+
+TESTS (backend/tests/test_salario_minimo_avanzado.py)
+----------------------------------------------------------
+conftest.crear_salario_minimo: nuevos parametros opcionales monto_hora
+y tamano_empresa.
+
+Contra Postgres real, 43/43 pasan (40 previos + 3 nuevos), sin
+regresion:
+1. test_tarifa_por_hora_se_convierte_a_mensual_30x8: monto_hora=3.00 ->
+   equivalente mensual 720.00 exacto; rechaza $700, acepta $720.
+2. test_tamano_empresa_elige_la_fila_correcta: empresa con
+   tamano_empresa='Gran Empresa' selecciona la fila de 900.00 (no la
+   de 400.00 de pequena empresa) cuando ambas estan vigentes.
+3. test_tamano_empresa_sin_configurar_es_ambiguo: sin tamano_empresa
+   declarado y existiendo filas pequena/gran para la misma
+   region+actividad -> 422 ambiguo.
+
+VALIDACION MANUAL (curl contra el backend real, dev)
+--------------------------------------------------------
+Empresa demo con actividad_economica='Comercio al por Menor',
+region='Region 1', SIN tamano_empresa:
+  - Contrato $650.00/mes -> 422 ambiguo (568.80 pequena vs 724.80
+    gran, ninguno resuelve solo).
+Con tamano_empresa='Pequena Empresa' declarado:
+  - Contrato $650.00/mes -> 201 aceptado.
+  - Contrato $500.00/mes -> 422 rechazado, mensaje exacto:
+    "por debajo del salario minimo vigente ($568.80)... (Decreto
+    Ejecutivo N.13 de 31 de diciembre de 2025)."
+    Verificado a mano: 2.37 (tarifa hora Region 1, Comercio al por
+    Menor, Pequena Empresa) x 8 x 30 = 568.80 exacto.
+
+Se limpiaron el empleado/contrato de prueba y se restauraron
+region/actividad_economica/tamano_empresa de la empresa demo a NULL.
+
+VERIFICACION
+---------------
+- docker compose run --rm backend alembic upgrade head (0017, 0018)
+- docker compose run --rm backend pytest -q (43/43 pasan)
+- Validacion manual con curl contra el backend real (ver arriba)
+
+PENDIENTE (no bloqueante, documentado en CLAUDE.md seccion 4 y 6)
+---------------------------------------------------------------------
+Filas de ocupacion especifica (conductores de buses, talladores de
+casino, abogados, tecnicos de salud, medicos veterinarios, mecanicos,
+periodistas, etc.) estan cargadas en BD pero NO son seleccionables
+automaticamente por empleado/contrato -- solo por empresa. Si algun
+cliente real de la app tiene roles mixtos que necesiten esto, hace
+falta un campo override a nivel contrato (fuera del alcance de esta
+extension, decision explicita del usuario).

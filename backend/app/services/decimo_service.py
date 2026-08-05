@@ -15,9 +15,9 @@ from app.repositories import tasas as tasas_repo
 
 # Decreto de Gabinete N.221 de 1971, Art. 2: "Un día de salario por
 # cada once (11) días, o fracción, de trabajo efectivo". El decreto
-# original dice partidas el 15 de marzo/agosto/diciembre; se usa abril
-# (CLAUDE.md, práctica actual, label 'dic-abr' del schema) asumiendo
-# una reforma posterior no verificada -- ver FASE8-plan-decimo.txt.
+# original dice partidas el 15 de marzo/agosto/diciembre; la práctica
+# actual (15 abr/ago/dic, label 'dic-abr' del schema) fue confirmada
+# por el contador el 2026-08-05 -- ver FASE8-plan-decimo.txt.
 DIAS_MES_COMERCIAL = decimal.Decimal("30")
 DIVISOR_DECIMO = decimal.Decimal("11")
 _CERO = decimal.Decimal("0")

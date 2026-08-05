@@ -235,3 +235,134 @@ def test_solo_admin_puede_editar_empresa_actual(client, db):
 
     resp = client.patch("/empresas/actual", json={"region": "Región 2"}, headers=headers)
     assert resp.status_code == 403
+
+
+def test_tarifa_por_hora_se_convierte_a_mensual_30x8(client, db):
+    empresa, headers = _preparar_empresa_con_usuario(db, client)
+    # Decreto Ejecutivo N.13: tarifa por hora, no mensual. Equivalente
+    # mensual = monto_hora * 8 * 30 = 3.00 * 8 * 30 = 720.00.
+    crear_salario_minimo(
+        db,
+        datetime.date(2024, 1, 1),
+        monto_hora=decimal.Decimal("3.00"),
+        fecha_fin=datetime.date(2024, 12, 31),
+    )
+    empleado_id = _crear_empleado(client, headers)
+
+    resp = client.post(
+        f"/empleados/{empleado_id}/contratos",
+        json={
+            "tipo_contrato": "indefinido",
+            "cargo": "Operario",
+            "fecha_inicio": "2024-03-01",
+            "salario_base": "700.00",
+        },
+        headers=headers,
+    )
+    assert resp.status_code == 422, resp.text
+    assert "720.00" in resp.json()["detail"]
+
+    resp = client.post(
+        f"/empleados/{empleado_id}/contratos",
+        json={
+            "tipo_contrato": "indefinido",
+            "cargo": "Operario 2",
+            "fecha_inicio": "2024-03-01",
+            "salario_base": "720.00",
+        },
+        headers=headers,
+    )
+    assert resp.status_code == 201, resp.text
+
+
+def test_tamano_empresa_elige_la_fila_correcta(client, db):
+    empresa, headers = _preparar_empresa_con_usuario(db, client)
+
+    resp = client.patch(
+        "/empresas/actual",
+        json={"actividad_economica": "Comercio al por Menor", "tamano_empresa": "Gran Empresa"},
+        headers=headers,
+    )
+    assert resp.status_code == 200, resp.text
+
+    crear_salario_minimo(
+        db,
+        datetime.date(2024, 1, 1),
+        decimal.Decimal("400.00"),
+        actividad="Comercio al por Menor",
+        tamano_empresa="Pequeña Empresa",
+        fecha_fin=datetime.date(2024, 12, 31),
+        limpiar=True,
+    )
+    crear_salario_minimo(
+        db,
+        datetime.date(2024, 1, 1),
+        decimal.Decimal("900.00"),
+        actividad="Comercio al por Menor",
+        tamano_empresa="Gran Empresa",
+        fecha_fin=datetime.date(2024, 12, 31),
+        limpiar=False,
+    )
+
+    empleado_id = _crear_empleado(client, headers)
+
+    # $500 supera el mínimo de pequeña empresa (400) pero está por
+    # debajo del de gran empresa (900), que es donde está esta empresa.
+    resp = client.post(
+        f"/empleados/{empleado_id}/contratos",
+        json={
+            "tipo_contrato": "indefinido",
+            "cargo": "Cajero",
+            "fecha_inicio": "2024-03-01",
+            "salario_base": "500.00",
+        },
+        headers=headers,
+    )
+    assert resp.status_code == 422, resp.text
+    assert "900.00" in resp.json()["detail"]
+
+
+def test_tamano_empresa_sin_configurar_es_ambiguo(client, db):
+    empresa, headers = _preparar_empresa_con_usuario(db, client)
+
+    resp = client.patch(
+        "/empresas/actual",
+        json={"actividad_economica": "Comercio al por Menor"},
+        headers=headers,
+    )
+    assert resp.status_code == 200, resp.text
+    # tamano_empresa NO se configura (queda None).
+
+    crear_salario_minimo(
+        db,
+        datetime.date(2024, 1, 1),
+        decimal.Decimal("400.00"),
+        actividad="Comercio al por Menor",
+        tamano_empresa="Pequeña Empresa",
+        fecha_fin=datetime.date(2024, 12, 31),
+        limpiar=True,
+    )
+    crear_salario_minimo(
+        db,
+        datetime.date(2024, 1, 1),
+        decimal.Decimal("900.00"),
+        actividad="Comercio al por Menor",
+        tamano_empresa="Gran Empresa",
+        fecha_fin=datetime.date(2024, 12, 31),
+        limpiar=False,
+    )
+
+    empleado_id = _crear_empleado(client, headers)
+
+    resp = client.post(
+        f"/empleados/{empleado_id}/contratos",
+        json={
+            "tipo_contrato": "indefinido",
+            "cargo": "Cajero",
+            "fecha_inicio": "2024-03-01",
+            "salario_base": "500.00",
+        },
+        headers=headers,
+    )
+    assert resp.status_code == 422, resp.text
+    assert "tamano_empresa" in resp.json()["detail"] or "tamaño" in resp.json()["detail"].lower()

@@ -26,6 +26,9 @@ class Empresa(Base):
     # vigente a la vez (ver app/services/salario_minimo_service.py).
     region: Mapped[str | None] = mapped_column(String(100))
     actividad_economica: Mapped[str | None] = mapped_column(String(150))
+    # Declaración manual de pequeña/gran empresa (Decreto Ejecutivo N.13);
+    # el sistema no cuenta empleados para inferirlo, ver salario_minimo_service.
+    tamano_empresa: Mapped[str | None] = mapped_column(String(50))
     direccion: Mapped[str | None] = mapped_column(Text)
     telefono: Mapped[str | None] = mapped_column(String(30))
     email_contacto: Mapped[str | None] = mapped_column(String(150))

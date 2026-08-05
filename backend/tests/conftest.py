@@ -135,23 +135,27 @@ def crear_empleado(db, empresa: Empresa, nombre: str, identificacion: str) -> Em
 def crear_salario_minimo(
     db,
     fecha_inicio,
-    monto_mensual,
+    monto_mensual=None,
     region: str = "Nacional",
     fecha_fin=None,
     actividad: str | None = None,
     limpiar: bool = True,
+    monto_hora=None,
+    tamano_empresa: str | None = None,
 ) -> SalarioMinimoVigente:
     # salario_minimo_vigente es dato global (no por empresa): por defecto
     # se limpia antes de sembrar para que un test no choque con rangos de
     # fecha que dejó otro test en la misma BD de test compartida entre
     # casos. limpiar=False permite sembrar varias filas a propósito (para
-    # probar la resolución multi-región).
+    # probar la resolución multi-región/tamaño de empresa).
     if limpiar:
         db.query(SalarioMinimoVigente).delete()
     fila = SalarioMinimoVigente(
         region=region,
         actividad=actividad,
+        tamano_empresa=tamano_empresa,
         monto_mensual=monto_mensual,
+        monto_hora=monto_hora,
         fecha_inicio=fecha_inicio,
         fecha_fin=fecha_fin,
         decreto_ref="Decreto Ejecutivo N.13 (dato de prueba)",

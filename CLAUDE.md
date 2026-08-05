@@ -36,22 +36,26 @@ Todas las tasas y tramos viven en BD (`tasas_vigentes`, `tramos_isr`, `salario_m
 - 1.25% empleado / 1.5% patronal
 
 ### ISR (Impuesto Sobre la Renta)
-- Tabla progresiva, cifras de los tramos (0/15%/25%, umbrales $11,000/$50,000) sin validar formalmente con el contador todavía, pero el **método de cálculo sí está confirmado** (ver sección 6, confirmado por el contador el 2026-08-04 con un caso numérico verificado).
+- Tabla progresiva, **CONFIRMADA con fuente oficial** — método confirmado por el contador el 2026-08-04 con caso numérico, y cifras de tramos confirmadas el 2026-08-05 contra la tarifa oficial de la DGI (https://dgi.mef.gob.pa/DInforme/Tarifa).
 - Exento hasta $11,000 anuales
 - 15% entre $11,001 y $50,000
-- 25% sobre el excedente de $50,000
+- Sobre $50,000: $5,850.00 (= 15% de los primeros $50,000 gravables, es decir 15% × $39,000 de excedente sobre el tramo exento) + 25% sobre el excedente de $50,000
 
 ### Décimo Tercer Mes
-- 3 partidas: abril, agosto, diciembre
-- Cuotas especiales de CSS: 7.25% (trabajador) / 10.75% (patronal), en vez de las cuotas normales
-- **Tratamiento ISR del décimo: CONFIRMADO por el contador (2026-08-04) — se integra a la base anualizada** como un mes adicional de salario (12 meses regulares + 1 de décimo = 13). Ver sección 6.
+- 3 partidas: 15 de abril, 15 de agosto, 15 de diciembre — **fecha confirmada por el contador el 2026-08-05** (el decreto original de 1971 decía 15 de marzo/agosto/diciembre; la práctica actual movió la primera partida a abril).
+- Cuotas especiales de CSS: 7.25% (trabajador) / 10.75% (patronal), en vez de las cuotas normales — **confirmado por el contador el 2026-08-05** como práctica vigente (el decreto original de 1971 declaraba el décimo exento de CSS; esa exención ya no aplica).
+- **Tratamiento ISR del décimo: CONFIRMADO por el contador (2026-08-04 y 2026-08-05) — se integra a la base anualizada** como un mes adicional de salario (12 meses regulares + 1 de décimo = 13). Umbral mensual equivalente: salario bruto mensual < B/.846.15 (= $11,000/13) no genera ISR ni en salario regular ni en el décimo. Ver sección 6.
 
 ### Vacaciones
 - 30 días por cada 11 meses trabajados = 1 día por cada 11 días trabajados
 - Prorratear siempre sobre esta proporción exacta, nunca simplificar a "2.5 días por mes" (arrastra error de redondeo acumulado)
 
 ### Salario mínimo
-- Por Decreto Ejecutivo N.° 13, revisado cada 2 años → vive en `salario_minimo_vigente` con vigencia por fecha (y por región/actividad si el decreto vigente lo exige — revisar antes de asumir un valor único nacional).
+- Por Decreto Ejecutivo N.° 13, revisado cada 2 años → vive en `salario_minimo_vigente` con vigencia por fecha, región, actividad económica y tamaño de empresa.
+- **Desglose real cargado** (Decreto Ejecutivo N.13 de 31-dic-2025, Gaceta Oficial N.30438, vigente desde 2026-01-16): 146 filas, ~98 actividades × Región 1/Región 2/Nacional, casi todo tarifa **por hora** (no mensual) — excepto Trabajador Doméstico, la única fila mensual ($350 Región 1 / $320 Región 2). Equivalente mensual de una tarifa por hora: `monto_hora × 8 × 30` (mismo mes comercial de 30 días y jornada de 8h del resto del proyecto).
+- `tamano_empresa` (`'Pequeña Empresa'` / `'Gran Empresa'`) es una declaración **manual** del admin en `empresas.tamano_empresa` — el sistema no cuenta empleados para inferirlo. El umbral real de empleados que distingue pequeña/gran varía por sector (11/14-15/16 según la actividad); esa cifra vive solo en el decreto, no en una columna.
+- **Limitación conocida:** varias filas del decreto se dividen por OCUPACIÓN específica dentro de una empresa (ej. conductores de buses, talladores de casino, abogados, técnicos de salud), no por tamaño. La resolución automática (`salario_minimo_service._elegir_fila_aplicable`) es a nivel EMPRESA (`empresas.actividad_economica`), no por empleado/contrato — una empresa con roles mixtos no puede seleccionar automáticamente la fila de ocupación correcta por ahora. Revisar si algún cliente real lo necesita antes de construir un override por contrato.
+- La fila placeholder de $605/mes (referencia general, ya no vigente) sigue en BD con `fecha_fin = 2026-01-15` para poder calcular retroactivamente el 1-15 de enero de 2026.
 
 ## 5. Lógica de cálculo ya cerrada — no reabrir sin razón
 
@@ -63,17 +67,18 @@ Todas las tasas y tramos viven en BD (`tasas_vigentes`, `tramos_isr`, `salario_m
   - Recargo por día especial: domingo/descanso +50%, feriado/duelo nacional +150%
   - **Cuando coinciden varios recargos (ej. hora extra nocturna en domingo), se aplican en cascada (multiplicativos), nunca se suman.** Ejemplo: hora extra nocturna (+50%) que además cae domingo (+50%) no es +100%, es `valor_hora × 1.5 × 1.5`.
 - **Registro de horas extra**: implementado en `registro_horas_extra` (Fase 5) — detalle auditable por tipo de hora/día, con el cálculo en cascada trazable en `app/services/horas_extra_service.py`.
-- **ISR (confirmado por el contador el 2026-08-04, con caso numérico verificado — ver `app/services/planilla_service.py::_calcular_isr_retenido` y `FASE7-plan-isr.txt`)**:
+- **ISR (método confirmado por el contador el 2026-08-04 con caso numérico verificado; cifras de tramos confirmadas el 2026-08-05 contra la tarifa oficial de la DGI — ver `app/services/planilla_service.py::_calcular_isr_retenido` y `FASE7-plan-isr.txt`)**:
   1. Renta bruta anual proyectada = `salario_mensual_vigente × 13` (12 meses regulares + 1 de décimo — el décimo **sí** se integra a la base, no es exento).
   2. **No se resta CSS/SE de esa base.** El excedente gravable se calcula directo sobre la renta bruta anual (con décimo incluido).
-  3. Se resta el tramo exento ($11,000) y se aplica la tasa marginal del tramo correspondiente sobre el excedente (ver `tramos_isr`).
+  3. Se resta el tramo exento ($11,000) y se aplica la tasa marginal del tramo correspondiente sobre el excedente, sumando la base acumulada de tramos previos (ver `tramos_isr`: tramo 3 tiene `impuesto_base=5850`, que es 15% × $39,000, el excedente gravable del tramo 2).
   4. El impuesto anual resultante se prorratea entre los períodos de pago **restantes** del año, reconciliando contra lo ya retenido en períodos previos del mismo año calendario (ajuste progresivo) para que un cambio de salario a mitad de año no sub ni sobre-retenga.
   - Caso de verificación del contador: salario $2,500/mes → bruto anual con décimo $32,500 → excedente sobre $11,000 = $21,500 → 15% = $3,225.00 anual → $268.75/mes.
-  - Las cifras exactas de los tramos (`tramos_isr`) siguen sin validación formal del contador — el **método** de cálculo sí está confirmado.
+  - Tramos verificados contra `tramos_isr` sembrado en `0003_seed_tasas_legales.py`: coincide exacto con la tarifa oficial DGI (0/11000/0.00, 11000/50000/0.15, 50000/NULL/0.25 con base 5850). No requiere cambios de código ni de datos.
 
 ## 6. Pendiente de diseñar / cerrar
 
-- Nada pendiente de diseño en ISR/horas extra a la fecha (2026-08-04) — ver sección 5.
+- Nada pendiente de diseño en ISR/horas extra/décimo a la fecha (2026-08-05) — ver sección 5. ISR cerrado en método y cifras de tramos (contador + DGI). Décimo cerrado en fórmula, fechas de pago y CSS especial (contador).
+- Sigue pendiente: la tasa de riesgo profesional patronal (CSS), y el override por contrato para filas de salario mínimo divididas por ocupación específica (ver sección 4).
 
 ## 7. Convenciones de código
 

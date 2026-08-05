@@ -88,6 +88,11 @@ class SalarioMinimoVigente(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     region: Mapped[str] = mapped_column(String(100), nullable=False)
     actividad: Mapped[str | None] = mapped_column(String(150))
+    # Declaración manual (no calculada) de si la fila aplica a pequeña o
+    # gran empresa -- el umbral de empleados que distingue una de otra
+    # varía por sector (Decreto Ejecutivo N.13). NULL si la actividad no
+    # se divide por tamaño.
+    tamano_empresa: Mapped[str | None] = mapped_column(String(50))
     monto_hora: Mapped[decimal.Decimal | None] = mapped_column(Numeric(10, 4))
     monto_mensual: Mapped[decimal.Decimal | None] = mapped_column(Numeric(12, 2))
     fecha_inicio: Mapped[datetime.date] = mapped_column(Date, nullable=False)
