@@ -10,6 +10,7 @@ from app.routers import (
     health,
     horas_extra,
     planillas,
+    vacaciones,
 )
 
 app = FastAPI(title="Nómina Panamá API")
@@ -23,3 +24,4 @@ app.include_router(horas_extra.router)
 app.include_router(conceptos_variables_pendientes.router)
 app.include_router(planillas.router)
 app.include_router(decimo.router)
+app.include_router(vacaciones.router)

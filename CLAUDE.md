@@ -47,8 +47,10 @@ Todas las tasas y tramos viven en BD (`tasas_vigentes`, `tramos_isr`, `salario_m
 - **Tratamiento ISR del décimo: CONFIRMADO por el contador (2026-08-04 y 2026-08-05) — se integra a la base anualizada** como un mes adicional de salario (12 meses regulares + 1 de décimo = 13). Umbral mensual equivalente: salario bruto mensual < B/.846.15 (= $11,000/13) no genera ISR ni en salario regular ni en el décimo. Ver sección 6.
 
 ### Vacaciones
-- 30 días por cada 11 meses trabajados = 1 día por cada 11 días trabajados
+- 30 días por cada 11 meses trabajados = 1 día por cada 11 días trabajados (Art. 54.1 CT) — **verificado 2026-08-05 contra `código-detrabajo.pdf`, coincide exacto** con lo ya documentado, sin discrepancias.
 - Prorratear siempre sobre esta proporción exacta, nunca simplificar a "2.5 días por mes" (arrastra error de redondeo acumulado)
+- **Implementado** (Fase 9, `app/services/vacaciones_service.py`): provisión = `(días trabajados / 11) × salario_diario`, calculada por segmento de `historial_salarial` (igual patrón que el décimo, Fase 8), recalculada completa en cada `generar_planilla`. Saldo disponible = `dias_acumulados - dias_gozados`; `POST /contratos/{id}/vacaciones-tomadas` descuenta días del saldo (rechaza si excede lo disponible) valorizando al salario vigente en la fecha del goce (Art. 54.2 CT).
+- **Limitación conocida** (misma que el décimo): "días trabajados" se simplifica a días calendario con el contrato activo — no hay tabla de ausencias/incapacidades todavía, y el Art. 54.4 CT cuenta también ciertas licencias como días trabajados. Tampoco se modela la acumulación de hasta 2 períodos del Art. 59 CT (cada contrato tiene un único período "abierto" en `provisiones_vacaciones`).
 
 ### Riesgo Profesional (CSS)
 - Base legal: Decreto de Gabinete N.68 de 31-mar-1970. 5 clases de riesgo (I-V), cada una con un rango de "grado de riesgo" (mínimo/promedio/máximo) — vive en `tasas_riesgo_profesional` (clase_riesgo, tasa, vigencia por fecha), sembrada usando el **grado promedio** de cada clase (Art. 50 Parágrafo: "inicialmente las empresas quedarán ubicadas en el grado promedio de la clase que corresponden").

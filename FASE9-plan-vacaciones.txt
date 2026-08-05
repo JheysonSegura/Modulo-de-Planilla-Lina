@@ -1,0 +1,179 @@
+FASE 9 - VACACIONES
+================================================================
+Nomina Panama - plan aprobado el 2026-08-05
+
+FUENTE LEGAL
+------------
+Código de Trabajo, Sección Tercera "Vacaciones" (Art. 52-61). Se
+extrajo el texto real de `código-detrabajo.pdf` (ya en el repo desde
+Fase 5) via pdftotext, no de memoria/CLAUDE.md, siguiendo el mismo
+criterio que se aplicó en Fase 8 con el decreto del décimo tras el
+tropiezo de Fase 7 con CSS/SE.
+
+RESULTADO DE LA VERIFICACION: a diferencia del décimo (Fase 8), donde
+el decreto original de 1971 SI difería de lo documentado en dos
+puntos, aquí el Art. 54.1 coincide EXACTO con lo que ya tenía
+CLAUDE.md: "Treinta días por cada once meses continuos de trabajo, a
+razón de un día por cada once días al servicio de su empleador." Sin
+discrepancias, sin necesidad de decisiones nuevas sobre la fórmula.
+
+Otros puntos relevantes del Código de Trabajo revisados:
+- Art. 54.2: remuneración = un mes de salario cuando se pactó mensual;
+  si hay salario variable u hubo aumento, se paga el promedio de los
+  últimos 11 meses o el último salario base, lo más favorable. Este
+  proyecto usa el último salario base por segmento (ver más abajo) --
+  no se modela el promedio de salario variable porque los contratos
+  aquí son de salario fijo (historial_salarial ya trackea cambios).
+- Art. 54.4: cuenta como "días trabajados" también los descansos
+  semanales, días de fiesta/duelo nacional, licencias por enfermedad
+  dentro de límites, y otras interrupciones autorizadas -- NO
+  implementado (no hay tabla de ausencias en el proyecto todavía),
+  misma limitación conocida que el décimo.
+- Art. 54.6: al terminar la relación antes del período completo, se
+  paga en efectivo el proporcional a razón de 1 día por cada 11 días
+  -- misma fórmula, pero esto pertenece a Liquidaciones (fase futura,
+  fuera de alcance aquí; la tabla `liquidaciones` ya tiene el campo
+  `vacaciones_pendientes` reservado para eso).
+- Art. 56/59: las vacaciones deben gozarse sin interrupción (máximo 2
+  fracciones vía convención colectiva) y son acumulables hasta por 2
+  períodos -- NO modelado en esta fase (cada contrato tiene un único
+  período "abierto" en vez de soportar 2 períodos acumulados en
+  paralelo). Limitación conocida, documentada, no un olvido.
+
+ARQUITECTURA: CALCADA DE DECIMO (FASE 8), CON UNA DIFERENCIA CLAVE
+------------------------------------------------------------------------
+El décimo tiene 3 fechas de pago fijas por año (cuatrimestres
+calendario compartidos por todos los contratos). Las vacaciones NO
+tienen fecha fija: se acumulan continuamente desde el ingreso del
+empleado y se "gozan" (toman) cuando el empleado y empleador acuerden.
+Por eso el diseño usa un único período "abierto" por contrato en
+`provisiones_vacaciones` (tabla que ya existía desde el schema de Fase
+2, con `empresa_id` agregado en la migración de multiempresa, pero sin
+RLS -- mismo hueco que tenía `provisiones_decimo` antes de la 0016).
+
+FORMULA (segment-aware, igual patrón que decimo_service.py)
+-----------------------------------------------------------------
+Por cada segmento de historial_salarial que se solapa con
+[fecha_inicio_periodo, fecha_corte]:
+    dias_calendario = dias del solape
+    salario_diario_segmento = segmento.salario_base / 30
+    dias_acumulados += dias_calendario / 11
+    monto_bruto += (dias_calendario / 11) * salario_diario_segmento
+
+dias_acumulados y monto_bruto se redondean a centavo/0.01 al final
+(no por segmento), igual criterio que decimo_service.
+
+Esto resuelve naturalmente "cambio de salario a mitad de período" con
+precisión, sin promediar.
+
+SALDO Y "VACACION TOMADA"
+------------------------------
+saldo_disponible = dias_acumulados - dias_gozados
+
+Al registrar una vacación tomada (POST /contratos/{id}/vacaciones-tomadas):
+  1. Se recalcula dias_acumulados/monto_bruto FRESCO a la fecha dada
+     (mismo criterio que decimo_service.generar_pago_decimo:
+     "recalcula fresco... para que quede sincronizado por construcción").
+  2. Se valida dias_tomados <= saldo_disponible, si no 422.
+  3. dias_gozados += dias_tomados.
+  4. monto_provisionado = monto_bruto - (dias_gozados * valor_dia_actual)
+     -- valor_dia_actual usa el salario VIGENTE en la fecha del goce
+     (Art. 54.2: "el último salario base, lo más favorable"), no el
+     salario histórico de cuando se acumuló cada día.
+
+actualizar_provision (llamado desde generar_planilla, igual que el
+décimo) usa el mismo monto_provisionado = monto_bruto - dias_gozados*valor_dia_actual,
+recalculado completo en cada planilla regular -- nunca se acumula
+incrementalmente.
+
+DISENO DE DATOS
+------------------
+Migración 0020_rls_provisiones_vac: ENABLE/FORCE ROW LEVEL SECURITY +
+política de aislamiento en provisiones_vacaciones, mismo patrón exacto
+que 0016_rls_provisiones_decimo. No se tocó el esquema de la tabla
+(ya existía completo desde Fase 2: contrato_id, fecha_inicio_periodo,
+dias_acumulados, dias_gozados, monto_provisionado, estado).
+
+CAPAS DE CODIGO
+------------------
+- Repositorio: app/repositories/provisiones_vacaciones.py
+    get_abierta, crear, actualizar, registrar_goce, listar_de_contrato
+- Servicio: app/services/vacaciones_service.py
+    _calcular_dias_y_monto_acumulado(...)  cálculo segment-aware
+    _valor_dia_actual(...)                 salario vigente en una fecha
+    actualizar_provision(...)              llamado desde generar_planilla
+    registrar_vacacion_tomada(...)         valida saldo, descuenta, commitea
+- planilla_service.py: una línea nueva al final del loop de
+  generar_planilla llamando a vacaciones_service.actualizar_provision(...)
+  (misma posición que la línea del décimo).
+- Schemas: app/schemas/vacaciones.py
+    ProvisionVacacionesOut (con saldo_disponible como computed_field)
+    VacacionTomadaCreate (fecha, dias > 0)
+- Router: app/routers/vacaciones.py, registrado en main.py
+    GET  /contratos/{id}/provisiones-vacaciones
+    POST /contratos/{id}/vacaciones-tomadas
+
+TESTS (backend/tests/test_vacaciones.py)
+----------------------------------------
+Contra Postgres real, 49/49 pasan (44 previos + 5 nuevos):
+1. test_dias_acumulados_para_137_dias_trabajados: contrato desde
+   2024-12-15, planilla con periodo_fin=2025-04-30 (137 días exactos:
+   17 dic + 31 ene + 28 feb + 31 mar + 30 abr) -> 12.45 días, $373.64
+   (salario $900/mes -> salario_diario=$30.00 exacto). Caso pedido
+   explícitamente por el usuario como criterio de aceptación.
+2. test_provision_se_recalcula_completo_en_cada_planilla_no_se_acumula:
+   enero (31 días -> 2.82 días/$84.55) y luego enero+febrero (59 días
+   -> 5.36 días/$160.91), verificando que se recalcula desde el inicio
+   del período y no se suma incrementalmente (lo que daría un número
+   distinto por redondeo acumulado).
+3. test_registrar_vacacion_tomada_reduce_el_saldo: 2 tomas sucesivas
+   (5 y luego 7 días) sobre el saldo de 12.45, verificando que la
+   segunda descuenta desde el saldo YA reducido (7.45), no desde el
+   acumulado original.
+4. test_no_se_puede_tomar_mas_dias_de_los_disponibles: pedir 13 días
+   con solo 12.45 disponibles -> 422, saldo sin cambios tras el rechazo.
+5. test_dias_tomados_debe_ser_mayor_que_cero: 0 días -> 422.
+
+NOTA TECNICA (bloqueo real durante el desarrollo): el motor de
+planilla (Fase 6/7) exige que el período de una planilla calce con un
+mes calendario completo o una quincena estándar (1-15 o 16-fin de mes)
+para poder determinar el número de período fiscal del ISR -- un rango
+arbitrario como 2025-05-01 a 2025-05-17 es rechazado con 422. Los
+primeros tests se escribieron con ese rango arbitrario para llegar
+exacto a 137 días y fallaron por esto; se resolvió eligiendo
+fecha_inicio=2024-12-15 y periodo_fin=2025-04-30 (fin de mes válido)
+que también da exactamente 137 días.
+
+VALIDACION MANUAL (curl contra el backend real, dev)
+--------------------------------------------------------
+Contrato $900/mes desde 2024-12-15, planilla mensual con
+periodo_fin=2025-04-30 -> provisión: dias_acumulados=12.45,
+monto_provisionado=373.64, saldo_disponible=12.45. Coincide exacto con
+el cálculo a mano y con los tests.
+
+Registrar 5 días tomados -> dias_gozados=5.00, saldo=7.45,
+monto_provisionado=223.64 (373.6363...-5*30.00=223.6363...->223.64).
+Intentar tomar 10 días más (excede el saldo de 7.45) -> 422 con el
+mensaje esperado.
+
+Se limpiaron el empleado/contrato/planilla/provisión de prueba (orden
+FK-safe: provisiones_vacaciones, provisiones_decimo,
+movimientos_planilla, planillas, historial_salarial, contratos,
+empleados -- todo en un solo batch de psql, ver nota en memoria sobre
+transacciones implícitas de `psql -c`).
+
+VERIFICACION
+---------------
+- docker compose run --rm backend alembic upgrade head (migración 0020)
+- docker compose run --rm backend pytest -q (49/49 pasan)
+- Validación manual con curl contra el backend real (ver arriba)
+
+PENDIENTE (documentado en CLAUDE.md sección 4, no bloqueante)
+-------------------------------------------------------------------
+- Ausencias/incapacidades no cuentan como días trabajados (Art. 54.4
+  CT) -- misma limitación que el décimo, requiere tabla de ausencias
+  que no existe todavía.
+- Acumulación de hasta 2 períodos (Art. 59 CT) no modelada -- cada
+  contrato tiene un único período "abierto".
+- Pago proporcional al terminar la relación (Art. 54.6 CT) pertenece a
+  Liquidaciones, fase futura no arrancada todavía.
