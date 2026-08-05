@@ -50,6 +50,12 @@ Todas las tasas y tramos viven en BD (`tasas_vigentes`, `tramos_isr`, `salario_m
 - 30 días por cada 11 meses trabajados = 1 día por cada 11 días trabajados
 - Prorratear siempre sobre esta proporción exacta, nunca simplificar a "2.5 días por mes" (arrastra error de redondeo acumulado)
 
+### Riesgo Profesional (CSS)
+- Base legal: Decreto de Gabinete N.68 de 31-mar-1970. 5 clases de riesgo (I-V), cada una con un rango de "grado de riesgo" (mínimo/promedio/máximo) — vive en `tasas_riesgo_profesional` (clase_riesgo, tasa, vigencia por fecha), sembrada usando el **grado promedio** de cada clase (Art. 50 Parágrafo: "inicialmente las empresas quedarán ubicadas en el grado promedio de la clase que corresponden").
+- Tasa patronal = `grado_riesgo × 0.0007` (Art. 51 dice "× 0.07", pero tomado literal da tasas imposibles >50%; la única lectura que da tasas plausibles es 0.07% por punto de grado). **CIFRAS SEMBRADAS PERO NO CONFIRMADAS** — no hay todavía un aviso/factura real de la CSS para verificarlas (mismo estado que tenían los tramos de ISR antes de la DGI). Clase I=0.56%, II=0.98%, III=2.10%, IV=3.64%, V=5.67%.
+- `empresas.clase_riesgo` (I-V) es un campo **manual** — la CSS asigna la clase a cada empresa vía su Reglamento de Clasificación de Empresas (no incluido en el decreto disponible); el sistema no la infiere de la actividad económica.
+- Si en el futuro se consigue un aviso/factura real de la CSS con la tasa exacta de alguna clase, verificar contra estos valores y corregir vía migración de datos si no coinciden (mismo tratamiento que se le dio a ISR y salario mínimo).
+
 ### Salario mínimo
 - Por Decreto Ejecutivo N.° 13, revisado cada 2 años → vive en `salario_minimo_vigente` con vigencia por fecha, región, actividad económica y tamaño de empresa.
 - **Desglose real cargado** (Decreto Ejecutivo N.13 de 31-dic-2025, Gaceta Oficial N.30438, vigente desde 2026-01-16): 146 filas, ~98 actividades × Región 1/Región 2/Nacional, casi todo tarifa **por hora** (no mensual) — excepto Trabajador Doméstico, la única fila mensual ($350 Región 1 / $320 Región 2). Equivalente mensual de una tarifa por hora: `monto_hora × 8 × 30` (mismo mes comercial de 30 días y jornada de 8h del resto del proyecto).
@@ -78,7 +84,7 @@ Todas las tasas y tramos viven en BD (`tasas_vigentes`, `tramos_isr`, `salario_m
 ## 6. Pendiente de diseñar / cerrar
 
 - Nada pendiente de diseño en ISR/horas extra/décimo a la fecha (2026-08-05) — ver sección 5. ISR cerrado en método y cifras de tramos (contador + DGI). Décimo cerrado en fórmula, fechas de pago y CSS especial (contador).
-- Sigue pendiente: la tasa de riesgo profesional patronal (CSS), y el override por contrato para filas de salario mínimo divididas por ocupación específica (ver sección 4).
+- Sigue pendiente: **validar formalmente** la tasa de riesgo profesional patronal (método sembrado e implementado — ver sección 4 — pero la interpretación del factor 0.07 del Art. 51 no está confirmada con un aviso real de la CSS), y el override por contrato para filas de salario mínimo divididas por ocupación específica (ver sección 4).
 
 ## 7. Convenciones de código
 

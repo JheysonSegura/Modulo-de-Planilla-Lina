@@ -2,6 +2,7 @@ import datetime
 import decimal
 import uuid
 
+from app.models import Empresa
 from tests.conftest import crear_empresa, crear_salario_minimo, crear_usuario, login_y_seleccionar, vincular
 
 PERIODO_INICIO = datetime.date(2025, 3, 1)
@@ -175,6 +176,33 @@ def test_planilla_mensual_con_tres_empleados_distintos(client, db):
     # (360.00) -- mismo cálculo que el empleado A: isr=10.50.
     assert decimal.Decimal(str(mov_c["isr_retenido"])) == decimal.Decimal("10.50")
     assert decimal.Decimal(str(mov_c["salario_neto"])) == decimal.Decimal("309.90")
+
+
+def test_riesgo_profesional_patronal_segun_clase_riesgo_de_la_empresa(client, db):
+    headers, empresa_id = _preparar_empresa(db, client)
+
+    # clase_riesgo es un campo manual (Decreto de Gabinete N.68/1970,
+    # la CSS se lo asigna a la empresa) -- no hay endpoint para
+    # editarlo todavía, se setea directo en BD como en el resto de la
+    # suite cuando no hay endpoint público.
+    empresa = db.get(Empresa, uuid.UUID(empresa_id))
+    empresa.clase_riesgo = "III"
+    db.commit()
+
+    contrato = _crear_empleado_con_contrato(
+        client, headers, datetime.date(2025, 1, 1), "900.00", cargo="Clase III"
+    )
+
+    resp = _generar_planilla(client, headers, "mensual", PERIODO_INICIO, PERIODO_FIN)
+    assert resp.status_code == 201, resp.text
+    planilla = resp.json()
+
+    resp = client.get(f"/planillas/{planilla['id']}/movimientos", headers=headers)
+    assert resp.status_code == 200, resp.text
+    mov = _movimiento_de(resp.json(), contrato)
+
+    # Clase III: grado promedio 30 x 0.0007 = 0.0210 -> 900.00*0.0210=18.90
+    assert decimal.Decimal(str(mov["riesgo_profesional_patronal"])) == decimal.Decimal("18.90")
 
 
 def test_generar_planilla_duplicada_para_el_mismo_periodo_es_rechazada(client, db):

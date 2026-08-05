@@ -210,9 +210,9 @@ def _calcular_movimiento_de_contrato(
         tasa_riesgo = tasas_repo.obtener_tasa_riesgo_profesional_vigente(
             db, empresa.clase_riesgo, periodo_fin
         )
-        # tasas_riesgo_profesional no tiene datos sembrados todavía
-        # (pendiente de la tabla oficial de la CSS, CLAUDE.md sección
-        # 4/6): None es un estado normal por ahora, no un error.
+        # None es un estado normal (empresa sin clase_riesgo asignada
+        # por la CSS, o sin tasa vigente para esa clase en la fecha),
+        # no un error -- ver CLAUDE.md sección 4.
         if tasa_riesgo is not None:
             riesgo_profesional_patronal = (base_gravable * tasa_riesgo.tasa).quantize(_CENTAVO)
 

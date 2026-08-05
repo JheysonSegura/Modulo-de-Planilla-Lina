@@ -20,11 +20,12 @@ def obtener_tasa_vigente(
 def obtener_tasa_riesgo_profesional_vigente(
     db: Session, clase_riesgo: str, fecha: datetime.date
 ) -> TasaRiesgoProfesional | None:
-    """tasas_riesgo_profesional no tiene ningún dato sembrado todavía
-    (pendiente de la tabla oficial de la CSS por clase I-V, ver
-    CLAUDE.md secciones 4/6): esto devuelve None hasta que se siembre,
-    y quien llama debe tratar None como riesgo_profesional_patronal=0,
-    no como un error."""
+    """Devuelve None si la empresa no tiene clase_riesgo asignada o si
+    no hay tasa sembrada para esa clase en la fecha dada; quien llama
+    debe tratar None como riesgo_profesional_patronal=0, no como un
+    error (ver CLAUDE.md sección 4: la tasa por clase I-V está
+    sembrada como interpretación del Decreto de Gabinete N.68/1970,
+    NO confirmada todavía por un aviso real de la CSS)."""
     stmt = select(TasaRiesgoProfesional).where(
         TasaRiesgoProfesional.clase_riesgo == clase_riesgo,
         TasaRiesgoProfesional.fecha_inicio <= fecha,

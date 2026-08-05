@@ -1,0 +1,153 @@
+EXTENSION - RIESGO PROFESIONAL (DECRETO DE GABINETE N.68, 31-MAR-1970)
+================================================================
+Nomina Panama - plan aprobado el 2026-08-05
+
+FUENTE LEGAL
+------------
+El usuario agrego al repo el PDF "Decreto de Gabinete N.68 de 31 de
+marzo de 1970... Publicado en la Gaceta Oficial 16576, edicion
+actualizada a abril de 2025" (Proyecto de Actualizacion de las Normas
+Legales y Reglamentarias, Direccion Ejecutiva Nacional Legal de la
+CSS). Se leyo el texto completo (84 articulos + disposiciones
+vinculantes/complementarias que listan todas las reformas posteriores
+via Ley 51/2005, Ley 12/2008, Decreto Ejecutivo 1090/2010, Fallo CSJ
+2015, Ley 72/2019, Ley 462/2025).
+
+HALLAZGO CLAVE: la infraestructura de codigo ya existia
+-----------------------------------------------------------
+Antes de tocar nada, se encontro que app/services/planilla_service.py
+YA tenia la logica completa desde una fase anterior:
+
+    riesgo_profesional_patronal = _CERO
+    if empresa.clase_riesgo:
+        tasa_riesgo = tasas_repo.obtener_tasa_riesgo_profesional_vigente(
+            db, empresa.clase_riesgo, periodo_fin
+        )
+        if tasa_riesgo is not None:
+            riesgo_profesional_patronal = (base_gravable * tasa_riesgo.tasa).quantize(_CENTAVO)
+
+Y empresas.clase_riesgo ya existia en el schema base, con el seed de
+desarrollo ya trayendo clase_riesgo='II' puesto manualmente. Lo unico
+que faltaba era la tabla tasas_riesgo_profesional, vacia. Esta
+extension fue por lo tanto PURA CARGA DE DATOS -- no se toco ninguna
+linea de logica de servicio, solo comentarios que ya no aplicaban
+("no tiene datos sembrados todavia").
+
+QUE DICE EL DECRETO (Art. 49-51)
+-------------------------------------
+5 clases de riesgo, cada una con un rango de "grado de riesgo"
+(minimo/promedio/maximo):
+
+    Clase I   (Riesgo Ordinario de Vida): 6  / 8  / 10
+    Clase II  (Riesgo Bajo):               9  / 14 / 19
+    Clase III (Riesgo Medio):              17 / 30 / 43
+    Clase IV  (Riesgo Alto):               37 / 52 / 67
+    Clase V   (Riesgo Maximo):             62 / 81 / 100
+
+Art. 50: la clase/grado de cada empresa se determina via un Reglamento
+de Clasificacion de Empresas -- QUE NO ESTA EN ESTE PDF (es un
+reglamento separado de la CSS, no incluido en el decreto). Por eso
+empresas.clase_riesgo sigue siendo un campo MANUAL, igual que
+region/actividad_economica/tamano_empresa -- el sistema no la infiere
+de la actividad.
+
+Art. 50 Paragrafo: "Inicialmente las empresas quedaran ubicadas en el
+grado PROMEDIO de la clase que corresponden." Se uso el grado promedio
+de cada clase como valor de referencia sembrado.
+
+AMBIGUEDAD REAL EN EL TEXTO DEL DECRETO -- NO RESUELTA POR ADIVINACION
+---------------------------------------------------------------------------
+Art. 51: "El monto de las primas... se establecera multiplicando el
+total de salarios por el grado de riesgo... y por un factor constante
+igual a siete centesimos (0.07)."
+
+Tomado literal: prima = salarios x grado x 0.07. Para grado=8 (Clase I
+promedio): 8 x 0.07 = 0.56 = 56% de la planilla -- IMPOSIBLE para una
+prima de seguro.
+
+La unica lectura que da tasas plausibles es interpretar "0.07" como
+0.07% POR PUNTO de grado, es decir tasa = grado x 0.0007:
+
+    Clase I:   8  x 0.0007 = 0.0056 (0.56%)
+    Clase II:  14 x 0.0007 = 0.0098 (0.98%)
+    Clase III: 30 x 0.0007 = 0.0210 (2.10%)
+    Clase IV:  52 x 0.0007 = 0.0364 (3.64%)
+    Clase V:   81 x 0.0007 = 0.0567 (5.67%)
+
+Estos rangos son consistentes con lo que se conoce publicamente de las
+tasas reales de riesgo profesional de la CSS (aprox. 0.5% a 5.7%).
+
+Se le pregunto explicitamente al usuario (AskUserQuestion) si tenia
+algun aviso de clasificacion o factura real de la CSS para verificar
+la cifra exacta, como se hizo con la DGI para ISR y con el contador
+para el decimo. Respuesta: no tiene ese documento todavia. DECISION:
+sembrar la interpretacion 0.0007, documentada explicitamente como NO
+CONFIRMADA -- mismo tratamiento que se le dio a tramos_isr antes de la
+confirmacion oficial de la DGI. El METODO queda implementado y
+funcionando; las CIFRAS EXACTAS quedan pendientes de validacion real.
+
+DISENO DE DATOS
+------------------
+Migracion 0019_seed_riesgo_profesional: 5 filas en
+tasas_riesgo_profesional (clase_riesgo I-V, tasa, fecha_inicio
+2025-01-01, fecha_fin NULL). Los articulos 48-51 (clases/grados/
+formula de la prima) no aparecen en la lista de "Disposiciones
+Vinculantes" que modificaron el decreto original -- siguen vigentes
+tal como se decretaron en 1970, por eso no se investigo una fecha de
+vigencia mas reciente.
+
+tasas_riesgo_profesional no tiene columna decreto_ref/fuente_legal (a
+diferencia de tasas_vigentes) -- la trazabilidad de la interpretacion
+vive en el docstring de la migracion y en CLAUDE.md, no en la fila.
+
+CAPAS DE CODIGO TOCADAS
+---------------------------
+- app/repositories/tasas.py: comentario de
+  obtener_tasa_riesgo_profesional_vigente actualizado (ya no dice "no
+  tiene datos sembrados", ahora explica que None es un estado normal
+  cuando la empresa no tiene clase_riesgo o no hay tasa vigente).
+- app/services/planilla_service.py: mismo tipo de actualizacion de
+  comentario, CERO cambios de logica (la logica ya estaba completa).
+- Sin cambios de modelos, schemas ni endpoints -- clase_riesgo ya
+  existia en el modelo Empresa desde el schema base.
+
+TESTS (backend/tests/test_planillas.py)
+----------------------------------------
+Nuevo: test_riesgo_profesional_patronal_segun_clase_riesgo_de_la_empresa.
+Empresa con clase_riesgo='III' seteada directo en BD (no hay endpoint
+publico para editar este campo todavia, igual que otros tests que
+tocan campos sin endpoint), salario $900/mes -> riesgo_profesional_
+patronal = 900.00 x 0.0210 (Clase III, grado promedio 30) = 18.90,
+verificado exacto.
+
+Contra Postgres real, 44/44 pasan (43 previos + 1 nuevo), sin
+regresion -- el test existente que asume riesgo_profesional_patronal
+== 0.00 (empresa sin clase_riesgo, via crear_empresa que no la setea)
+sigue pasando sin cambios.
+
+VALIDACION MANUAL (curl contra el backend real, dev)
+--------------------------------------------------------
+Empresa demo (clase_riesgo='II' ya preseteada desde seed_dev.py):
+contrato $1,000.00/mes, planilla mensual marzo 2025 ->
+riesgo_profesional_patronal = 9.80 exacto (1000.00 x 0.0098).
+Verificado a mano contra la formula.
+
+Se limpiaron el empleado/contrato/planilla de prueba (orden FK-safe
+incluyendo provisiones_decimo, que no estaba en el orden de limpieza
+documentado hasta ahora porque Fase 8 no lo habia necesitado en una
+limpieza manual -- se agrega a la lista de tablas a limpiar en
+memoria).
+
+VERIFICACION
+---------------
+- docker compose run --rm backend alembic upgrade head (migracion 0019)
+- docker compose run --rm backend pytest -q (44/44 pasan)
+- Validacion manual con curl contra el backend real (ver arriba)
+
+PENDIENTE (no bloqueante, documentado en CLAUDE.md seccion 4 y 6)
+---------------------------------------------------------------------
+Validar formalmente la cifra exacta de la tasa por clase (0.56% / 0.98%
+/ 2.10% / 3.64% / 5.67%) contra un aviso de clasificacion o factura
+real de la CSS. El metodo y la infraestructura ya estan completos y en
+uso -- solo falta la confirmacion numerica, igual que paso con ISR
+antes de la DGI.
