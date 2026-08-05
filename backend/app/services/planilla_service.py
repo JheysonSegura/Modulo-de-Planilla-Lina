@@ -25,6 +25,7 @@ from app.repositories import parametros_isr as parametros_isr_repo
 from app.repositories import planillas as planillas_repo
 from app.repositories import tasas as tasas_repo
 from app.repositories import tramos_isr as tramos_isr_repo
+from app.services import decimo_service
 
 # Períodos de pago por año según el tipo de planilla (no
 # contratos.periodicidad_pago -- el motor de Fase 6 es genérico por
@@ -93,6 +94,12 @@ def generar_planilla(
         for pendiente in pendientes_aplicados:
             pendiente.aplicado = True
             pendiente.movimiento_planilla_id = movimiento.id
+
+        # Fase 8: cada planilla regular actualiza (recalcula completo)
+        # la provisión de décimo del cuatrimestre que contiene su
+        # periodo_fin, para que el pasivo acumulado esté al día sin
+        # pasos manuales adicionales.
+        decimo_service.actualizar_provision(db, empresa_id, contrato, periodo_fin)
 
     db.commit()
     # Sin db.refresh(): rompería RLS igual que en Fases 4/5 (SET LOCAL

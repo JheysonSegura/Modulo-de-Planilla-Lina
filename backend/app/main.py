@@ -4,6 +4,7 @@ from app.routers import (
     auth,
     conceptos_variables_pendientes,
     contratos,
+    decimo,
     empleados,
     empresas,
     health,
@@ -21,3 +22,4 @@ app.include_router(contratos.router)
 app.include_router(horas_extra.router)
 app.include_router(conceptos_variables_pendientes.router)
 app.include_router(planillas.router)
+app.include_router(decimo.router)

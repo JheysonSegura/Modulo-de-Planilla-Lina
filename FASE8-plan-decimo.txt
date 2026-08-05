@@ -1,0 +1,191 @@
+FASE 8 - DECIMO TERCER MES
+================================================================
+Nomina Panama - plan aprobado el 2026-08-05
+
+FUENTE LEGAL
+------------
+El usuario agrego al repo el texto real de la Gaceta Oficial N.16,989
+(1 de diciembre de 1971), que contiene el Decreto de Gabinete N.221 de
+1971 ("Por el cual se establece el Decimo Tercer Mes"). Se leyo
+completo (paginas escaneadas, via lectura de imagen -- pdftotext no
+las capturo). Esto reemplazo una hipotesis inicial incorrecta
+("devengado del cuatrimestre / 12") por la formula legal real.
+
+FORMULA REAL (Articulo Segundo del decreto)
+--------------------------------------------
+"Un dia de salario por cada once (11) dias, o fraccion, de trabajo
+efectivo, continuos o discontinuos."
+
+    decimo = (dias trabajados en el periodo / 11) x salario_diario
+
+El Paragrafo del mismo articulo cuenta como "dias trabajados" tambien
+los dias de enfermedad profesional/no profesional, accidente de
+trabajo, maternidad, licencia y vacaciones comprobados. NO HAY TABLA
+DE AUSENCIAS/INCAPACIDADES EN ESTE PROYECTO TODAVIA (fase futura), asi
+que esta fase simplifica a "dias calendario en que el contrato estuvo
+activo" -- limitacion conocida, documentada, no un olvido.
+
+DOS PUNTOS PENDIENTES DE CONFIRMAR (el decreto de 1971 difiere de lo
+ya documentado/sembrado en el proyecto desde fases anteriores)
+------------------------------------------------------------------
+1. FECHA DE LA 1RA PARTIDA: el decreto original dice 15 de MARZO. Se
+   usa ABRIL (CLAUDE.md, practica actual, y el label 'dic-abr' ya en
+   el schema de Fase 2) asumiendo que una reforma posterior (no
+   verificada, posiblemente Ley 44 de 1995) movio la fecha. Decision
+   tomada con el usuario: usar abril, documentado como pendiente.
+
+2. CSS SOBRE EL DECIMO: el decreto original dice que el decimo esta
+   EXENTO de cuotas obrero-patronales de CSS y de "ningun otro
+   gravamen, con excepcion del Impuesto Sobre la Renta". Se usan
+   igual las cuotas especiales ya sembradas desde Fase 2
+   (decimo_empleado=7.25%, decimo_patronal=10.75%), asumiendo que
+   vienen de una reforma posterior (posiblemente Ley 462 de 2025, que
+   ya sabemos toco otras cuotas de CSS). Decision tomada con el
+   usuario: usar las cuotas especiales, documentado como pendiente.
+
+CONFIRMADO SIN AMBIGUEDAD por el decreto original: el decimo SI paga
+ISR ("con excepcion del Impuesto Sobre la Renta") -- coherente con lo
+que el contador real del usuario ya confirmo en Fase 7 (decimo
+integrado a la base anualizada del ISR).
+
+SEGURO EDUCATIVO SOBRE EL DECIMO: no hay ninguna tasa
+decimo_seguro_educativo_* sembrada en tasas_vigentes (solo existen las
+de CSS). Combinado con la exencion "ningun otro gravamen" del decreto
+original, esta fase NO aplica SE al pago del decimo. Razonamiento
+documentado, no se volvio a preguntar -- es la lectura mas consistente
+con los datos que ya existen.
+
+CUATRIMESTRES Y FECHAS DE PAGO (asumiendo abril)
+--------------------------------------------------
+  dic-abr : 16-dic (anio-1) a 15-abr  -> se paga 15 de abril
+  abr-ago : 16-abr a 15-ago           -> se paga 15 de agosto
+  ago-dic : 16-ago a 15-dic           -> se paga 15 de diciembre
+
+CALCULO POR SEGMENTO SALARIAL
+--------------------------------
+Para manejar un cambio de salario a mitad de cuatrimestre con
+precision (no un promedio), se recorre historial_salarial del
+contrato, tomando cada segmento que se solapa con el rango
+[max(contrato.fecha_inicio, cuatrimestre_inicio), min(contrato.fecha_fin_real
+o fecha_corte, fecha_corte)]:
+
+  por cada segmento que se solapa:
+      dias_segmento = dias calendario del solape
+      salario_diario_segmento = segmento.salario_base / 30
+      monto_segmento = (dias_segmento / 11) x salario_diario_segmento
+
+  decimo_del_periodo = suma(monto_segmento), redondeado a centavo al final
+
+Esto resuelve naturalmente el caso "ingreso a mitad de cuatrimestre".
+
+PAGO DE LA PARTIDA (movimiento real)
+---------------------------------------
+  decimo_monto = decimo_del_periodo calculado sobre el cuatrimestre completo
+  css_empleado = decimo_monto x 7.25%
+  css_patronal = decimo_monto x 10.75%
+  seguro_educativo = 0 (no aplica, ver arriba)
+  isr_retenido = 0 (ya prorrateado por adelantado en los pagos
+    regulares del anio via la proyeccion anualizada de Fase 7,
+    salario_mensual x 13 -- cobrarlo aqui tambien lo duplicaria)
+  riesgo_profesional_patronal = 0 (sin tabla tasas_riesgo_profesional
+    sembrada, mismo criterio que Fase 6)
+  salario_neto = decimo_monto - css_empleado
+
+Se reutiliza la infraestructura de Planilla/MovimientoPlanilla ya
+existente (planillas.tipo ya acepta 'decimo_tercer_mes' desde el
+schema de Fase 2) -- no se crean tablas nuevas para el pago en si.
+
+PROVISION MENSUAL (provisiones_decimo, ya existia desde Fase 2)
+-------------------------------------------------------------------
+Cada vez que se genera una planilla regular (mensual/quincenal, Fase
+6) cuyo periodo_fin cae dentro de un cuatrimestre de decimo, se
+recalcula (upsert) la fila de provisiones_decimo de ese
+contrato+cuatrimestre+anio: monto_acumulado = decimo calculado desde
+el inicio del cuatrimestre hasta periodo_fin. Se recalcula completo
+cada vez (igual criterio que _recalcular_semana en Fase 5), nunca se
+acumula incrementalmente -- una planilla generada fuera de orden no
+descuadra la provision.
+
+Tambien se expone un endpoint de solo lectura (GET
+/contratos/{id}/provisiones-decimo) para que la empresa consulte el
+pasivo acumulado sin esperar a que se genere el pago.
+
+RECONCILIACION (criterio de aceptacion explicito del usuario): como la
+provision y el pago final usan la MISMA funcion de calculo sobre el
+MISMO rango de fechas, el total pagado coincide por construccion con
+lo provisionado -- verificado con un test explicito, no asumido.
+
+DISENO DE DATOS
+------------------
+Migracion 0016 (rls_provisiones_decimo): la tabla provisiones_decimo
+existia desde Fase 2 pero nunca tuvo politica RLS (a diferencia de
+empleados/contratos/planillas). Como esta fase empieza a escribir en
+ella activamente, se agrega ENABLE/FORCE ROW LEVEL SECURITY + politica
+de aislamiento por empresa_id, mismo patron que registro_horas_extra
+(Fase 5) y conceptos_variables_pendientes (Fase 6).
+
+CAPAS DE CODIGO
+------------------
+- Repositorio: app/repositories/provisiones_decimo.py
+- Servicio: app/services/decimo_service.py (separado de
+  planilla_service.py porque el calculo es estructuralmente distinto
+  -- por dias, no por periodo de pago regular)
+    resolver_cuatrimestre(fecha)
+    calcular_decimo_de_contrato(...)     funcion compartida provision/pago
+    actualizar_provision(...)            llamado desde generar_planilla
+    generar_pago_decimo(...)
+- planilla_service.py: una linea nueva al final del loop de
+  generar_planilla llamando a decimo_service.actualizar_provision(...)
+- Schemas: app/schemas/decimo.py
+- Router: app/routers/decimo.py
+    POST /planillas/generar-decimo
+    GET  /contratos/{id}/provisiones-decimo
+
+TESTS (backend/tests/test_decimo.py)
+----------------------------------------
+Contra Postgres real, 40/40 pasan (35 previos + 5 nuevos), sin
+regresion:
+1. Anio completo trabajado: 3 partidas (dic-abr=330.00 exacto [121/11
+   dias exacto], abr-ago=332.73, ago-dic=332.73) calculadas cada una
+   contra la formula.
+2. Ingreso a mitad de cuatrimestre (1-mayo dentro de abr-ago) ->
+   291.82 (107 dias).
+3. Cambio de salario a mitad de cuatrimestre (900 -> 1200 el 1-jun) ->
+   suma de 2 segmentos = 401.82, no un promedio simple.
+4. Reconciliacion provision vs pago: planillas regulares cubriendo el
+   cuatrimestre completo actualizan la provision en cada paso
+   (40.91 -> ... -> 332.73), y el pago final coincide exacto con lo
+   ya provisionado antes de pagar.
+5. Pago de decimo duplicado para el mismo cuatrimestre+anio -> 409.
+6. isr_retenido == 0 y seguro_educativo == 0 en el movimiento del
+   decimo, confirmado explicitamente.
+
+VALIDACION MANUAL (curl contra el backend real, dev)
+--------------------------------------------------------
+Contrato con fecha_inicio=2025-01-01, pago dic-abr 2025: dio $286.36
+(no $330.00) porque el contrato empezo DENTRO del cuatrimestre
+dic-abr (16-dic-2024), no antes -- solo cuenta desde 1-ene-2025 (105
+dias). Verificado a mano: 105/11*30.00=286.3636...->286.36. Coincide
+exacto con la API. Sirvio como validacion adicional, no planeada, del
+mismo caso de "ingreso a mitad de cuatrimestre" que ya cubre el test
+automatizado, esta vez contra el backend real en vivo.
+
+Se limpiaron todos los empleados/contratos/planillas de prueba
+generados para esta validacion.
+
+VERIFICACION
+---------------
+- docker compose exec -T backend alembic upgrade head (migracion 0016)
+- docker compose run --rm backend pytest -v (40/40 pasan, suite completa)
+- Pago de decimo generado via curl contra el backend real, verificado
+  a mano contra la formula del decreto.
+
+PENDIENTE ANTES DE PRODUCCION (no negociable, mismo criterio que Fase 7)
+---------------------------------------------------------------------------
+Compartir estos resultados con el contador y confirmar los DOS puntos
+marcados arriba:
+  1. Fecha real de la primera partida (marzo del decreto original vs.
+     abril usado aqui).
+  2. Tratamiento real de CSS sobre el decimo (exencion del decreto
+     original vs. cuotas especiales 7.25%/10.75% ya sembradas).
+No dar este modulo por cerrado sin esa confirmacion.
