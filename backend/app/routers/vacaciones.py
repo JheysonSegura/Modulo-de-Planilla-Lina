@@ -6,7 +6,11 @@ from sqlalchemy.orm import Session
 
 from app.core.deps import get_db_rls, get_empresa_activa_id
 from app.models import ProvisionVacaciones
-from app.schemas.vacaciones import ProvisionVacacionesOut, VacacionTomadaCreate
+from app.schemas.vacaciones import (
+    AcumularVacacionesRequest,
+    ProvisionVacacionesOut,
+    VacacionTomadaCreate,
+)
 from app.services import contratos_service, vacaciones_service
 
 router = APIRouter(tags=["vacaciones"])
@@ -37,4 +41,21 @@ def registrar_vacacion_tomada(
     contrato = contratos_service.obtener_contrato(db, contrato_id)
     return vacaciones_service.registrar_vacacion_tomada(
         db, empresa_id, contrato, body.dias, body.fecha
+    )
+
+
+@router.post(
+    "/contratos/{contrato_id}/vacaciones-acumular",
+    response_model=ProvisionVacacionesOut,
+    status_code=201,
+)
+def acumular_periodo_vacaciones(
+    contrato_id: uuid.UUID,
+    body: AcumularVacacionesRequest,
+    empresa_id: Annotated[uuid.UUID, Depends(get_empresa_activa_id)],
+    db: Annotated[Session, Depends(get_db_rls)],
+) -> ProvisionVacaciones:
+    contrato = contratos_service.obtener_contrato(db, contrato_id)
+    return vacaciones_service.acumular_periodo(
+        db, empresa_id, contrato, body.fecha_acuerdo, body.notificado_autoridad_trabajo
     )

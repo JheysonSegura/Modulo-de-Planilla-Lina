@@ -9,14 +9,50 @@ from app.models import ProvisionVacaciones
 
 
 def get_abierta(db: Session, contrato_id: uuid.UUID) -> ProvisionVacaciones | None:
-    """El período de vacaciones "actual" del contrato: el que todavía
-    no se cerró. Debe haber como máximo uno por contrato (no se modela
-    la acumulación de hasta 2 períodos del Art. 59 CT todavía)."""
+    """El período de vacaciones "actual" del contrato, el que sigue
+    acumulando saldo nuevo. Debe haber como máximo uno por contrato en
+    estado 'abierto' (el segundo período, si existe por acumulación
+    del Art. 59 CT, queda en estado 'acumulado' -- ver get_todas_activas)."""
     stmt = select(ProvisionVacaciones).where(
         ProvisionVacaciones.contrato_id == contrato_id,
         ProvisionVacaciones.estado == "abierto",
     )
     return db.scalar(stmt)
+
+
+def get_acumulada(db: Session, contrato_id: uuid.UUID) -> ProvisionVacaciones | None:
+    """El período que quedó "congelado" tras una acumulación (Fase 12,
+    Art. 59 CT). Debe haber como máximo uno por contrato -- la ley
+    limita la acumulación a 2 períodos en total."""
+    stmt = select(ProvisionVacaciones).where(
+        ProvisionVacaciones.contrato_id == contrato_id,
+        ProvisionVacaciones.estado == "acumulado",
+    )
+    return db.scalar(stmt)
+
+
+def get_todas_activas(db: Session, contrato_id: uuid.UUID) -> list[ProvisionVacaciones]:
+    """Los períodos 'abierto'/'acumulado' del contrato (0-2 filas),
+    ordenados por fecha_inicio_periodo (el más antiguo primero, para
+    consumo FIFO del saldo -- ver vacaciones_service.registrar_vacacion_tomada)."""
+    stmt = (
+        select(ProvisionVacaciones)
+        .where(
+            ProvisionVacaciones.contrato_id == contrato_id,
+            ProvisionVacaciones.estado.in_(("abierto", "acumulado")),
+        )
+        .order_by(ProvisionVacaciones.fecha_inicio_periodo)
+    )
+    return list(db.execute(stmt).scalars().all())
+
+
+def marcar_acumulado(
+    db: Session, provision: ProvisionVacaciones, notificado_autoridad_trabajo: bool
+) -> ProvisionVacaciones:
+    provision.estado = "acumulado"
+    provision.notificado_autoridad_trabajo = notificado_autoridad_trabajo
+    db.flush()
+    return provision
 
 
 def crear(

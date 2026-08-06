@@ -1,0 +1,136 @@
+FASE 12 - ACUMULACION DE HASTA 2 PERIODOS DE VACACIONES (ART. 59 CT)
+================================================================
+Nomina Panama - plan aprobado el 2026-08-06 (diseno ya resuelto en
+ROADMAP-fases11-13-deuda-tecnica.txt, este archivo lo detalla a nivel
+de implementacion)
+
+FUENTE LEGAL
+------------
+Codigo de Trabajo, Art. 59 (texto extraido de codigo-detrabajo.pdf con
+pdftotext -layout el 2026-08-06, ver conversacion de la Fase 11):
+
+"No obstante lo dispuesto en el parrafo anterior, las vacaciones seran
+acumulables hasta por dos periodos, MEDIANTE ACUERDO ENTRE EL
+EMPLEADOR Y EL TRABAJADOR que sera notificado a la autoridad de
+trabajo. Dentro de los veinte dias siguientes al recibo de la
+notificacion, la autoridad de trabajo podra, cuando lo estime
+perjudicial a los intereses del trabajador, prohibir la acumulacion."
+
+"En caso de acumulacion de las vacaciones, el trabajador tendra un
+descanso minimo de quince dias remunerados en el primer periodo, y
+acumulara los otros dias para el segundo periodo."
+
+Puntos clave que cambian el diseno original documentado en CLAUDE.md
+(que decia solo "acumulable hasta por 2 periodos", sin el detalle del
+acuerdo/notificacion):
+1. NO es automatico -- requiere un acuerdo explicito, no basta con que
+   pasen 11 meses sin gozar.
+2. El sistema NO puede tramitar la notificacion a la autoridad de
+   trabajo (proceso administrativo externo) -- se modela como un
+   flag/checkbox que el usuario marca al capturar el acuerdo, dejando
+   la responsabilidad del tramite real fuera del sistema (mismo
+   criterio que Fase 13 con salarios caidos: lo que no se puede
+   calcular ni tramitar automaticamente se captura, no se infiere).
+3. El trabajador debe conservar un minimo de 15 dias de descanso
+   remunerado en el primer periodo -- se valida como precondicion
+   para poder acumular (si el saldo sin gozar es menor a 15 dias, se
+   rechaza la acumulacion).
+
+ARQUITECTURA
+------------
+provisiones_vacaciones.estado ya soporta 'abierto'/'liquidado' en el
+DDL original (schema_nomina_panama.sql) pero 'liquidado' nunca se usa
+en codigo -- confirmado por investigacion en la Fase 11 (terreno
+libre). En vez de usar 'liquidado' para "cerrar" un periodo (romperia
+la semantica de que un periodo acumulado sigue activo, no liquidado),
+se introduce un tercer estado 'acumulado' para el periodo que quedo
+"congelado" tras acumularse, dejando 'abierto' solo para el periodo
+mas reciente que sigue corriendo. Debe haber como maximo 1 periodo en
+estado 'abierto' y 1 en estado 'acumulado' por contrato (tope legal de
+2 periodos totales).
+
+DISENO DE DATOS
+----------------
+Migracion nueva (0023_acumulacion_vacaciones), encadenada tras
+0022_ausencias:
+  ALTER TABLE provisiones_vacaciones
+      ADD COLUMN notificado_autoridad_trabajo BOOLEAN NOT NULL DEFAULT false;
+
+No se toca RLS (ya existe desde 0020_rls_provisiones_vac).
+
+CAMBIOS DE SERVICIO
+--------------------
+Repositorio app/repositories/provisiones_vacaciones.py:
+- get_abierta se MANTIENE (sigue devolviendo el periodo mas reciente
+  en estado 'abierto' -- el que se usa para acumular saldo nuevo).
+- Nuevo: get_todas_activas(db, contrato_id) -> list[ProvisionVacaciones]
+  devuelve los periodos en estado 'abierto' o 'acumulado' (0-2 filas),
+  ordenados por fecha_inicio_periodo (el mas antiguo primero, para
+  consumo FIFO).
+- Nuevo: marcar_acumulado(db, provision) -> cambia estado a
+  'acumulado' sin tocar dias_acumulados/dias_gozados.
+
+Servicio app/services/vacaciones_service.py:
+- Nueva funcion acumular_periodo(db, empresa_id, contrato, fecha_acuerdo,
+  notificado_autoridad_trabajo: bool) -> ProvisionVacaciones:
+    1. Busca el periodo 'abierto' actual (404 si no existe -- no se
+       puede acumular sin un periodo corriendo).
+    2. Rechaza con 409 si ya existe un periodo en estado 'acumulado'
+       para este contrato (tope de 2, Art. 59: "acumulables HASTA POR
+       DOS periodos").
+    3. Recalcula dias_acumulados/monto_bruto fresco a fecha_acuerdo
+       (mismo criterio que registrar_vacacion_tomada).
+    4. saldo = dias_acumulados - dias_gozados. Si saldo < 15, rechaza
+       con 422 (no se puede garantizar el descanso minimo del Art. 59
+       si no hay al menos 15 dias sin gozar).
+    5. Marca el periodo actual como 'acumulado' (marcar_acumulado) y
+       actualiza notificado_autoridad_trabajo.
+    6. Crea un periodo nuevo en estado 'abierto' con
+       fecha_inicio_periodo = fecha_acuerdo + 1 dia (el segundo
+       periodo empieza a correr desde el acuerdo).
+    7. db.commit(); return el periodo nuevo.
+- registrar_vacacion_tomada: en vez de _obtener_o_crear_provision_abierta
+  solo, ahora recorre TODOS los periodos activos
+  (get_todas_activas), consumiendo el saldo del mas antiguo primero
+  (FIFO, mismo criterio que horas_extra_service para topes). Si el
+  saldo del primero no alcanza, consume el resto del segundo.
+- actualizar_provision (llamado desde generar_planilla): recalcula
+  CADA periodo activo por separado, cada uno con su propio
+  fecha_inicio_periodo -- el periodo 'acumulado' deja de crecer en
+  dias_acumulados (ya se "congelo" al acumularse: su
+  fecha_inicio_periodo no cambia pero fecha_corte para su calculo se
+  fija en la fecha del acuerdo, no en la fecha_corte de la planilla
+  actual) mientras que el 'abierto' sigue acumulando normalmente.
+
+Router app/routers/vacaciones.py:
+  POST /contratos/{id}/vacaciones-acumular
+    body: { fecha_acuerdo: date, notificado_autoridad_trabajo: bool }
+    -> ProvisionVacacionesOut del periodo nuevo
+
+TESTS (tests/test_vacaciones.py, casos nuevos)
+------------------------------------------------
+1. Acumular con menos de 15 dias de saldo -> 422.
+2. Acumular correctamente -> 2 periodos (uno 'acumulado', uno
+   'abierto'), saldo total = suma de ambos vista desde
+   vacaciones-tomadas.
+3. Tomar vacaciones con 2 periodos activos -> descuenta del mas
+   antiguo (el 'acumulado') primero, y del 'abierto' solo si el
+   primero no alcanza.
+4. Intentar acumular un 3er periodo (ya hay uno 'acumulado') -> 409.
+5. El periodo 'acumulado' no sigue creciendo en planillas posteriores
+   (queda congelado a la fecha del acuerdo); el 'abierto' si.
+
+VERIFICACION
+------------
+- docker compose run --rm backend alembic upgrade head
+- docker compose run --rm backend pytest -q (debe seguir en verde,
+  hoy 63/63, sin regresiones)
+
+PENDIENTE, NO BLOQUEANTE
+-------------------------
+El sistema no tramita ni valida la notificacion real a la autoridad de
+trabajo (proceso administrativo externo) -- notificado_autoridad_trabajo
+es un campo informativo que el usuario marca, no una integracion. Si
+la autoridad de trabajo prohibe la acumulacion dentro de los 20 dias
+siguientes (segun el propio Art. 59), eso se maneja fuera del sistema
+(revirtiendo manualmente si hiciera falta) -- no modelado.

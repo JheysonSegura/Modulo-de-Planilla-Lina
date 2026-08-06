@@ -126,38 +126,134 @@ def registrar_vacacion_tomada(
     fecha: datetime.date,
 ) -> ProvisionVacaciones:
     """Registra días de vacación efectivamente gozados, descontándolos
-    del saldo disponible. Recalcula el acumulado fresco a `fecha` antes
-    de validar el saldo (mismo criterio que
-    decimo_service.generar_pago_decimo: "recalcula fresco... para que
-    quede sincronizado por construcción antes de aplicar el cambio")."""
+    del saldo disponible. Si el contrato acumuló un segundo período
+    (Fase 12, Art. 59 CT), consume primero el período 'acumulado' (el
+    más antiguo) y luego el 'abierto' (FIFO, mismo criterio que
+    horas_extra_service para topes) -- ver get_todas_activas.
+
+    El período 'abierto' se recalcula fresco a `fecha` antes de validar
+    el saldo (mismo criterio que decimo_service.generar_pago_decimo).
+    El período 'acumulado' NO se recalcula: quedó "congelado" en
+    dias_acumulados desde que se acumuló (acumular_periodo), así que
+    aquí solo se le resta el valor de los días tomados al
+    monto_provisionado que ya tenía -- a diferencia del 'abierto', que
+    siempre se recalcula completo desde cero."""
     if dias_tomados <= _CERO:
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY, "dias_tomados debe ser mayor que cero."
         )
 
-    provision = _obtener_o_crear_provision_abierta(db, empresa_id, contrato)
+    periodos = provisiones_vacaciones_repo.get_todas_activas(db, contrato.id)
+    if not periodos:
+        periodos = [_obtener_o_crear_provision_abierta(db, empresa_id, contrato)]
 
-    dias_acumulados, monto_bruto = _calcular_dias_y_monto_acumulado(
-        db, contrato, provision.fecha_inicio_periodo, fecha
-    )
-    saldo_disponible = dias_acumulados - provision.dias_gozados
-    if dias_tomados > saldo_disponible:
+    valor_dia = _valor_dia_actual(db, contrato, fecha)
+
+    calculos = []
+    saldo_total = _CERO
+    for periodo in periodos:
+        if periodo.estado == "abierto":
+            dias_acumulados, monto_bruto = _calcular_dias_y_monto_acumulado(
+                db, contrato, periodo.fecha_inicio_periodo, fecha
+            )
+        else:  # 'acumulado': congelado, no se recalcula desde historial_salarial
+            dias_acumulados, monto_bruto = periodo.dias_acumulados, None
+        saldo = dias_acumulados - periodo.dias_gozados
+        calculos.append((periodo, saldo, dias_acumulados, monto_bruto))
+        saldo_total += saldo
+
+    if dias_tomados > saldo_total:
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
-            f"Solo hay {saldo_disponible} días de vacaciones disponibles al "
+            f"Solo hay {saldo_total} días de vacaciones disponibles al "
             f"{fecha.isoformat()}, se intentaron tomar {dias_tomados}.",
         )
 
-    nuevos_dias_gozados = provision.dias_gozados + dias_tomados
-    valor_dia = _valor_dia_actual(db, contrato, fecha)
-    monto_provisionado = monto_bruto - (nuevos_dias_gozados * valor_dia)
-    if monto_provisionado < _CERO:
-        monto_provisionado = _CERO
+    restante = dias_tomados
+    ultimo_modificado: ProvisionVacaciones | None = None
+    for periodo, saldo, dias_acumulados, monto_bruto in calculos:
+        if restante <= _CERO:
+            break
+        tomar = min(restante, saldo)
+        if tomar <= _CERO:
+            continue
 
-    provision = provisiones_vacaciones_repo.registrar_goce(
-        db, provision, dias_acumulados, nuevos_dias_gozados, monto_provisionado.quantize(_CENTAVO)
-    )
+        nuevos_dias_gozados = periodo.dias_gozados + tomar
+        if periodo.estado == "abierto":
+            monto_provisionado = monto_bruto - (nuevos_dias_gozados * valor_dia)
+        else:
+            monto_provisionado = periodo.monto_provisionado - (tomar * valor_dia)
+        if monto_provisionado < _CERO:
+            monto_provisionado = _CERO
+
+        ultimo_modificado = provisiones_vacaciones_repo.registrar_goce(
+            db, periodo, dias_acumulados, nuevos_dias_gozados, monto_provisionado.quantize(_CENTAVO)
+        )
+        restante -= tomar
+
     db.commit()
     # Sin db.refresh(): rompería RLS igual que en Fases 4/5/6/8 (SET
     # LOCAL app.empresa_actual no sobrevive al commit).
-    return provision
+    assert ultimo_modificado is not None  # dias_tomados > 0 y <= saldo_total: siempre toca algo
+    return ultimo_modificado
+
+
+def acumular_periodo(
+    db: Session,
+    empresa_id: uuid.UUID,
+    contrato: Contrato,
+    fecha_acuerdo: datetime.date,
+    notificado_autoridad_trabajo: bool,
+) -> ProvisionVacaciones:
+    """Acumula el período de vacaciones 'abierto' actual (Fase 12,
+    Art. 59 CT: "las vacaciones serán acumulables hasta por dos
+    períodos, mediante acuerdo entre el empleador y el trabajador que
+    será notificado a la autoridad de trabajo"). NO es automático por
+    el solo paso del tiempo -- requiere este acuerdo explícito. El
+    sistema no tramita la notificación real (proceso administrativo
+    externo); `notificado_autoridad_trabajo` es informativo.
+
+    Congela el período actual (pasa a estado 'acumulado', deja de
+    crecer) y abre uno nuevo desde el día siguiente al acuerdo. Exige
+    al menos 15 días de saldo sin gozar en el período actual (Art. 59:
+    "el trabajador tendrá un descanso mínimo de quince días
+    remunerados en el primer período")."""
+    periodo_abierto = provisiones_vacaciones_repo.get_abierta(db, contrato.id)
+    if periodo_abierto is None:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND, "No hay un período de vacaciones abierto para acumular."
+        )
+    if provisiones_vacaciones_repo.get_acumulada(db, contrato.id) is not None:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Este contrato ya tiene un período acumulado -- el Art. 59 CT permite "
+            "acumular hasta por 2 períodos en total.",
+        )
+
+    dias_acumulados, monto_bruto = _calcular_dias_y_monto_acumulado(
+        db, contrato, periodo_abierto.fecha_inicio_periodo, fecha_acuerdo
+    )
+    saldo = dias_acumulados - periodo_abierto.dias_gozados
+    if saldo < decimal.Decimal("15"):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"Saldo insuficiente para acumular: el Art. 59 CT exige al menos 15 días sin "
+            f"gozar en el período actual, hay {saldo} disponibles al {fecha_acuerdo.isoformat()}.",
+        )
+
+    valor_dia = _valor_dia_actual(db, contrato, fecha_acuerdo)
+    monto_provisionado = monto_bruto - (periodo_abierto.dias_gozados * valor_dia)
+    if monto_provisionado < _CERO:
+        monto_provisionado = _CERO
+
+    periodo_abierto = provisiones_vacaciones_repo.actualizar(
+        db, periodo_abierto, dias_acumulados, monto_provisionado.quantize(_CENTAVO)
+    )
+    provisiones_vacaciones_repo.marcar_acumulado(db, periodo_abierto, notificado_autoridad_trabajo)
+
+    nuevo_periodo = provisiones_vacaciones_repo.crear(
+        db, empresa_id, contrato.id, fecha_acuerdo + datetime.timedelta(days=1)
+    )
+    db.commit()
+    # Sin db.refresh(): rompería RLS igual que el resto de este archivo.
+    return nuevo_periodo

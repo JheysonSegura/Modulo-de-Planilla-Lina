@@ -79,6 +79,21 @@ def _registrar_vacacion_tomada(client, headers, contrato_id, fecha, dias):
     )
 
 
+def _acumular_periodo(client, headers, contrato_id, fecha_acuerdo, notificado=False):
+    return client.post(
+        f"/contratos/{contrato_id}/vacaciones-acumular",
+        json={
+            "fecha_acuerdo": fecha_acuerdo.isoformat(),
+            "notificado_autoridad_trabajo": notificado,
+        },
+        headers=headers,
+    )
+
+
+def _provision_acumulada(client, headers, contrato_id):
+    return next(p for p in _provisiones(client, headers, contrato_id) if p["estado"] == "acumulado")
+
+
 def test_dias_acumulados_para_137_dias_trabajados(client, db):
     headers = _preparar_empresa(db, client)
     # 2024-12-15 a 2025-04-30 inclusive = 137 días exactos (17 días de
@@ -170,3 +185,120 @@ def test_dias_tomados_debe_ser_mayor_que_cero(client, db):
 
     resp = _registrar_vacacion_tomada(client, headers, contrato_id, datetime.date(2025, 4, 30), "0")
     assert resp.status_code == 422, resp.text
+
+
+# --- Fase 12: acumulación de hasta 2 períodos (Art. 59 CT) ---
+# 2024-12-15 a 2025-05-31 = 168 días (17 dic + 31 ene + 28 feb + 31 mar
+# + 30 abr + 31 may) -> 168/11=15.272727... -> 15.27 días;
+# 168/11*30.00=458.1818... -> 458.18. Es el "saldo con al menos 15
+# días" que exige el Art. 59 para poder acumular.
+
+
+def test_acumular_con_menos_de_15_dias_de_saldo_es_rechazado(client, db):
+    headers = _preparar_empresa(db, client)
+    contrato_id = _crear_empleado_con_contrato(client, headers, datetime.date(2024, 12, 15))
+    # 137 días -> 12.45 días, por debajo del mínimo de 15.
+    _generar_planilla(client, headers, "mensual", datetime.date(2025, 4, 1), datetime.date(2025, 4, 30))
+
+    resp = _acumular_periodo(client, headers, contrato_id, datetime.date(2025, 4, 30))
+    assert resp.status_code == 422, resp.text
+    assert "15" in resp.json()["detail"]
+
+
+def test_acumular_periodo_congela_el_actual_y_abre_uno_nuevo(client, db):
+    headers = _preparar_empresa(db, client)
+    contrato_id = _crear_empleado_con_contrato(client, headers, datetime.date(2024, 12, 15))
+    _generar_planilla(client, headers, "mensual", datetime.date(2025, 5, 1), datetime.date(2025, 5, 31))
+
+    resp = _acumular_periodo(client, headers, contrato_id, datetime.date(2025, 5, 31), notificado=True)
+    assert resp.status_code == 201, resp.text
+    nuevo = resp.json()
+    assert nuevo["estado"] == "abierto"
+    assert nuevo["fecha_inicio_periodo"] == "2025-06-01"
+    assert decimal.Decimal(str(nuevo["dias_acumulados"])) == decimal.Decimal("0.00")
+
+    acumulado = _provision_acumulada(client, headers, contrato_id)
+    assert decimal.Decimal(str(acumulado["dias_acumulados"])) == decimal.Decimal("15.27")
+    assert decimal.Decimal(str(acumulado["monto_provisionado"])) == decimal.Decimal("458.18")
+    assert acumulado["notificado_autoridad_trabajo"] is True
+
+    provisiones = _provisiones(client, headers, contrato_id)
+    assert len(provisiones) == 2
+
+
+def test_acumular_un_tercer_periodo_es_rechazado(client, db):
+    headers = _preparar_empresa(db, client)
+    contrato_id = _crear_empleado_con_contrato(client, headers, datetime.date(2024, 12, 15))
+    _generar_planilla(client, headers, "mensual", datetime.date(2025, 5, 1), datetime.date(2025, 5, 31))
+
+    primera = _acumular_periodo(client, headers, contrato_id, datetime.date(2025, 5, 31))
+    assert primera.status_code == 201, primera.text
+
+    segunda = _acumular_periodo(client, headers, contrato_id, datetime.date(2025, 6, 30))
+    assert segunda.status_code == 409, segunda.text
+
+
+def test_vacacion_tomada_descuenta_primero_del_periodo_acumulado(client, db):
+    headers = _preparar_empresa(db, client)
+    contrato_id = _crear_empleado_con_contrato(client, headers, datetime.date(2024, 12, 15))
+    _generar_planilla(client, headers, "mensual", datetime.date(2025, 5, 1), datetime.date(2025, 5, 31))
+    _acumular_periodo(client, headers, contrato_id, datetime.date(2025, 5, 31))
+
+    # 10 días caben enteros dentro del saldo del período 'acumulado'
+    # (15.27) -- el 'abierto' (recién creado, 2025-06-01) no se toca.
+    resp = _registrar_vacacion_tomada(client, headers, contrato_id, datetime.date(2025, 6, 1), "10")
+    assert resp.status_code == 201, resp.text
+    tocado = resp.json()
+    assert tocado["estado"] == "acumulado"
+    assert decimal.Decimal(str(tocado["dias_gozados"])) == decimal.Decimal("10.00")
+    # 458.18 - 10*30.00 = 158.18
+    assert decimal.Decimal(str(tocado["monto_provisionado"])) == decimal.Decimal("158.18")
+
+    provisiones = _provisiones(client, headers, contrato_id)
+    abierto = next(p for p in provisiones if p["estado"] == "abierto")
+    assert decimal.Decimal(str(abierto["dias_gozados"])) == decimal.Decimal("0.00")
+
+
+def test_vacacion_tomada_consume_el_abierto_cuando_el_acumulado_no_alcanza(client, db):
+    headers = _preparar_empresa(db, client)
+    contrato_id = _crear_empleado_con_contrato(client, headers, datetime.date(2024, 12, 15))
+    _generar_planilla(client, headers, "mensual", datetime.date(2025, 5, 1), datetime.date(2025, 5, 31))
+    _acumular_periodo(client, headers, contrato_id, datetime.date(2025, 5, 31))
+
+    # El 'abierto' recién creado (fecha_inicio_periodo=2025-06-01) ya
+    # acumuló 1 día al 2025-06-01 (mismo día inclusive): 1/11=0.09 días,
+    # 1/11*30.00=2.73. saldo total = 15.27 (acumulado) + 0.09 (abierto)
+    # = 15.36 -- pedir 15.30 agota el acumulado (15.27) y toma 0.03 del
+    # abierto.
+    resp = _registrar_vacacion_tomada(client, headers, contrato_id, datetime.date(2025, 6, 1), "15.30")
+    assert resp.status_code == 201, resp.text
+    tocado = resp.json()
+    assert tocado["estado"] == "abierto"
+    assert decimal.Decimal(str(tocado["dias_gozados"])) == decimal.Decimal("0.03")
+    # 2.73 - 0.03*30.00 = 1.83
+    assert decimal.Decimal(str(tocado["monto_provisionado"])) == decimal.Decimal("1.83")
+
+    acumulado = _provision_acumulada(client, headers, contrato_id)
+    assert decimal.Decimal(str(acumulado["dias_gozados"])) == decimal.Decimal("15.27")
+    assert decimal.Decimal(str(acumulado["saldo_disponible"])) == decimal.Decimal("0.00")
+
+
+def test_periodo_acumulado_no_crece_en_planillas_posteriores(client, db):
+    headers = _preparar_empresa(db, client)
+    contrato_id = _crear_empleado_con_contrato(client, headers, datetime.date(2024, 12, 15))
+    _generar_planilla(client, headers, "mensual", datetime.date(2025, 5, 1), datetime.date(2025, 5, 31))
+    _acumular_periodo(client, headers, contrato_id, datetime.date(2025, 5, 31))
+
+    # Una planilla posterior recalcula el 'abierto' (30 días de junio ->
+    # 30/11=2.7272... -> 2.73 días, 30/11*30.00=81.8181... -> 81.82) pero
+    # NO toca el 'acumulado', que queda congelado en lo que tenía.
+    _generar_planilla(client, headers, "mensual", datetime.date(2025, 6, 1), datetime.date(2025, 6, 30))
+
+    provisiones = _provisiones(client, headers, contrato_id)
+    abierto = next(p for p in provisiones if p["estado"] == "abierto")
+    assert decimal.Decimal(str(abierto["dias_acumulados"])) == decimal.Decimal("2.73")
+    assert decimal.Decimal(str(abierto["monto_provisionado"])) == decimal.Decimal("81.82")
+
+    acumulado = _provision_acumulada(client, headers, contrato_id)
+    assert decimal.Decimal(str(acumulado["dias_acumulados"])) == decimal.Decimal("15.27")
+    assert decimal.Decimal(str(acumulado["monto_provisionado"])) == decimal.Decimal("458.18")

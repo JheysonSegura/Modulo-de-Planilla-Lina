@@ -15,6 +15,7 @@ class ProvisionVacacionesOut(BaseModel):
     dias_gozados: decimal.Decimal
     monto_provisionado: decimal.Decimal
     estado: str
+    notificado_autoridad_trabajo: bool
 
     @computed_field
     @property
@@ -25,3 +26,8 @@ class ProvisionVacacionesOut(BaseModel):
 class VacacionTomadaCreate(BaseModel):
     fecha: datetime.date
     dias: decimal.Decimal = Field(gt=0)
+
+
+class AcumularVacacionesRequest(BaseModel):
+    fecha_acuerdo: datetime.date
+    notificado_autoridad_trabajo: bool = False

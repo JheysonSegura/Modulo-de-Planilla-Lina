@@ -58,6 +58,12 @@ class ProvisionVacaciones(Base):
         Numeric(12, 2), nullable=False, server_default="0"
     )
     estado: Mapped[str] = mapped_column(String(20), nullable=False, server_default="abierto")
+    # 'abierto' | 'acumulado' (Fase 12, Art. 59 CT -- el período que se
+    # "congela" al acumular un segundo período) | 'liquidado' (documentado
+    # en el DDL original, todavía sin uso en código).
+    notificado_autoridad_trabajo: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
