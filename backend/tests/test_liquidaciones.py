@@ -105,14 +105,18 @@ def test_renuncia_voluntaria_sin_indemnizacion_ni_preaviso(client, db):
     liq = resp.json()
 
     assert decimal.Decimal(str(liq["salario_pendiente"])) == decimal.Decimal("0.00")
-    # décimo y vacaciones: 30 días (1-30 ene) / 11 * 40.00 = 109.0909... -> 109.09
-    assert decimal.Decimal(str(liq["decimo_proporcional"])) == decimal.Decimal("109.09")
+    # décimo (fórmula confirmada por el contador 2026-08-06, ver
+    # decimo_service.py): 30 días comerciales (1-30 ene) * 40.00 =
+    # 1200.00 devengado / 12 = 100.00.
+    assert decimal.Decimal(str(liq["decimo_proporcional"])) == decimal.Decimal("100.00")
+    # vacaciones: 30 días (1-30 ene) / 11 * 40.00 = 109.0909... -> 109.09
     assert decimal.Decimal(str(liq["vacaciones_pendientes"])) == decimal.Decimal("109.09")
     # prima antigüedad: (30/365) * (1200/30*7) = 23.0136... -> 23.01
     assert decimal.Decimal(str(liq["prima_antiguedad"])) == decimal.Decimal("23.01")
     assert decimal.Decimal(str(liq["indemnizacion"])) == decimal.Decimal("0.00")
     assert decimal.Decimal(str(liq["preaviso"])) == decimal.Decimal("0.00")
-    assert decimal.Decimal(str(liq["monto_total"])) == decimal.Decimal("241.19")
+    # 100.00 + 109.09 + 23.01 = 232.10
+    assert decimal.Decimal(str(liq["monto_total"])) == decimal.Decimal("232.10")
     assert liq["estado"] == "borrador"
 
 

@@ -1,7 +1,6 @@
 import datetime
 import decimal
 import uuid
-from typing import Literal
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
@@ -10,12 +9,12 @@ from app.models import Ausencia, Contrato
 from app.repositories import ausencias as ausencias_repo
 
 # Catálogo verificado contra código-detrabajo.pdf (Art. 199/200/208) --
-# ver FASE11-plan-ausencias.txt para el detalle de cada artículo. El
-# tratamiento del décimo es POR ANALOGÍA a la regla de vacaciones del
-# Código de Trabajo (el Decreto de Gabinete 221/1971 que rige el
-# décimo es una ley distinta, y los PDFs de ese decreto en el repo
-# resultaron ser solo portada/metadata sin texto legible) --
-# PENDIENTE DE CONFIRMAR CON EL CONTADOR, no dar por cerrado.
+# ver FASE11-plan-ausencias.txt para el detalle de cada artículo. Solo
+# afecta a VACACIONES (Art. 208 CT) -- el décimo NO usa este catálogo:
+# el contador confirmó el 2026-08-06 que su base es lo realmente
+# devengado (decimo_service.py), así que una ausencia sin goce de
+# salario se excluye sola (no generó ingreso) y una con goce se
+# incluye sola, sin necesitar ninguna regla especial aquí.
 TIPOS_AUSENCIA = frozenset(
     {
         "enfermedad_dentro_fondo",
@@ -29,15 +28,6 @@ TIPOS_AUSENCIA = frozenset(
         "injustificada",
     }
 )
-
-# Décimo (Decreto 221/1971, por analogía -- ver nota arriba): tipos
-# que SÍ cuentan como día trabajado.
-_CUENTA_DECIMO = {
-    "enfermedad_dentro_fondo",
-    "embarazo",
-    "riesgo_profesional",
-    "huelga_legal",
-}
 
 # Vacaciones (Art. 199.4/199.5/199.7 CT): nunca se descuentan, sin
 # importar la duración.
@@ -111,14 +101,7 @@ def _dias_no_contables_de_ausencia(
     ausencia: Ausencia,
     rango_desde: datetime.date,
     rango_hasta: datetime.date,
-    para: Literal["decimo", "vacaciones"],
 ) -> decimal.Decimal:
-    if para == "decimo":
-        if ausencia.tipo in _CUENTA_DECIMO:
-            return _CERO
-        return _overlap_dias(ausencia.fecha_desde, ausencia.fecha_hasta, rango_desde, rango_hasta)
-
-    # para == "vacaciones"
     if ausencia.tipo in _EXENTAS_SIEMPRE_VACACIONES:
         return _CERO
     if ausencia.tipo in _SIEMPRE_DESCUENTA_VACACIONES:
@@ -149,16 +132,15 @@ def dias_no_contables(
     contrato_id: uuid.UUID,
     fecha_inicio: datetime.date,
     fecha_fin: datetime.date,
-    para: Literal["decimo", "vacaciones"],
 ) -> decimal.Decimal:
     """Días dentro de [fecha_inicio, fecha_fin] que NO cuentan como
-    "día trabajado" para `para` (decimo|vacaciones), por causa de
-    ausencias registradas. Se resta directamente del total de días
-    calculado en decimo_service/vacaciones_service."""
+    "día trabajado" para vacaciones, por causa de ausencias
+    registradas (Art. 208 CT). Se resta directamente del total de días
+    calculado en vacaciones_service."""
     if fecha_fin < fecha_inicio:
         return _CERO
 
     total = _CERO
     for ausencia in ausencias_repo.listar_de_contrato(db, contrato_id):
-        total += _dias_no_contables_de_ausencia(ausencia, fecha_inicio, fecha_fin, para)
+        total += _dias_no_contables_de_ausencia(ausencia, fecha_inicio, fecha_fin)
     return total

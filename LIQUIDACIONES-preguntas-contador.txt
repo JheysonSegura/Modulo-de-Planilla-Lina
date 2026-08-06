@@ -1,0 +1,109 @@
+LIQUIDACIONES (FINIQUITO) - PARA VALIDAR CON EL CONTADOR
+================================================================
+Nomina Panama - preparado 2026-08-06 (Fase 10/13)
+
+QUE HACE EL MODULO
+-------------------
+Cuando un contrato termina (por cualquier motivo), el sistema calcula
+el "finiquito" sumando hasta 8 conceptos distintos. No todos aplican
+siempre -- depende del tipo de contrato y del motivo de la salida.
+
+LOS 8 CONCEPTOS
+-----------------
+
+1. SALARIO PENDIENTE
+   Dias trabajados desde la ultima planilla pagada hasta la fecha de
+   salida, al salario diario (salario mensual / 30). Siempre aplica.
+
+2. DECIMO PROPORCIONAL
+3. VACACIONES PROPORCIONALES
+   Siempre aplican. Reutilizan el mismo calculo de las provisiones
+   normales de decimo y vacaciones (1 dia por cada 11 trabajados),
+   solo se "cortan" a la fecha de salida.
+
+4. PRIMA DE ANTIGUEDAD (Art. 224 CT)
+   1 semana de salario por cada ano trabajado, proporcional al ano
+   incompleto. SOLO aplica a contratos indefinidos, sin importar el
+   motivo de salida (hasta una renuncia voluntaria la genera).
+   - El salario base (Art. 226) es el PROMEDIO REAL de los ultimos 5
+     anos trabajados -- no el salario actual, lo que efectivamente
+     devengo en planillas.
+   - Si el contrato lleva menos de 5 anos en el sistema, promedia
+     solo sobre el tiempo real con datos (para no diluir el promedio
+     con "ceros" de historia que el sistema nunca cargo).
+   - Si no hay NINGUNA planilla historica para ese contrato, el
+     sistema cae al salario base actual como aproximacion.
+
+5. INDEMNIZACION
+   Solo aplica si el motivo es despido_injustificado,
+   renuncia_justificada, o despido_causa_economica (renuncia
+   voluntaria, mutuo acuerdo y despido justificado NO la generan).
+   - Contrato INDEFINIDO: escala del Art. 225-C -- 3.4 semanas de
+     salario por ano en los primeros 10 anos, 1 semana por ano
+     adicional despues. Salario base (Art. 149) = el MAYOR entre el
+     promedio de los ultimos 6 meses o el promedio de los ultimos 30
+     dias, incluye horas extra reales.
+   - Contrato DEFINIDO (con fecha de fin pactada): Art. 227 -- se
+     pagan los salarios del tiempo que faltaba para llegar a esa
+     fecha. OJO: hoy el sistema SOLO aplica esto para
+     despido_injustificado -- no esta resuelto para
+     renuncia_justificada o despido_causa_economica en un contrato
+     definido. Es una laguna real, no una decision tomada.
+   - Contrato por OBRA DETERMINADA: el sistema no puede calcularlo
+     automaticamente (sin fecha de fin estimable) -- rechaza y pide
+     que se calcule aparte.
+
+6. PREAVISO (Art. 214)
+   30 dias de salario, solo si el motivo es despido_injustificado o
+   despido_causa_economica.
+
+7. SALARIOS CAIDOS (Art. 219/220 CT)
+   Esto NO lo calcula el sistema -- solo aplica en un litigio judicial
+   de reintegro (un juez ordena reinstalar al trabajador con recargo
+   de 50% o 25% segun antiguedad, mas los salarios del periodo del
+   juicio). El sistema solo tiene un campo para capturar MANUALMENTE
+   el monto que diga la sentencia, con una referencia de expediente.
+   Es puro registro, no calculo.
+
+8. PENALIDAD ART. 222 (renuncia sin aviso)
+   Si el trabajador renuncia sin dar aviso previo (15 dias normal, 2
+   meses si es "trabajador tecnico"), debe pagarle al empleador el
+   equivalente a 1 semana de salario -- se RESTA del total (a
+   diferencia de los demas conceptos, que suman). El sistema solo la
+   aplica si se captura explicitamente la fecha en que aviso; si no
+   se manda ese dato, NO asume que falto el aviso (no penaliza por
+   defecto).
+
+EJEMPLO NUMERICO (verificado a mano contra el sistema)
+-----------------------------------------------------------
+Salario $1,200/mes, contrato indefinido, despedido
+injustificadamente 46 dias despues de iniciar:
+  Salario pendiente ......... $600.00  (15 dias de febrero)
+  Decimo proporcional ....... $167.27
+  Vacaciones proporcionales . $167.27
+  Prima de antiguedad ....... $23.01
+  Indemnizacion (Art.225-C) . $119.98
+  Preaviso ................... $1,200.00
+  ------------------------------------
+  TOTAL ...................... $2,277.53
+
+PREGUNTAS CONCRETAS PARA EL CONTADOR
+-----------------------------------------
+1. Prima de antiguedad: ¿el promedio de 5 anos del Art. 226 se
+   calcula igual como lo hace el sistema (promedio real de planillas,
+   ajustado al tiempo con datos si hay menos historial)?
+2. Indemnizacion: ¿la base del Art. 149 (mayor entre promedio de 6
+   meses o de 30 dias) y la escala del Art. 225-C estan bien
+   aplicadas?
+3. Contratos definidos: ¿el Art. 227 realmente no aplica a renuncia
+   justificada / despido por causa economica, o el sistema deberia
+   cubrir tambien esos casos?
+4. Penalidad Art. 222: ¿el criterio de "tecnico = 2 meses de aviso"
+   es correcto, y estan de acuerdo con que sin fecha de aviso
+   capturada no se asuma penalidad?
+5. Salarios caidos: ¿confirman que esto debe ser captura manual (no
+   hay forma de que el sistema lo calcule solo)?
+
+Ver tambien: CLAUDE.md seccion 4 ("Liquidaciones (finiquito)"),
+FASE10-plan-liquidaciones.txt y FASE13-plan-liquidaciones-ext.txt
+para el detalle tecnico completo articulo por articulo.

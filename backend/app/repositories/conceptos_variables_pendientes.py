@@ -1,7 +1,8 @@
 import datetime
+import decimal
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import ConceptoVariablePendiente
@@ -58,3 +59,22 @@ def listar_pendientes_de_contrato(
 def eliminar(db: Session, concepto: ConceptoVariablePendiente) -> None:
     db.delete(concepto)
     db.flush()
+
+
+def sumar_monto_ingresos_periodo(
+    db: Session, contrato_id: uuid.UUID, desde: datetime.date, hasta: datetime.date
+) -> decimal.Decimal:
+    """Suma de conceptos tipo 'ingreso' (comisiones, bonos, etc.)
+    devengados por el contrato en [desde, hasta], aplicados o no --
+    usado por decimo_service para la base de "ingresos brutos
+    devengados" (Fase de corrección del décimo, 2026-08-06). Se usa
+    esta tabla (no `conceptos_variables`, la de lo ya aplicado a un
+    movimiento) porque es la única con fecha propia por día; sumar de
+    las dos duplicaría lo ya aplicado."""
+    stmt = select(func.coalesce(func.sum(ConceptoVariablePendiente.monto), 0)).where(
+        ConceptoVariablePendiente.contrato_id == contrato_id,
+        ConceptoVariablePendiente.tipo == "ingreso",
+        ConceptoVariablePendiente.fecha >= desde,
+        ConceptoVariablePendiente.fecha <= hasta,
+    )
+    return decimal.Decimal(db.scalar(stmt))

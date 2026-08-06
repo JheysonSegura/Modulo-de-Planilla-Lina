@@ -74,43 +74,10 @@ def _generar_planilla(client, headers, tipo, periodo_inicio, periodo_fin):
     return resp.json()
 
 
-def _generar_pago_decimo(client, headers, cuatrimestre, anio, fecha_pago):
-    resp = client.post(
-        "/planillas/generar-decimo",
-        json={"cuatrimestre": cuatrimestre, "anio": anio, "fecha_pago": fecha_pago.isoformat()},
-        headers=headers,
-    )
-    assert resp.status_code == 201, resp.text
-    return resp.json()
-
-
-def _movimiento_de(movimientos, contrato_id):
-    return next(m for m in movimientos if m["contrato_id"] == contrato_id)
-
-
 def _provision_vacaciones_abierta(client, headers, contrato_id):
     resp = client.get(f"/contratos/{contrato_id}/provisiones-vacaciones", headers=headers)
     assert resp.status_code == 200, resp.text
     return next(p for p in resp.json() if p["estado"] == "abierto")
-
-
-def test_ausencia_injustificada_reduce_el_decimo(client, db):
-    headers = _preparar_empresa(db, client)
-    contrato_id = _crear_empleado_con_contrato(client, headers, datetime.date(2024, 1, 1))
-
-    # dic-abr 2025 sin ausencias: 121 días -> 330.00 (ver
-    # test_decimo.py::test_partidas_de_un_anio_completo_trabajado).
-    # Con 11 días de ausencia injustificada (no cuenta para décimo):
-    # 121-11=110 días -> 110/11*30.00=300.00 exacto.
-    _registrar_ausencia(
-        client, headers, contrato_id, "injustificada", datetime.date(2025, 1, 1), datetime.date(2025, 1, 11)
-    )
-
-    resp = _generar_pago_decimo(client, headers, "dic-abr", 2025, datetime.date(2025, 4, 15))
-    mov = _movimiento_de(
-        client.get(f"/planillas/{resp['id']}/movimientos", headers=headers).json(), contrato_id
-    )
-    assert decimal.Decimal(str(mov["salario_bruto"])) == decimal.Decimal("300.00")
 
 
 def test_ausencia_embarazo_no_reduce_vacaciones_sin_importar_duracion(client, db):

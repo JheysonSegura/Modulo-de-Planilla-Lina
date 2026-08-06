@@ -62,9 +62,8 @@ Todas las tasas y tramos viven en BD (`tasas_vigentes`, `tramos_isr`, `salario_m
 
 ### Riesgo Profesional (CSS)
 - Base legal: Decreto de Gabinete N.68 de 31-mar-1970. 5 clases de riesgo (I-V), cada una con un rango de "grado de riesgo" (mínimo/promedio/máximo) — vive en `tasas_riesgo_profesional` (clase_riesgo, tasa, vigencia por fecha), sembrada usando el **grado promedio** de cada clase (Art. 50 Parágrafo: "inicialmente las empresas quedarán ubicadas en el grado promedio de la clase que corresponden").
-- Tasa patronal = `grado_riesgo × 0.0007` (Art. 51 dice "× 0.07", pero tomado literal da tasas imposibles >50%; la única lectura que da tasas plausibles es 0.07% por punto de grado). **CIFRAS SEMBRADAS PERO NO CONFIRMADAS** — no hay todavía un aviso/factura real de la CSS para verificarlas (mismo estado que tenían los tramos de ISR antes de la DGI). Clase I=0.56%, II=0.98%, III=2.10%, IV=3.64%, V=5.67%.
+- Tasa patronal = `grado_riesgo × 0.0007` (Art. 51 dice "× 0.07", pero tomado literal da tasas imposibles >50%; la única lectura que da tasas plausibles es 0.07% por punto de grado). **CONFIRMADO por el contador el 2026-08-06** — mismo tratamiento que ISR (DGI) y décimo (contador): Clase I=0.56%, II=0.98%, III=2.10%, IV=3.64%, V=5.67%, coinciden exacto con lo ya sembrado en `tasas_riesgo_profesional` (migración `0019_seed_riesgo_profesional`) — no requirió cambios de código ni de datos.
 - `empresas.clase_riesgo` (I-V) es un campo **manual** — la CSS asigna la clase a cada empresa vía su Reglamento de Clasificación de Empresas (no incluido en el decreto disponible); el sistema no la infiere de la actividad económica.
-- Si en el futuro se consigue un aviso/factura real de la CSS con la tasa exacta de alguna clase, verificar contra estos valores y corregir vía migración de datos si no coinciden (mismo tratamiento que se le dio a ISR y salario mínimo).
 
 ### Salario mínimo
 - Por Decreto Ejecutivo N.° 13, revisado cada 2 años → vive en `salario_minimo_vigente` con vigencia por fecha, región, actividad económica y tamaño de empresa.
@@ -115,7 +114,8 @@ Todas las tasas y tramos viven en BD (`tasas_vigentes`, `tramos_isr`, `salario_m
 ## 6. Pendiente de diseñar / cerrar
 
 - Nada pendiente de diseño en ISR/horas extra/décimo a la fecha (2026-08-05) — ver sección 5. ISR cerrado en método y cifras de tramos (contador + DGI). Décimo cerrado en fórmula, fechas de pago y CSS especial (contador).
-- Sigue pendiente: **validar formalmente** la tasa de riesgo profesional patronal (método sembrado e implementado — ver sección 4 — pero la interpretación del factor 0.07 del Art. 51 no está confirmada con un aviso real de la CSS), y **validar con el contador los conceptos de Liquidaciones** (Fase 10, ver sección 4) antes de usarlos en un caso real.
+- **Riesgo profesional confirmado por el contador el 2026-08-06** (ver sección 4) — coincide exacto con lo sembrado, cerrado sin cambios de código ni de datos.
+- Sigue pendiente: **validar con el contador los conceptos de Liquidaciones** (Fase 10, ver sección 4) antes de usarlos en un caso real.
 - El override por contrato para filas de salario mínimo divididas por ocupación específica (ver sección 4) queda **fuera de alcance por decisión explícita del usuario (2026-08-06)** hasta que aparezca un cliente real que lo necesite — no está en ningún roadmap activo.
 - **Fase 11 (ausencias e incapacidades) implementada 2026-08-06** — ver sección 4 y `FASE11-plan-ausencias.txt`. **Pendiente de confirmar con el contador**: si el Decreto 221/1971 del décimo usa la misma regla de "15 días/11 meses con 3 excepciones" del Art. 208 CT que se aplicó por analogía, o una regla propia (no se pudo verificar el texto del decreto).
 - **Fase 12 (acumulación de hasta 2 períodos de vacaciones, Art. 59 CT) implementada 2026-08-06** — ver sección 4 y `FASE12-plan-acumulacion-vacaciones.txt`. Sin puntos pendientes de confirmar (el texto del Art. 59 se verificó completo contra `código-detrabajo.pdf`); la única limitación documentada es que el sistema no tramita la notificación real a la autoridad de trabajo, queda como campo informativo.

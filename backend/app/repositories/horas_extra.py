@@ -1,7 +1,8 @@
 import datetime
+import decimal
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import RegistroHorasExtra
@@ -45,3 +46,17 @@ def listar_de_semana_iso(
 def eliminar(db: Session, registro: RegistroHorasExtra) -> None:
     db.delete(registro)
     db.flush()
+
+
+def sumar_monto_periodo(
+    db: Session, contrato_id: uuid.UUID, desde: datetime.date, hasta: datetime.date
+) -> decimal.Decimal:
+    """Suma de monto_calculado devengado por el contrato en [desde,
+    hasta] -- usado por decimo_service para la base de "ingresos
+    brutos devengados" (Fase de corrección del décimo, 2026-08-06)."""
+    stmt = select(func.coalesce(func.sum(RegistroHorasExtra.monto_calculado), 0)).where(
+        RegistroHorasExtra.contrato_id == contrato_id,
+        RegistroHorasExtra.fecha >= desde,
+        RegistroHorasExtra.fecha <= hasta,
+    )
+    return decimal.Decimal(db.scalar(stmt))

@@ -56,7 +56,7 @@ def _calcular_dias_y_monto_acumulado(
             continue
         dias_calendario = decimal.Decimal((efectivo_fin - efectivo_inicio).days + 1)
         dias_calendario -= ausencias_service.dias_no_contables(
-            db, contrato.id, efectivo_inicio, efectivo_fin, "vacaciones"
+            db, contrato.id, efectivo_inicio, efectivo_fin
         )
         if dias_calendario < _CERO:
             dias_calendario = _CERO
