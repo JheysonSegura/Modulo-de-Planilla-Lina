@@ -5,8 +5,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
-from app.core.deps import get_db_rls, get_empresa_activa_id
-from app.models import Contrato, HistorialSalarial
+from app.core.deps import get_db_rls, get_empresa_activa_id, get_usuario_actual
+from app.models import Contrato, HistorialSalarial, Usuario
 from app.schemas.contratos import (
     CambiarSalarioRequest,
     ContratoCreate,
@@ -61,9 +61,10 @@ def cambiar_salario(
     contrato_id: uuid.UUID,
     body: CambiarSalarioRequest,
     db: Annotated[Session, Depends(get_db_rls)],
+    usuario: Annotated[Usuario, Depends(get_usuario_actual)],
 ) -> HistorialSalarial:
     contrato = contratos_service.obtener_contrato(db, contrato_id)
-    return contratos_service.cambiar_salario(db, contrato, body)
+    return contratos_service.cambiar_salario(db, contrato, body, usuario.id)
 
 
 @router.get("/contratos/{contrato_id}/historial-salarial", response_model=list[HistorialSalarialOut])

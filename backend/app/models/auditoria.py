@@ -26,3 +26,12 @@ class AuditoriaCambio(Base):
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+    empresa_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("empresas.id")
+    )
+    # Denormalizado al momento de escribir cada registro (no todos los
+    # eventos son de un empleado concreto -- una aprobación de planilla
+    # es un evento de toda la empresa, queda NULL).
+    empleado_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("empleados.id")
+    )

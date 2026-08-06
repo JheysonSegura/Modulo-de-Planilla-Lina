@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 
 from app.routers import (
+    auditoria,
     auth,
     ausencias,
     conceptos_variables_pendientes,
@@ -29,3 +30,4 @@ app.include_router(decimo.router)
 app.include_router(vacaciones.router)
 app.include_router(liquidaciones.router)
 app.include_router(ausencias.router)
+app.include_router(auditoria.router)

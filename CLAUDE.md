@@ -88,6 +88,12 @@ Todas las tasas y tramos viven en BD (`tasas_vigentes`, `tramos_isr`, `salario_m
 - **Limitaciones documentadas, no bloqueantes**: no se modela Art. 227 para `renuncia_justificada`/`despido_causa_economica` en contratos definidos (solo para `despido_injustificado`).
 - **⚠️ El usuario pidió explícitamente validar estos conceptos con su contador antes de usar el módulo en un caso real** — no tratar como cerrado sin esa confirmación, mismo criterio que ISR/décimo antes de sus confirmaciones reales.
 
+### Auditoría y seguridad
+- **Implementado** (2026-08-06, ver `FASE-auditoria-plan.txt`): `auditoria_cambios` registra cambios de salario (`app/services/contratos_service.py::cambiar_salario`), aprobación de planillas (`POST /planillas/{id}/aprobar`, nuevo, `borrador→procesada`), y cálculo/pago de liquidaciones (`generar_liquidacion` + `POST /liquidaciones/{id}/pagar`, nuevo, `borrador→pagada`). Cada registro guarda `usuario_id`, `created_at`, y `datos_anteriores`/`datos_nuevos` (JSONB) cuando aplica. `empleado_id` se denormaliza al escribir cada evento (NULL en eventos de toda la empresa, como aprobar una planilla).
+- **`GET /auditoria`** (filtros opcionales `empleado_id`/`tabla_afectada`/`accion`, combinables) restringido a `require_roles("admin")`.
+- **Corrección de un gap de diseño heredado**: `auditoria_cambios` existe desde el schema base (Fase 2) pero nunca tuvo `empresa_id` ni RLS — a diferencia de TODAS las demás tablas operativas, `migracion_multiempresa.sql` nunca la tocó. Se corrigió vía migración `0025_auditoria_seguridad` antes de que la tabla empezara a recibir escrituras reales.
+- Los endpoints `aprobar`/`pagar` NO están restringidos por rol (igual que `generar_planilla`/`generar_liquidacion`) — solo el endpoint de lectura de auditoría es admin-only, según lo pedido explícitamente. Liquidaciones se saltan el estado intermedio `'aprobada'` del DDL original (`borrador→pagada` directo): solo se auditó "cálculo/pago", no una aprobación separada.
+
 ## 5. Lógica de cálculo ya cerrada — no reabrir sin razón
 
 - **Mes comercial de 30 días**: el salario mensual fijo se paga completo sin importar si el mes calendario tiene 30 o 31 días (Art. 54 CT). Para **cualquier** prorrateo (ingreso a mitad de mes, ausencias, liquidaciones, horas extra) se usa `salario_diario = salario_mensual / 30` — **nunca** los días reales del mes calendario.

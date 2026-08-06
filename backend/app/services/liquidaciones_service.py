@@ -9,7 +9,7 @@ from app.models import Contrato, Liquidacion
 from app.repositories import historial_salarial as historial_repo
 from app.repositories import liquidaciones as liquidaciones_repo
 from app.repositories import movimientos_planilla as movimientos_repo
-from app.services import decimo_service, vacaciones_service
+from app.services import auditoria_service, decimo_service, vacaciones_service
 
 # Código de Trabajo, Título VI (Art. 210-229D), verificado contra
 # código-detrabajo.pdf el 2026-08-05 -- ver FASE10-plan-liquidaciones.txt
@@ -253,6 +253,7 @@ def generar_liquidacion(
     contrato: Contrato,
     motivo: str,
     fecha_terminacion: datetime.date,
+    usuario_id: uuid.UUID | None = None,
     otras_deducciones: decimal.Decimal = _CERO,
     monto_salarios_caidos: decimal.Decimal = _CERO,
     referencia_sentencia: str | None = None,
@@ -333,10 +334,68 @@ def generar_liquidacion(
     contrato.fecha_fin_real = fecha_terminacion
     contrato.motivo_terminacion = motivo
 
+    auditoria_service.registrar(
+        db,
+        empresa_id,
+        usuario_id,
+        "liquidaciones",
+        liquidacion.id,
+        "calculada",
+        empleado_id=contrato.empleado_id,
+        datos_nuevos={
+            "motivo": motivo,
+            "fecha_terminacion": fecha_terminacion.isoformat(),
+            "monto_total": str(monto_total),
+            "estado": liquidacion.estado,
+        },
+    )
+
     db.commit()
     # Sin db.refresh(): rompería RLS igual que en el resto del proyecto
     # (SET LOCAL app.empresa_actual no sobrevive al commit).
     return liquidacion
+
+
+def obtener_liquidacion(db: Session, liquidacion_id: uuid.UUID) -> Liquidacion:
+    liquidacion = liquidaciones_repo.get(db, liquidacion_id)
+    if liquidacion is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Liquidación no encontrada")
+    return liquidacion
+
+
+def pagar_liquidacion(
+    db: Session, empresa_id: uuid.UUID, usuario_id: uuid.UUID, liquidacion: Liquidacion
+) -> Liquidacion:
+    """Transición a 'pagada' (vocabulario del schema original:
+    'borrador','aprobada','pagada' -- se salta 'aprobada', no pedido
+    explícitamente para liquidaciones). Cambio mínimo: solo el estado +
+    el registro de auditoría."""
+    if liquidacion.estado == "pagada":
+        raise HTTPException(status.HTTP_409_CONFLICT, "Esta liquidación ya está pagada.")
+
+    estado_anterior = liquidacion.estado
+    liquidacion.estado = "pagada"
+
+    contrato = obtener_contrato_de_liquidacion(db, liquidacion)
+    auditoria_service.registrar(
+        db,
+        empresa_id,
+        usuario_id,
+        "liquidaciones",
+        liquidacion.id,
+        "pagada",
+        empleado_id=contrato.empleado_id if contrato is not None else None,
+        datos_anteriores={"estado": estado_anterior},
+        datos_nuevos={"estado": liquidacion.estado},
+    )
+
+    db.commit()
+    # Sin db.refresh(): rompería RLS igual que en el resto del proyecto.
+    return liquidacion
+
+
+def obtener_contrato_de_liquidacion(db: Session, liquidacion: Liquidacion) -> Contrato | None:
+    return db.get(Contrato, liquidacion.contrato_id)
 
 
 def listar_liquidaciones(db: Session, contrato_id: uuid.UUID) -> list[Liquidacion]:

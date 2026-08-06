@@ -1,0 +1,129 @@
+FASE "AUDITORIA Y SEGURIDAD" (etiquetada "Fase 11" por el usuario,
+distinta de FASE11-plan-ausencias.txt del roadmap de deuda técnica)
+================================================================
+Nomina Panama - implementada el 2026-08-06
+
+OBJETIVO
+--------
+Trazabilidad de cambios sensibles: cambios de salario, aprobación de
+planillas, cálculo/pago de liquidaciones. Endpoint de solo lectura
+para que un admin consulte el historial filtrado por empleado o tipo
+de evento.
+
+HALLAZGO ANTES DE CODEAR (cambió el alcance)
+---------------------------------------------
+La tabla `auditoria_cambios` existe desde el schema base (Fase 2) pero
+nunca se tocó en `migracion_multiempresa.sql` -- a diferencia de TODAS
+las demás tablas operativas del proyecto, no tenía `empresa_id` ni
+política RLS. Se corrigió aquí (migración 0025), mismo patrón que
+0016/0020/0022, pero el gap era del diseño original, no de una fase
+reciente.
+
+Además, "aprobación de planillas" y "pago de liquidaciones" no tenían
+ningún endpoint: el DDL original (`db/schema_nomina_panama.sql`) ya
+preveía los estados (`planillas.estado`: 'borrador','procesada',
+'pagada','anulada'; `liquidaciones.estado`: 'borrador','aprobada',
+'pagada'), pero en 13 fases previas nunca se implementó la transición
+-- `generar_planilla`/`generar_liquidacion` siempre dejaban todo en
+'borrador'. Se preguntó al usuario si construir esos endpoints o solo
+auditar lo que ya existía; eligió construirlos (mínimos: solo el
+cambio de estado + auditoría, sin lógica adicional).
+
+DISEÑO DE DATOS
+----------------
+Migración 0025_auditoria_seguridad:
+  ALTER TABLE auditoria_cambios ADD COLUMN empresa_id UUID REFERENCES empresas(id);
+  ALTER TABLE auditoria_cambios ADD COLUMN empleado_id UUID REFERENCES empleados(id);
+  + índices por empleado_id y accion
+  + ENABLE/FORCE ROW LEVEL SECURITY + política empresa_aislamiento_auditoria_cambios
+
+`empleado_id` se denormaliza al momento de escribir cada evento (no
+todos los eventos son de un empleado: una aprobación de planilla es
+de toda la empresa, queda NULL) -- evita joins condicionales según
+`tabla_afectada` para poder filtrar "por empleado" de forma simple.
+
+EVENTOS AUDITADOS
+------------------
+1. Cambio de salario (contratos_service.cambiar_salario): tabla_afectada
+   ='contratos' (no 'historial_salarial' -- el evento relevante para
+   el usuario es "el contrato X cambió de salario", no una fila
+   interna), accion='cambio_salario', datos_anteriores/nuevos con
+   salario_base y fecha_vigencia_desde.
+2. Aprobación de planilla (planilla_service.aprobar_planilla, NUEVO):
+   POST /planillas/{id}/aprobar, borrador->procesada, 409 si ya no
+   está en borrador. tabla_afectada='planillas', accion='aprobada'.
+   Sin empleado_id (evento de toda la empresa).
+3. Cálculo de liquidación (liquidaciones_service.generar_liquidacion,
+   hook agregado al flujo existente): tabla_afectada='liquidaciones',
+   accion='calculada', datos_nuevos con motivo/monto_total/estado.
+4. Pago de liquidación (liquidaciones_service.pagar_liquidacion,
+   NUEVO): POST /liquidaciones/{id}/pagar, ->pagada, 409 si ya estaba
+   pagada. accion='pagada'.
+
+Cada registro guarda usuario_id (quién), created_at (cuándo, vía
+server_default now()), y datos_anteriores/datos_nuevos (JSONB) cuando
+aplica -- igual criterio que el diseño original de la tabla.
+
+ENDPOINT DE LECTURA
+--------------------
+GET /auditoria?empleado_id=&tabla_afectada=&accion= -- todos los
+filtros opcionales y combinables (AND). Restringido a
+require_roles("admin") (mismo patrón que PATCH /empresas/actual).
+Ordenado por created_at descendente. No se filtra empresa_id
+explícitamente en la query -- lo hace RLS a nivel de Postgres (mismo
+criterio que el resto del proyecto: RLS es la defensa real, no el
+WHERE en código de aplicación).
+
+CAPAS DE CODIGO
+----------------
+- Modelo: app/models/auditoria.py (+empresa_id, +empleado_id)
+- Repositorio: app/repositories/auditoria.py (crear, listar con filtros)
+- Servicio: app/services/auditoria_service.py (registrar, listar) --
+  reutilizado desde contratos_service, planilla_service,
+  liquidaciones_service
+- Schema: app/schemas/auditoria.py (AuditoriaCambioOut)
+- Router: app/routers/auditoria.py, registrado en main.py
+
+TESTS (tests/test_auditoria.py)
+--------------------------------
+81 tests totales (75 previos + 6 nuevos), todos en verde:
+1. Cambio de salario queda auditado con datos antes/después legibles.
+2. Aprobar planilla queda auditada; segunda aprobación -> 409.
+3. Cálculo y pago de liquidación quedan auditados (2 eventos
+   distintos); segundo pago -> 409.
+4. Filtro por empleado_id no mezcla eventos de otros empleados.
+5. El endpoint de lectura rechaza un usuario con rol "consulta" (403).
+6. Aislamiento entre empresas: un admin de la empresa A no ve eventos
+   de la empresa B (verifica que la política RLS nueva funciona).
+
+VALIDACION MANUAL (criterio explícito del usuario)
+----------------------------------------------------
+Contra el backend de desarrollo real (dev@nomina.internal, empresa
+RUC 0-0-0-DEV): se creó un empleado/contrato con salario $900.00, se
+cambió a $1000.00 vía POST /contratos/{id}/salario, y GET
+/auditoria?empleado_id=... devolvió un registro legible:
+  tabla_afectada=contratos, accion=cambio_salario,
+  datos_anteriores={salario_base:900.00, fecha_vigencia_desde:2025-01-01},
+  datos_nuevos={salario_base:1000.00, fecha_vigencia_desde:2025-06-01,
+  motivo:ajuste_salarial}, usuario_id y created_at poblados.
+Datos de prueba limpiados al cerrar (empleados, contratos,
+historial_salarial, auditoria_cambios -- orden FK-safe).
+
+VERIFICACION
+------------
+- docker compose run --rm backend alembic upgrade head (migración 0025)
+- docker compose run --rm backend pytest -q (81/81 pasan)
+- Validación manual con curl/Python contra el backend real (ver arriba)
+
+DECISIONES SIN VOLVER A PREGUNTAR, DOCUMENTADAS
+--------------------------------------------------
+- Los endpoints aprobar/pagar NO están restringidos por rol (igual
+  que generar_planilla/generar_liquidacion, que tampoco lo están) --
+  solo el endpoint de LECTURA de auditoría es admin-only, como pidió
+  el usuario explícitamente. Si se quiere restringir quién puede
+  aprobar/pagar, es una decisión de negocio nueva, no asumida aquí.
+- Liquidaciones se saltan el estado intermedio 'aprobada' del DDL
+  original (borrador->pagada directo) porque el usuario solo pidió
+  auditar "cálculo/pago", no "aprobación" de liquidaciones.
+- No hay UI de auditoría (frontend no arrancado todavía) -- el
+  endpoint es consumible directo por Postman/curl por ahora.

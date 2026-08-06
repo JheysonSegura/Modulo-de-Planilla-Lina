@@ -10,6 +10,7 @@ from app.repositories import empleados as empleados_repo
 from app.repositories import empresas as empresas_repo
 from app.repositories import historial_salarial as historial_repo
 from app.schemas.contratos import CambiarSalarioRequest, ContratoCreate, ContratoUpdate
+from app.services import auditoria_service
 from app.services.salario_minimo_service import validar_salario_minimo
 
 
@@ -73,7 +74,7 @@ def actualizar_contrato(db: Session, contrato: Contrato, data: ContratoUpdate) -
 
 
 def cambiar_salario(
-    db: Session, contrato: Contrato, data: CambiarSalarioRequest
+    db: Session, contrato: Contrato, data: CambiarSalarioRequest, usuario_id: uuid.UUID
 ) -> HistorialSalarial:
     vigente = historial_repo.get_abierto(db, contrato.id)
     if vigente is None:
@@ -110,6 +111,9 @@ def cambiar_salario(
     # el salario que realmente regía en ese momento.
     vigente.fecha_vigencia_hasta = data.fecha_vigencia_desde - datetime.timedelta(days=1)
 
+    salario_anterior = vigente.salario_base
+    fecha_desde_anterior = vigente.fecha_vigencia_desde
+
     nuevo = HistorialSalarial(
         contrato_id=contrato.id,
         salario_base=data.salario_base,
@@ -118,6 +122,26 @@ def cambiar_salario(
         motivo=data.motivo,
     )
     historial_repo.crear(db, nuevo)
+
+    auditoria_service.registrar(
+        db,
+        contrato.empresa_id,
+        usuario_id,
+        "contratos",
+        contrato.id,
+        "cambio_salario",
+        empleado_id=contrato.empleado_id,
+        datos_anteriores={
+            "salario_base": str(salario_anterior),
+            "fecha_vigencia_desde": fecha_desde_anterior.isoformat(),
+        },
+        datos_nuevos={
+            "salario_base": str(nuevo.salario_base),
+            "fecha_vigencia_desde": nuevo.fecha_vigencia_desde.isoformat(),
+            "motivo": nuevo.motivo,
+        },
+    )
+
     db.commit()
     return nuevo
 

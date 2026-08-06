@@ -25,7 +25,7 @@ from app.repositories import parametros_isr as parametros_isr_repo
 from app.repositories import planillas as planillas_repo
 from app.repositories import tasas as tasas_repo
 from app.repositories import tramos_isr as tramos_isr_repo
-from app.services import decimo_service, vacaciones_service
+from app.services import auditoria_service, decimo_service, vacaciones_service
 
 # Períodos de pago por año según el tipo de planilla (no
 # contratos.periodicidad_pago -- el motor de Fase 6 es genérico por
@@ -122,6 +122,39 @@ def obtener_planilla(db: Session, planilla_id: uuid.UUID) -> Planilla:
 
 def listar_movimientos(db: Session, planilla_id: uuid.UUID) -> list[MovimientoPlanilla]:
     return movimientos_repo.listar_de_planilla(db, planilla_id)
+
+
+def aprobar_planilla(
+    db: Session, empresa_id: uuid.UUID, usuario_id: uuid.UUID, planilla: Planilla
+) -> Planilla:
+    """Transición borrador -> procesada (vocabulario del schema
+    original, `db/schema_nomina_panama.sql`: 'borrador','procesada',
+    'pagada','anulada' -- nunca implementada hasta esta fase). Cambio
+    mínimo: solo el estado + el registro de auditoría, sin bloquear ni
+    recalcular los movimientos ya generados."""
+    if planilla.estado != "borrador":
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"La planilla ya está en estado '{planilla.estado}', no se puede aprobar de nuevo.",
+        )
+
+    estado_anterior = planilla.estado
+    planilla.estado = "procesada"
+
+    auditoria_service.registrar(
+        db,
+        empresa_id,
+        usuario_id,
+        "planillas",
+        planilla.id,
+        "aprobada",
+        datos_anteriores={"estado": estado_anterior},
+        datos_nuevos={"estado": planilla.estado},
+    )
+
+    db.commit()
+    # Sin db.refresh(): rompería RLS igual que en el resto del proyecto.
+    return planilla
 
 
 def _calcular_movimiento_de_contrato(
