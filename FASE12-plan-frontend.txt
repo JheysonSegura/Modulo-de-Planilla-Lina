@@ -1,0 +1,158 @@
+FASE 12 - FRONTEND NUXT + NUXTUI
+================================================================
+Nomina Panama - implementada el 2026-08-06
+
+OBJETIVO
+--------
+Pantallas funcionales sobre el backend ya construido (14 fases):
+login + selector de empresa, empleados/contratos con historial
+salarial, horas extra, generacion/revision de planilla mensual,
+provisiones de decimo y vacaciones, y modulo de liquidaciones. Se
+pidio ademas revisar que pantallas faltaban dado el crecimiento del
+backend durante el desarrollo.
+
+ALCANCE AMPLIADO (acordado con el usuario antes de codear)
+--------------------------------------------------------------
+Se investigo la superficie completa de la API (13 routers) y se
+encontraron 3 huecos reales de backend necesarios para pantallas
+razonables. Se pregunto al usuario:
+1. GET /planillas (listado historico) -- no existia, solo GET
+   /planillas/{id} puntual. Se agrego siempre (trivial, sin decision
+   de negocio).
+2. Gestion de usuarios de la empresa (usuarios_empresas) -- el modelo
+   existia desde Fase 2 pero nunca se expuso via API. El usuario
+   eligio construirla.
+3. Parametros legales vigentes (CSS/SE/decimo, ISR, riesgo
+   profesional, salario minimo) -- sin endpoint de lectura. El
+   usuario eligio agregarla.
+
+PARTE A - BACKEND: 3 ANADIDOS
+--------------------------------
+A.1 GET /planillas?tipo=&estado= -- listado ordenado por periodo_fin
+    descendente, sin restriccion de rol.
+A.2 Gestion de usuarios de empresa (nuevo, admin-only):
+    - GET/POST/PATCH /empresas/actual/usuarios
+    - Si el email no existe, crea el Usuario (hash_password) + el
+      vinculo; si existe, solo vincula/reactiva.
+    - PATCH cambia rol o activo (desactivar = activo=false, sin
+      DELETE fisico -- el modelo ya tenia el campo).
+    - Guardia: nadie puede modificar su propio acceso (evita que un
+      admin se bloquee a si mismo) -- 422.
+    - Cada mutacion queda auditada en auditoria_cambios (tabla
+      "usuarios_empresas", acciones acceso_otorgado/rol_cambiado/
+      acceso_revocado/acceso_reactivado) -- coherente con la fase de
+      auditoria anterior aunque no se pidio explicitamente ahi.
+A.3 GET /tasas/vigentes, /tasas/isr, /tasas/riesgo-profesional,
+    /tasas/salario-minimo -- solo lectura, tablas nacionales sin
+    empresa_id/RLS (CLAUDE.md seccion 2), solo exigen login.
+Sin migraciones nuevas (ninguna tabla cambio de esquema). 97 tests
+backend pasando (81 previos + 16 nuevos: 2 planillas, 8
+usuarios_empresas, 6 tasas).
+
+PARTE B - FRONTEND: FUNDACION
+---------------------------------
+- nuxt.config.ts: se agrego runtimeConfig.public.apiBase (faltaba
+  declarar la clave -- NUXT_PUBLIC_API_BASE no llegaba a ningun lado
+  pese a que docker-compose.yml ya la inyectaba). Se puso ademas
+  ssr:false (app interna detras de login, sin necesidad de SSR/SEO --
+  evita toda la complejidad de sincronizar sesion servidor/cliente).
+- Paleta de marca aplicada en app.config.ts (ui.colors.primary=teal,
+  secondary=orange, neutral=gray) + escalas completas 50-950 en
+  main.css (el usuario dio anclas especificos, se interpolo el resto
+  -- NuxtUI necesita la escala completa para generar estados
+  hover/dark). Navy (sidebar) via variables CSS crudas, no como color
+  semantico de NuxtUI.
+- useAuth.ts: sesion global (tokens en cookies, usuario/empresa/rol en
+  useState), maneja login/listarEmpresas/seleccionarEmpresa/
+  hidratarSesion/refrescarSesion/logout.
+- useApi.ts: wrapper de $fetch para el resto de la app, reintenta una
+  vez tras refrescar el token si recibe 401.
+- middleware/auth.global.ts + plugins/auth.client.ts: guard de sesion
+  y de empresa activa; defensa en el cliente para rutas admin (el
+  backend solo valida rol en 2 endpoints reales, documentado como gap
+  conocido -- no se puede confiar solo en el backend para ocultar
+  secciones).
+- layouts/default.vue (sidebar navy) y layouts/publico.vue (login).
+
+PARTE C - PANTALLAS
+------------------------
+/login, /seleccionar-empresa, / (dashboard simple), /empleados
+(listado+alta+ficha), /empleados/[id]/contratos/nuevo,
+/empleados/[id]/contratos/[contratoId] (ficha con 8 tabs: Resumen,
+Historial salarial, Horas extra, Conceptos variables, Decimo,
+Vacaciones, Ausencias, Liquidacion), /planillas (listado+generar+
+generar-decimo+detalle con boton Aprobar), /auditoria (admin),
+/empresa (ver/editar region-actividad-tamano, admin), /empresa/usuarios
+(admin), /parametros-legales (informativo).
+
+13 composables de dominio (uno por modulo), todos delgados --
+ningun calculo de negocio se replica en el cliente, todo se muestra
+tal cual lo devuelve el backend (montos, desgloses de ISR/CSS,
+saldo_disponible ya calculado, etc.).
+
+BUGS ENCONTRADOS Y CORREGIDOS DURANTE LA VALIDACION EN NAVEGADOR
+---------------------------------------------------------------------
+1. CORS: el backend nunca tuvo CORSMiddleware configurado -- pytest
+   (TestClient) y curl no lo detectan porque no aplican same-origin
+   policy, solo un navegador real lo bloquea. Se agrego
+   `cors_allowed_origins` (nueva var de entorno, default
+   http://localhost:3000) + CORSMiddleware en app/main.py. Sin este
+   fix el frontend no podia hacer NINGUNA llamada al backend.
+2. Fechas corridas un dia: `new Date('2025-01-01').toLocaleDateString()`
+   sin fijar zona horaria interpreta la fecha como medianoche UTC y
+   la vuelve a convertir a la zona local del navegador -- en Panama
+   (UTC-5) esto corria toda fecha "pura" (sin hora) un dia hacia atras
+   (31/12/2024 en vez de 01/01/2025). Afectaba las 8 fechas de
+   contrato/historial/planilla/vacaciones/ausencias en 10 archivos.
+   Se centralizo en app/utils/fecha.ts (formatearFecha con
+   `timeZone:'UTC'`) y se removieron las 10 definiciones locales
+   duplicadas -- fix + limpieza de duplicacion a la vez. Los
+   timestamps reales (auditoria.created_at) NO se tocaron: esos SI
+   deben mostrarse en hora local, es un dato correcto que llevar a
+   UTC habria sido el bug.
+
+VALIDACION MANUAL (navegador real, criterio explicito del usuario:
+"navega el flujo completo login -> seleccionar empresa -> ver
+empleado -> generar planilla -> aprobar")
+-----------------------------------------------------------------------
+Flujo completo verificado con Chrome real contra el backend/frontend
+de desarrollo (dev@nomina.internal, empresa unica -> auto-seleccion,
+sin pantalla de seleccion manual en este caso):
+1. Login -> dashboard con accesos directos.
+2. Crear empleado "Maria Gonzalez Prueba".
+3. Crear contrato indefinido, $1500/mes, quincenal.
+4. Ficha del contrato: 8 tabs renderizan, fecha de inicio correcta
+   (01/01/2025), salario vigente correcto.
+5. Generar planilla mensual 01/01-31/01/2025: CSS empleado $146.25
+   (9.75% exacto), Seguro Educativo $18.75 (1.25% exacto), ISR
+   $106.25, neto $1228.75 -- nombre del empleado resuelto
+   correctamente desde contrato_id.
+6. Aprobar planilla -> estado borrador->procesada, boton desaparece.
+7. Auditoria muestra el evento "planillas aprobada" con antes/despues
+   legible.
+8. Parametros legales muestra las 8 tasas nacionales + tabla ISR con
+   datos reales.
+Datos de prueba limpiados al cerrar (empleados, contratos,
+historial_salarial, planillas, movimientos_planilla,
+provisiones_decimo/vacaciones, auditoria_cambios -- orden FK-safe).
+
+VERIFICACION
+------------
+- Backend: docker compose run --rm backend pytest -q (97/97 pasan)
+- Frontend: npm run typecheck (0 errores), npm run lint (0 errores
+  tras eslint --fix)
+- Navegacion real end-to-end con Chrome (ver arriba)
+
+PENDIENTE / LIMITACIONES CONOCIDAS
+-------------------------------------
+- El backend solo valida rol admin en 2 endpoints reales (PATCH
+  /empresas/actual, GET /auditoria, y ahora los 3 de
+  /empresas/actual/usuarios) -- el resto de escrituras (crear
+  contrato, generar planilla, aprobar, etc.) no restringe por rol
+  todavia. El frontend oculta/redirige en el cliente pero eso no es
+  seguridad real -- si se necesita, es una fase de backend aparte.
+- No hay descarga de PDF/recibo de pago ni reporte consolidado de
+  planilla -- no se penso como parte de esta fase.
+- El formulario de "agregar usuario" no envia invitacion por email
+  (no hay infraestructura de correo en el proyecto) -- el admin debe
+  comunicar la contraseña inicial por fuera del sistema.

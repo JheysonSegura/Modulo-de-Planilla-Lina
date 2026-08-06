@@ -120,6 +120,7 @@ Todas las tasas y tramos viven en BD (`tasas_vigentes`, `tramos_isr`, `salario_m
 - **Fase 11 (ausencias e incapacidades) implementada 2026-08-06** — ver sección 4 y `FASE11-plan-ausencias.txt`. **Pendiente de confirmar con el contador**: si el Decreto 221/1971 del décimo usa la misma regla de "15 días/11 meses con 3 excepciones" del Art. 208 CT que se aplicó por analogía, o una regla propia (no se pudo verificar el texto del decreto).
 - **Fase 12 (acumulación de hasta 2 períodos de vacaciones, Art. 59 CT) implementada 2026-08-06** — ver sección 4 y `FASE12-plan-acumulacion-vacaciones.txt`. Sin puntos pendientes de confirmar (el texto del Art. 59 se verificó completo contra `código-detrabajo.pdf`); la única limitación documentada es que el sistema no tramita la notificación real a la autoridad de trabajo, queda como campo informativo.
 - **Fase 13 (liquidaciones: salarios caídos Art. 219/220 + penalidad Art. 222) implementada 2026-08-06** — ver sección 4 y `FASE13-plan-liquidaciones-ext.txt`. Texto legal verificado completo contra `código-detrabajo.pdf`, sin puntos de interpretación pendientes; sigue bajo la marca "validar con el contador antes de usar en un caso real" heredada de la Fase 10 (uso práctico, no interpretación del texto). **Roadmap de 3 fases completo** (Fases 11, 12, 13) — ver `ROADMAP-fases11-13-deuda-tecnica.txt`.
+- **Frontend implementado 2026-08-06** (spec del usuario etiquetada también "Fase 12", sin relación con la Fase 12 del roadmap de deuda técnica — ver `FASE12-plan-frontend.txt`, nombre de archivo distinto a propósito). Cubre login, empleados/contratos con historial salarial, horas extra, planillas (generar/aprobar/listar), décimo, vacaciones, ausencias, liquidaciones, auditoría, empresa, gestión de usuarios y parámetros legales. Incluyó 3 añadidos mínimos de backend (`GET /planillas`, gestión de `usuarios_empresas`, endpoints de solo lectura `/tasas/*`) acordados con el usuario antes de codear. El backend solo valida rol admin en 4 endpoints reales (`PATCH /empresas/actual`, `GET /auditoria`, y los 3 de `/empresas/actual/usuarios`) — el resto de escrituras no restringe por rol todavía, el frontend solo oculta/redirige en el cliente (no es seguridad real). No hay descarga de PDF/recibo de pago.
 
 ## 7. Convenciones de código
 
@@ -134,9 +135,13 @@ Todas las tasas y tramos viven en BD (`tasas_vigentes`, `tramos_isr`, `salario_m
 - El aislamiento entre empresas se hace con políticas RLS en Postgres, no solo con `WHERE empresa_id = ...` en el código de aplicación (defensa en profundidad).
 - La sesión de BD fija el `empresa_id` activo (ej. `SET app.current_empresa_id`) al inicio de cada request, según la empresa que el usuario tiene seleccionada en ese momento.
 
-### Frontend (Nuxt + NuxtUI)
-- Composables para llamadas a la API; nada de lógica de negocio en componentes.
+### Frontend (Nuxt 4 + NuxtUI v4, SPA — `ssr: false`, app interna detrás de login)
+- Composables para llamadas a la API (`app/composables/use{Dominio}.ts`, uno por módulo del backend); nada de lógica de negocio en componentes.
 - Los cálculos de nómina **nunca** se replican en el frontend — el frontend solo muestra lo que el backend calculó. Esto evita que frontend y backend diverjan en la interpretación de la ley.
+- Fechas puras (sin hora — `fecha_inicio`, `periodo_fin`, etc.) se formatean con `app/utils/fecha.ts::formatearFecha`, que fija `timeZone: 'UTC'`. **Nunca** usar `new Date(fechaPura).toLocaleDateString()` directo — sin fijar UTC, el día se corre hacia atrás en cualquier zona detrás de UTC (bug real encontrado y corregido en la Fase 12 frontend). Timestamps reales (`created_at`, con hora) sí deben mostrarse en hora local, no llevar a UTC.
+- `useAuth.ts` (sesión: tokens en cookies, usuario/empresa/rol en `useState`) y `useApi.ts` (cliente HTTP genérico, reintenta una vez tras refrescar el token ante un 401) son la base de todo lo demás — no llamar a `$fetch` directo desde una página/composable de dominio.
+- El backend requiere `CORS_ALLOWED_ORIGINS` (`app/core/config.py` + `CORSMiddleware` en `app/main.py`) para aceptar llamadas del frontend — sin esto, pytest/curl no lo detectan (no aplican same-origin policy) pero un navegador real bloquea todo. Si se agrega un nuevo origen de frontend (otro puerto, un dominio de staging), hay que sumarlo ahí.
+- El backend solo valida rol por endpoint en 4 lugares reales (ver sección 6) — el resto de las restricciones de rol que aplica el frontend (ocultar links, redirigir en `middleware/auth.global.ts`) son solo UX, no seguridad real todavía.
 
 ### General
 - Una rama por feature, commits pequeños y descriptivos.

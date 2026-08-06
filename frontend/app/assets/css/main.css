@@ -1,18 +1,57 @@
 @import "tailwindcss";
 @import "@nuxt/ui";
 
+/* Paleta de marca (Nómina Panamá). Los anclas exactos vienen del
+   diseño; los pasos intermedios/extremos de cada escala (50-950) se
+   interpolaron porque NuxtUI necesita la escala Tailwind completa
+   para generar los estados (hover/active/dark) de sus componentes --
+   ver FASE12-plan-frontend.txt (o el plan de esta fase) para el
+   detalle. Si el diseño trae una escala oficial completa más
+   adelante, este es el único archivo a tocar. */
 @theme static {
   --font-sans: 'Public Sans', sans-serif;
 
-  --color-green-50: #EFFDF5;
-  --color-green-100: #D9FBE8;
-  --color-green-200: #B3F5D1;
-  --color-green-300: #75EDAE;
-  --color-green-400: #00DC82;
-  --color-green-500: #00C16A;
-  --color-green-600: #00A155;
-  --color-green-700: #007F45;
-  --color-green-800: #016538;
-  --color-green-900: #0A5331;
-  --color-green-950: #052E16;
+  /* Teal -- color de marca principal (primary) */
+  --color-teal-50: #EFFAFB;
+  --color-teal-100: #D9F1F3;
+  --color-teal-200: #B3E3E8;
+  --color-teal-300: #6FBCC6;
+  --color-teal-400: #3FA6B2;
+  --color-teal-500: #1C8E9C;
+  --color-teal-600: #137D8C;
+  --color-teal-700: #0E6E7C;
+  --color-teal-800: #0A5561;
+  --color-teal-900: #073E47;
+  --color-teal-950: #042931;
+
+  /* Orange -- acento / CTA (secondary) */
+  --color-orange-50: #FEF5EC;
+  --color-orange-100: #FDE7D0;
+  --color-orange-200: #FBCCA0;
+  --color-orange-300: #F8B072;
+  --color-orange-400: #F5AC4D;
+  --color-orange-500: #F0982E;
+  --color-orange-600: #E8823C;
+  --color-orange-700: #C86A2E;
+  --color-orange-800: #A8541F;
+  --color-orange-900: #814018;
+  --color-orange-950: #4A2410;
+
+  /* Gray -- neutros (neutral) */
+  --color-gray-50: #FBFBFC;
+  --color-gray-100: #F4F5F6;
+  --color-gray-200: #E7E9EB;
+  --color-gray-300: #D8DCDF;
+  --color-gray-400: #A0A6AC;
+  --color-gray-500: #868D94;
+  --color-gray-600: #6B7280;
+  --color-gray-700: #52585E;
+  --color-gray-800: #3B3F44;
+  --color-gray-900: #2B2F33;
+  --color-gray-950: #1A1C1F;
+
+  /* Navy -- fondo de sidebar / superficies oscuras (uso directo vía
+     var(), no es un slot semántico de ui.colors) */
+  --color-navy-800: #0D2B4E;
+  --color-navy-900: #0A2540;
 }

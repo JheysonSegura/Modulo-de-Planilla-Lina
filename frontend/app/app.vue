@@ -18,20 +18,8 @@ useSeoMeta({
 
 <template>
   <UApp>
-    <UHeader>
-      <template #left>
-        <NuxtLink to="/" class="font-semibold">
-          Nómina Panamá
-        </NuxtLink>
-      </template>
-
-      <template #right>
-        <UColorModeButton />
-      </template>
-    </UHeader>
-
-    <UMain>
+    <NuxtLayout>
       <NuxtPage />
-    </UMain>
+    </NuxtLayout>
   </UApp>
 </template>
