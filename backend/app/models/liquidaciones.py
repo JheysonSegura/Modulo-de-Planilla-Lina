@@ -42,6 +42,18 @@ class Liquidacion(Base):
     otras_deducciones: Mapped[decimal.Decimal] = mapped_column(
         Numeric(12, 2), nullable=False, server_default="0"
     )
+    # Art. 219/220 CT (Fase 13): captura manual -- depende de una
+    # sentencia judicial de reintegro que el sistema no puede calcular.
+    salarios_caidos: Mapped[decimal.Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, server_default="0"
+    )
+    referencia_sentencia: Mapped[str | None] = mapped_column(String(100))
+    # Art. 222 CT (Fase 13): 1 semana de salario si el trabajador
+    # renuncia sin dar el aviso previo exigido (solo motivo
+    # renuncia_voluntaria).
+    penalidad_renuncia_sin_aviso: Mapped[decimal.Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, server_default="0"
+    )
     monto_total: Mapped[decimal.Decimal] = mapped_column(
         Numeric(12, 2), nullable=False, server_default="0"
     )

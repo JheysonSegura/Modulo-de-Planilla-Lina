@@ -44,6 +44,7 @@ class ContratoCreate(_ExencionSalarioMinimoMixin):
     periodicidad_pago: PeriodicidadPago = "quincenal"
     fecha_registro_mitradel: datetime.date | None = None
     salario_base: decimal.Decimal = Field(gt=0)
+    es_tecnico: bool = False
 
 
 class ContratoUpdate(_ExencionSalarioMinimoMixin):
@@ -60,6 +61,7 @@ class ContratoUpdate(_ExencionSalarioMinimoMixin):
     fecha_registro_mitradel: datetime.date | None = None
     estado: EstadoContrato | None = None
     motivo_terminacion: str | None = Field(default=None, max_length=50)
+    es_tecnico: bool | None = None
     # La validación heredada de _ExencionSalarioMinimoMixin ya cubre este
     # campo: si queda en None (no se tocó) no exige motivo; si se manda
     # True explícitamente, sigue exigiéndolo.
@@ -83,6 +85,7 @@ class ContratoOut(BaseModel):
     motivo_terminacion: str | None
     exento_salario_minimo: bool
     motivo_exencion_salario_minimo: str | None
+    es_tecnico: bool
 
 
 class CambiarSalarioRequest(BaseModel):

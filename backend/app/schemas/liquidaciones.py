@@ -19,6 +19,15 @@ class GenerarLiquidacionRequest(BaseModel):
     motivo: MotivoTerminacion
     fecha_terminacion: datetime.date
     otras_deducciones: decimal.Decimal = Field(default=decimal.Decimal("0"), ge=0)
+    # Art. 219/220 CT: captura manual -- depende de una sentencia
+    # judicial de reintegro que el sistema no puede calcular.
+    monto_salarios_caidos: decimal.Decimal = Field(default=decimal.Decimal("0"), ge=0)
+    referencia_sentencia: str | None = Field(default=None, max_length=100)
+    # Art. 222 CT: fecha en que el trabajador notificó su renuncia (para
+    # medir si el aviso previo fue suficiente). Si no se manda, NO se
+    # evalúa la penalidad -- es un dato opcional que hay que capturar
+    # explícitamente, ausencia de dato no implica incumplimiento.
+    fecha_aviso_renuncia: datetime.date | None = None
 
 
 class LiquidacionOut(BaseModel):
@@ -35,5 +44,8 @@ class LiquidacionOut(BaseModel):
     indemnizacion: decimal.Decimal
     preaviso: decimal.Decimal
     otras_deducciones: decimal.Decimal
+    salarios_caidos: decimal.Decimal
+    referencia_sentencia: str | None
+    penalidad_renuncia_sin_aviso: decimal.Decimal
     monto_total: decimal.Decimal
     estado: str

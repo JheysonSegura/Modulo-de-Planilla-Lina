@@ -1,0 +1,144 @@
+FASE 13 - LIQUIDACIONES: SALARIOS CAIDOS (ART.219/220) Y ART.222
+================================================================
+Nomina Panama - plan aprobado el 2026-08-06 (diseno ya resuelto en
+ROADMAP-fases11-13-deuda-tecnica.txt, este archivo lo detalla a nivel
+de implementacion)
+
+FUENTE LEGAL
+------------
+Codigo de Trabajo, texto extraido de codigo-detrabajo.pdf el
+2026-08-06 (ver conversacion de la Fase 11):
+
+Art. 219/220 (salarios caidos): aplican solo en un proceso judicial de
+reintegro (despido injustificado impugnado ante un juez/junta). La
+sentencia ordena el reintegro y, si el empleador prefiere no
+reincorporar, paga una indemnizacion con un RECARGO de 50% o 25% segun
+la antiguedad del trabajador al momento de la Ley 44/1995 ("los que se
+encuentren laborando en la empresa al momento de entrar en vigencia la
+ley" -> 50%; "los que entren a laborar a partir de la vigencia... y el
+empleador no este al dia en el fondo de cesantia" -> 25%), MAS los
+salarios caidos "en la forma que senale la sentencia respectiva". El
+sistema no puede calcular esto por si solo -- depende de una decision
+judicial que el sistema no tiene forma de conocer. Es, por diseno,
+captura manual (mismo criterio que "otras_deducciones", que ya existe
+en el modulo desde la Fase 10).
+
+Art. 222 (penalidad por renuncia sin aviso): "El trabajador podra dar
+por terminada la relacion de trabajo, sin causa justificada, mediante
+notificacion escrita al empleador con QUINCE DIAS de anticipacion,
+salvo que se trate de trabajador TECNICO, caso en el cual la
+notificacion debe darse con DOS MESES de anticipacion... El trabajador
+responsable de no realizar la notificacion previa... quedara obligado
+a pagarle al empleador una cantidad equivalente a UNA SEMANA DE
+SALARIOS, suma que podra ser deducida del importe de la prima de
+antiguedad de servicios, cuando tuviere derecho a ella."
+
+Solo aplica a motivo=renuncia_voluntaria -- el unico motivo que hoy no
+tiene ninguna rama especial en liquidaciones_service.py
+(MOTIVOS_CON_INDEMNIZACION/MOTIVOS_CON_PREAVISO no lo incluyen).
+
+DISENO DE DATOS
+----------------
+Migracion nueva (0024_liquidaciones_ext), encadenada tras
+0023_acumulacion_vacaciones:
+
+  ALTER TABLE contratos ADD COLUMN es_tecnico BOOLEAN NOT NULL DEFAULT false;
+  ALTER TABLE liquidaciones ADD COLUMN salarios_caidos NUMERIC(12,2) NOT NULL DEFAULT 0;
+  ALTER TABLE liquidaciones ADD COLUMN referencia_sentencia VARCHAR(100);
+  ALTER TABLE liquidaciones ADD COLUMN penalidad_renuncia_sin_aviso NUMERIC(12,2) NOT NULL DEFAULT 0;
+
+`es_tecnico` vive en contratos (no en empleados, mismo criterio que
+`cargo`) porque el aviso requerido depende del PUESTO del contrato
+vigente, no de la persona. No se toca RLS (ambas tablas ya lo tienen).
+
+CAMBIOS DE SERVICIO
+--------------------
+app/services/liquidaciones_service.py:
+
+- Nueva funcion _calcular_penalidad_renuncia_sin_aviso(contrato, motivo,
+  fecha_terminacion, fecha_aviso_renuncia) -> Decimal:
+    if motivo != "renuncia_voluntaria" or fecha_aviso_renuncia is None: return 0
+    # CORREGIDO durante la implementacion (2026-08-06): la version
+    # original de este plan decia "si fecha_aviso_renuncia es None, se
+    # asume que no hubo aviso" -- eso rompio un test de la Fase 10 que
+    # llamaba renuncia_voluntaria sin conocer este campo nuevo (cambio
+    # silencioso de 241.19 a -38.81 solo por agregar un campo opcional).
+    # Se corrigio: sin dato, NO se evalua la penalidad (mismo criterio
+    # que otras_deducciones/monto_salarios_caidos, ambos opt-in).
+    umbral_dias = 60 if contrato.es_tecnico else 15  # Art. 222: 15 dias, 2 meses si tecnico
+    dias_de_aviso = (fecha_terminacion - fecha_aviso_renuncia).days
+    if dias_de_aviso >= umbral_dias: return 0
+    return _salario_diario_vigente(contrato, fecha_terminacion) * 7  # 1 semana
+
+  Nota: "2 meses" se aproxima a 60 dias (no hay tipo "meses" en el
+  modelo de fechas del proyecto; mismo criterio de aproximacion usado
+  para "mes comercial de 30 dias" en el resto del sistema -- 60 en vez
+  de 61/62 exactos segun el mes, documentado como simplificacion).
+
+- generar_liquidacion: nuevos parametros opcionales
+  monto_salarios_caidos (Decimal, default 0), referencia_sentencia
+  (str | None), fecha_aviso_renuncia (date | None). Calcula
+  penalidad_renuncia_sin_aviso via la funcion nueva. La formula de
+  monto_total cambia de:
+      monto_total = salario_pendiente + decimo_proporcional + vacaciones_pendientes
+                    + prima_antiguedad + indemnizacion + preaviso - otras_deducciones
+  a:
+      monto_total = salario_pendiente + decimo_proporcional + vacaciones_pendientes
+                    + prima_antiguedad + indemnizacion + preaviso + salarios_caidos
+                    - otras_deducciones - penalidad_renuncia_sin_aviso
+
+  La penalidad se descuenta PRIMERO de prima_antiguedad si alcanza
+  (texto legal: "podra ser deducida del importe de la prima de
+  antiguedad... cuando tuviere derecho a ella") -- pero prima_antiguedad
+  ya es una columna separada que se reporta integra (el contador
+  necesita ver el monto bruto de cada concepto, no wsico neteado
+  silenciosamente). Se resuelve reportando penalidad_renuncia_sin_aviso
+  como su propio concepto (transparente) y dejando que sea el
+  monto_total el que refleje el neto -- no se resta directamente de la
+  columna prima_antiguedad. Esto es un cambio de criterio respecto al
+  texto legal literal ("deducida de la prima") en favor de
+  trazabilidad contable; documentado como decision explicita, no un
+  olvido.
+
+Router app/routers/liquidaciones.py + schema
+app/schemas/liquidaciones.py:
+  GenerarLiquidacionRequest gana 3 campos opcionales:
+    monto_salarios_caidos: Decimal = Field(default=Decimal("0"), ge=0)
+    referencia_sentencia: str | None = None
+    fecha_aviso_renuncia: date | None = None
+  LiquidacionOut expone las 3 columnas nuevas
+  (salarios_caidos/referencia_sentencia/penalidad_renuncia_sin_aviso).
+
+Tambien: `es_tecnico` se agrega a ContratoCreate/ContratoOut
+(app/schemas/contratos.py) como campo opcional (default false) --
+igual patron que exento_salario_minimo en Fase 4.
+
+TESTS (tests/test_liquidaciones.py, casos nuevos)
+----------------------------------------------------
+1. renuncia_voluntaria sin fecha_aviso_renuncia -> penalidad de 1
+   semana de salario, se descuenta del total.
+2. renuncia_voluntaria con aviso de 20 dias (contrato no tecnico) ->
+   sin penalidad (20 >= 15).
+3. renuncia_voluntaria tecnico con aviso de 20 dias (menor a 60) ->
+   penalidad aplica.
+4. despido_injustificado con monto_salarios_caidos capturado -> se
+   suma al total, aparece en el desglose de la respuesta.
+5. despido_justificado (no renuncia_voluntaria) sin
+   fecha_aviso_renuncia -> sin penalidad (el motivo no es
+   renuncia_voluntaria, Art. 222 no aplica).
+
+VERIFICACION
+------------
+- docker compose run --rm backend alembic upgrade head
+- docker compose run --rm backend pytest -q (debe seguir en verde,
+  hoy 69/69, sin regresiones)
+
+PENDIENTE, NO BLOQUEANTE (heredado de la Fase 10)
+-----------------------------------------------------
+El modulo de liquidaciones completo (incluida esta extension) sigue
+con la marca "validar con el contador antes de usar en un caso real"
+de la Fase 10 original -- no se debe reportar como cerrado sin esa
+confirmacion. A diferencia de la Fase 11 (decimo/ausencias), aqui el
+texto legal (Art. 219/220/222) SI se verifico completo contra
+codigo-detrabajo.pdf -- lo pendiente de confirmar es el uso practico
+de estos conceptos por el contador, no la interpretacion del texto.

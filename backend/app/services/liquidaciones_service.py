@@ -22,6 +22,12 @@ DIAS_SEIS_MESES = 182
 DIAS_TREINTA = 30
 DIAS_CINCO_ANIOS = 1825
 SEMANA = decimal.Decimal("7")
+# Art. 222 CT: aviso previo de renuncia de 15 días, o 2 meses si es
+# "trabajador técnico" -- se aproxima a 60 días (no hay tipo "meses" en
+# el modelo de fechas de este proyecto, mismo criterio de aproximación
+# que el mes comercial de 30 días usado en el resto del sistema).
+DIAS_AVISO_RENUNCIA_NORMAL = 15
+DIAS_AVISO_RENUNCIA_TECNICO = 60
 _CERO = decimal.Decimal("0")
 _CENTAVO = decimal.Decimal("0.01")
 
@@ -211,6 +217,36 @@ def _calcular_preaviso(
     )
 
 
+def _calcular_penalidad_renuncia_sin_aviso(
+    db: Session,
+    contrato: Contrato,
+    motivo: str,
+    fecha_terminacion: datetime.date,
+    fecha_aviso_renuncia: datetime.date | None,
+) -> decimal.Decimal:
+    """Art. 222 CT: el trabajador puede renunciar sin causa justificada
+    dando aviso escrito con 15 días de anticipación (2 meses si es
+    "trabajador técnico", contrato.es_tecnico). Si no da ese aviso,
+    "quedará obligado a pagarle al empleador una cantidad equivalente a
+    una semana de salarios". Solo aplica a renuncia_voluntaria -- el
+    único motivo sin ninguna otra rama especial en este servicio.
+
+    Sin `fecha_aviso_renuncia` NO se asume que faltó el aviso: es un
+    dato opcional (mismo criterio que `otras_deducciones`/
+    `monto_salarios_caidos`) que el usuario debe capturar
+    explícitamente para que el sistema evalúe la penalidad -- ausencia
+    de dato no es evidencia de incumplimiento."""
+    if motivo != "renuncia_voluntaria" or fecha_aviso_renuncia is None:
+        return _CERO
+
+    umbral_dias = DIAS_AVISO_RENUNCIA_TECNICO if contrato.es_tecnico else DIAS_AVISO_RENUNCIA_NORMAL
+    dias_de_aviso = (fecha_terminacion - fecha_aviso_renuncia).days
+    if dias_de_aviso >= umbral_dias:
+        return _CERO
+
+    return (SEMANA * _salario_diario_vigente(db, contrato, fecha_terminacion)).quantize(_CENTAVO)
+
+
 def generar_liquidacion(
     db: Session,
     empresa_id: uuid.UUID,
@@ -218,6 +254,9 @@ def generar_liquidacion(
     motivo: str,
     fecha_terminacion: datetime.date,
     otras_deducciones: decimal.Decimal = _CERO,
+    monto_salarios_caidos: decimal.Decimal = _CERO,
+    referencia_sentencia: str | None = None,
+    fecha_aviso_renuncia: datetime.date | None = None,
 ) -> Liquidacion:
     if motivo not in MOTIVOS_VALIDOS:
         raise HTTPException(
@@ -254,6 +293,9 @@ def generar_liquidacion(
     prima_antiguedad = _calcular_prima_antiguedad(db, contrato, fecha_terminacion)
     indemnizacion = _calcular_indemnizacion(db, contrato, motivo, fecha_terminacion)
     preaviso = _calcular_preaviso(db, contrato, motivo, fecha_terminacion)
+    penalidad_renuncia_sin_aviso = _calcular_penalidad_renuncia_sin_aviso(
+        db, contrato, motivo, fecha_terminacion, fecha_aviso_renuncia
+    )
 
     monto_total = (
         salario_pendiente
@@ -262,7 +304,9 @@ def generar_liquidacion(
         + prima_antiguedad
         + indemnizacion
         + preaviso
+        + monto_salarios_caidos
         - otras_deducciones
+        - penalidad_renuncia_sin_aviso
     ).quantize(_CENTAVO)
 
     liquidacion = Liquidacion(
@@ -277,6 +321,9 @@ def generar_liquidacion(
         indemnizacion=indemnizacion,
         preaviso=preaviso,
         otras_deducciones=otras_deducciones,
+        salarios_caidos=monto_salarios_caidos,
+        referencia_sentencia=referencia_sentencia,
+        penalidad_renuncia_sin_aviso=penalidad_renuncia_sin_aviso,
         monto_total=monto_total,
         estado="borrador",
     )

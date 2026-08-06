@@ -80,6 +80,11 @@ class Contrato(Base):
         Boolean, nullable=False, server_default="false"
     )
     motivo_exencion_salario_minimo: Mapped[str | None] = mapped_column(String(200))
+    # Art. 222 CT: el aviso de renuncia exigido es de 15 días, salvo
+    # "trabajador técnico", que requiere 2 meses -- usado en
+    # liquidaciones_service para la penalidad por renuncia sin aviso
+    # (Fase 13).
+    es_tecnico: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

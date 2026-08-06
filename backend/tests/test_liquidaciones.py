@@ -28,6 +28,7 @@ def _crear_empleado_con_contrato(
     tipo_contrato="indefinido",
     fecha_fin_pactada=None,
     salario_base=SALARIO,
+    es_tecnico=False,
 ):
     resp = client.post(
         "/empleados",
@@ -42,6 +43,7 @@ def _crear_empleado_con_contrato(
         "cargo": "Prueba liquidacion",
         "fecha_inicio": fecha_inicio.isoformat(),
         "salario_base": str(salario_base),
+        "es_tecnico": es_tecnico,
     }
     if fecha_fin_pactada is not None:
         body["fecha_fin_pactada"] = fecha_fin_pactada.isoformat()
@@ -66,12 +68,24 @@ def _generar_planilla(client, headers, tipo, periodo_inicio, periodo_fin):
     return resp.json()
 
 
-def _generar_liquidacion(client, headers, contrato_id, motivo, fecha_terminacion):
-    return client.post(
-        f"/contratos/{contrato_id}/liquidacion",
-        json={"motivo": motivo, "fecha_terminacion": fecha_terminacion.isoformat()},
-        headers=headers,
-    )
+def _generar_liquidacion(
+    client,
+    headers,
+    contrato_id,
+    motivo,
+    fecha_terminacion,
+    monto_salarios_caidos=None,
+    referencia_sentencia=None,
+    fecha_aviso_renuncia=None,
+):
+    body = {"motivo": motivo, "fecha_terminacion": fecha_terminacion.isoformat()}
+    if monto_salarios_caidos is not None:
+        body["monto_salarios_caidos"] = str(monto_salarios_caidos)
+    if referencia_sentencia is not None:
+        body["referencia_sentencia"] = referencia_sentencia
+    if fecha_aviso_renuncia is not None:
+        body["fecha_aviso_renuncia"] = fecha_aviso_renuncia.isoformat()
+    return client.post(f"/contratos/{contrato_id}/liquidacion", json=body, headers=headers)
 
 
 def test_renuncia_voluntaria_sin_indemnizacion_ni_preaviso(client, db):
@@ -252,3 +266,135 @@ def test_generar_liquidacion_termina_el_contrato(client, db):
         client, headers, contrato_id, "renuncia_voluntaria", datetime.date(2025, 3, 1)
     )
     assert resp2.status_code == 409, resp2.text
+
+
+# --- Fase 13: salarios caídos (Art. 219/220 CT) y penalidad Art. 222 ---
+
+
+def test_renuncia_sin_datos_de_aviso_no_asume_penalidad(client, db):
+    headers = _preparar_empresa(db, client)
+    contrato_id = _crear_empleado_con_contrato(client, headers, datetime.date(2025, 1, 1))
+    _generar_planilla(client, headers, "mensual", datetime.date(2025, 1, 1), datetime.date(2025, 1, 31))
+
+    # Sin fecha_aviso_renuncia (dato no capturado) -> NO se asume que
+    # faltó el aviso, mismo total base de 241.19 que la Fase 10 (no
+    # romper cálculos ya cerrados solo por agregar un campo opcional).
+    resp = _generar_liquidacion(
+        client, headers, contrato_id, "renuncia_voluntaria", datetime.date(2025, 1, 30)
+    )
+    assert resp.status_code == 201, resp.text
+    liq = resp.json()
+
+    assert decimal.Decimal(str(liq["penalidad_renuncia_sin_aviso"])) == decimal.Decimal("0.00")
+    assert decimal.Decimal(str(liq["monto_total"])) == decimal.Decimal("241.19")
+
+
+def test_renuncia_con_aviso_insuficiente_aplica_penalidad_de_una_semana(client, db):
+    headers = _preparar_empresa(db, client)
+    contrato_id = _crear_empleado_con_contrato(client, headers, datetime.date(2025, 1, 1))
+    _generar_planilla(client, headers, "mensual", datetime.date(2025, 1, 1), datetime.date(2025, 1, 31))
+
+    # Aviso dado el mismo día de la terminación (0 días de anticipación,
+    # muy por debajo de los 15 exigidos) -> penalidad = 7*40.00 = 280.00.
+    resp = _generar_liquidacion(
+        client,
+        headers,
+        contrato_id,
+        "renuncia_voluntaria",
+        datetime.date(2025, 1, 30),
+        fecha_aviso_renuncia=datetime.date(2025, 1, 30),
+    )
+    assert resp.status_code == 201, resp.text
+    liq = resp.json()
+
+    assert decimal.Decimal(str(liq["penalidad_renuncia_sin_aviso"])) == decimal.Decimal("280.00")
+    # 241.19 - 280.00 = -38.81
+    assert decimal.Decimal(str(liq["monto_total"])) == decimal.Decimal("-38.81")
+
+
+def test_renuncia_con_aviso_de_20_dias_no_aplica_penalidad(client, db):
+    headers = _preparar_empresa(db, client)
+    contrato_id = _crear_empleado_con_contrato(client, headers, datetime.date(2025, 1, 1))
+    _generar_planilla(client, headers, "mensual", datetime.date(2025, 1, 1), datetime.date(2025, 1, 31))
+
+    # 20 días de aviso (10-ene a 30-ene) >= 15 días exigidos (contrato
+    # no técnico) -> sin penalidad, mismo total base de 241.19.
+    resp = _generar_liquidacion(
+        client,
+        headers,
+        contrato_id,
+        "renuncia_voluntaria",
+        datetime.date(2025, 1, 30),
+        fecha_aviso_renuncia=datetime.date(2025, 1, 10),
+    )
+    assert resp.status_code == 201, resp.text
+    liq = resp.json()
+
+    assert decimal.Decimal(str(liq["penalidad_renuncia_sin_aviso"])) == decimal.Decimal("0.00")
+    assert decimal.Decimal(str(liq["monto_total"])) == decimal.Decimal("241.19")
+
+
+def test_renuncia_tecnico_con_aviso_de_20_dias_si_aplica_penalidad(client, db):
+    headers = _preparar_empresa(db, client)
+    # Trabajador técnico: el aviso exigido es de 2 meses (60 días), no
+    # 15 -- 20 días de aviso no alcanza.
+    contrato_id = _crear_empleado_con_contrato(
+        client, headers, datetime.date(2025, 1, 1), es_tecnico=True
+    )
+    _generar_planilla(client, headers, "mensual", datetime.date(2025, 1, 1), datetime.date(2025, 1, 31))
+
+    resp = _generar_liquidacion(
+        client,
+        headers,
+        contrato_id,
+        "renuncia_voluntaria",
+        datetime.date(2025, 1, 30),
+        fecha_aviso_renuncia=datetime.date(2025, 1, 10),
+    )
+    assert resp.status_code == 201, resp.text
+    liq = resp.json()
+
+    assert decimal.Decimal(str(liq["penalidad_renuncia_sin_aviso"])) == decimal.Decimal("280.00")
+    assert decimal.Decimal(str(liq["monto_total"])) == decimal.Decimal("-38.81")
+
+
+def test_despido_injustificado_no_aplica_penalidad_aunque_no_haya_aviso(client, db):
+    # El Art. 222 solo aplica a renuncia_voluntaria -- un despido
+    # injustificado no lleva penalidad aunque no se mande
+    # fecha_aviso_renuncia (no tiene sentido pedirle aviso previo a
+    # quien fue despedido, no renunció).
+    headers = _preparar_empresa(db, client)
+    contrato_id = _crear_empleado_con_contrato(client, headers, datetime.date(2025, 1, 1))
+    _generar_planilla(client, headers, "mensual", datetime.date(2025, 1, 1), datetime.date(2025, 1, 31))
+
+    resp = _generar_liquidacion(
+        client, headers, contrato_id, "despido_injustificado", datetime.date(2025, 2, 15)
+    )
+    assert resp.status_code == 201, resp.text
+    liq = resp.json()
+
+    assert decimal.Decimal(str(liq["penalidad_renuncia_sin_aviso"])) == decimal.Decimal("0.00")
+    assert decimal.Decimal(str(liq["monto_total"])) == decimal.Decimal("2277.53")
+
+
+def test_salarios_caidos_se_suman_al_total_y_quedan_trazados(client, db):
+    headers = _preparar_empresa(db, client)
+    contrato_id = _crear_empleado_con_contrato(client, headers, datetime.date(2025, 1, 1))
+    _generar_planilla(client, headers, "mensual", datetime.date(2025, 1, 1), datetime.date(2025, 1, 31))
+
+    resp = _generar_liquidacion(
+        client,
+        headers,
+        contrato_id,
+        "despido_injustificado",
+        datetime.date(2025, 2, 15),
+        monto_salarios_caidos=decimal.Decimal("500.00"),
+        referencia_sentencia="Junta de Conciliación, expediente 123-2025",
+    )
+    assert resp.status_code == 201, resp.text
+    liq = resp.json()
+
+    assert decimal.Decimal(str(liq["salarios_caidos"])) == decimal.Decimal("500.00")
+    assert liq["referencia_sentencia"] == "Junta de Conciliación, expediente 123-2025"
+    # Base 2277.53 (ver test_despido_injustificado_trae_indemnizacion_y_preaviso) + 500.00
+    assert decimal.Decimal(str(liq["monto_total"])) == decimal.Decimal("2777.53")

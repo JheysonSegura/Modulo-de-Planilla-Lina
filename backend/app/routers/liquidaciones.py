@@ -25,7 +25,15 @@ def generar_liquidacion(
 ) -> Liquidacion:
     contrato = contratos_service.obtener_contrato(db, contrato_id)
     return liquidaciones_service.generar_liquidacion(
-        db, empresa_id, contrato, body.motivo, body.fecha_terminacion, body.otras_deducciones
+        db,
+        empresa_id,
+        contrato,
+        body.motivo,
+        body.fecha_terminacion,
+        body.otras_deducciones,
+        body.monto_salarios_caidos,
+        body.referencia_sentencia,
+        body.fecha_aviso_renuncia,
     )
 
 
