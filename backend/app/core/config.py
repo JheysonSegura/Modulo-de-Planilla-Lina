@@ -24,5 +24,15 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 15
     refresh_token_expire_days: int = 7
 
+    # Orígenes permitidos para llamadas cross-origin del frontend (Nuxt
+    # corre en un puerto distinto al backend incluso en desarrollo, así
+    # que el navegador exige CORS -- ver app/main.py). Lista separada
+    # por comas.
+    cors_allowed_origins: str = "http://localhost:3000"
+
+    @property
+    def cors_allowed_origins_list(self) -> list[str]:
+        return [origen.strip() for origen in self.cors_allowed_origins.split(",") if origen.strip()]
+
 
 settings = Settings()

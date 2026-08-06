@@ -12,3 +12,9 @@ def get_by_email(db: Session, email: str) -> Usuario | None:
 
 def get_by_id(db: Session, usuario_id: uuid.UUID) -> Usuario | None:
     return db.get(Usuario, usuario_id)
+
+
+def crear(db: Session, usuario: Usuario) -> Usuario:
+    db.add(usuario)
+    db.flush()
+    return usuario

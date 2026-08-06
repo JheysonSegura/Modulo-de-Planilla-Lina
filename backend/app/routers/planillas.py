@@ -1,7 +1,7 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_db_rls, get_empresa_activa_id, get_usuario_actual
@@ -10,6 +10,16 @@ from app.schemas.planillas import GenerarPlanillaRequest, MovimientoPlanillaOut,
 from app.services import planilla_service
 
 router = APIRouter(tags=["planillas"])
+
+
+@router.get("/planillas", response_model=list[PlanillaOut])
+def listar_planillas(
+    empresa_id: Annotated[uuid.UUID, Depends(get_empresa_activa_id)],
+    db: Annotated[Session, Depends(get_db_rls)],
+    tipo: Annotated[str | None, Query()] = None,
+    estado: Annotated[str | None, Query()] = None,
+) -> list[Planilla]:
+    return planilla_service.listar_planillas(db, empresa_id, tipo, estado)
 
 
 @router.post("/planillas/generar", response_model=PlanillaOut, status_code=201)

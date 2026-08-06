@@ -113,6 +113,12 @@ def generar_planilla(
     return planilla
 
 
+def listar_planillas(
+    db: Session, empresa_id: uuid.UUID, tipo: str | None = None, estado: str | None = None
+) -> list[Planilla]:
+    return planillas_repo.listar(db, empresa_id, tipo, estado)
+
+
 def obtener_planilla(db: Session, planilla_id: uuid.UUID) -> Planilla:
     planilla = planillas_repo.get(db, planilla_id)
     if planilla is None:

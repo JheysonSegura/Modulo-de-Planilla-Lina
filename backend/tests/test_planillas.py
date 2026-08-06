@@ -237,3 +237,44 @@ def test_planilla_quincenal_paga_medio_mes_comercial_no_dias_calendario_reales(c
     assert len(movimientos) == 1
     assert decimal.Decimal(str(movimientos[0]["salario_base_periodo"])) == decimal.Decimal("450.00")
     assert decimal.Decimal(str(movimientos[0]["salario_base_periodo"])) != decimal.Decimal("480.00")
+
+
+def test_listar_planillas_devuelve_solo_las_de_la_empresa_activa(client, db):
+    headers_a, _ = _preparar_empresa(db, client)
+    _crear_empleado_con_contrato(client, headers_a, datetime.date(2025, 1, 1), "900.00")
+    _generar_planilla(client, headers_a, "mensual", PERIODO_INICIO, PERIODO_FIN)
+
+    headers_b, _ = _preparar_empresa(db, client)
+    _crear_empleado_con_contrato(client, headers_b, datetime.date(2025, 1, 1), "900.00")
+    _generar_planilla(client, headers_b, "mensual", PERIODO_INICIO, PERIODO_FIN)
+
+    resp = client.get("/planillas", headers=headers_a)
+    assert resp.status_code == 200, resp.text
+    planillas = resp.json()
+    assert len(planillas) == 1
+    assert planillas[0]["periodo_inicio"] == PERIODO_INICIO.isoformat()
+
+
+def test_listar_planillas_filtra_por_estado_y_tipo(client, db):
+    headers, _ = _preparar_empresa(db, client)
+    _crear_empleado_con_contrato(client, headers, datetime.date(2025, 1, 1), "900.00")
+
+    resp = _generar_planilla(client, headers, "mensual", PERIODO_INICIO, PERIODO_FIN)
+    planilla_id = resp.json()["id"]
+    resp = _generar_planilla(
+        client, headers, "quincenal", datetime.date(2025, 4, 1), datetime.date(2025, 4, 15)
+    )
+    assert resp.status_code == 201, resp.text
+
+    resp = client.get("/planillas", params={"tipo": "mensual"}, headers=headers)
+    assert [p["id"] for p in resp.json()] == [planilla_id]
+
+    resp = client.post(f"/planillas/{planilla_id}/aprobar", headers=headers)
+    assert resp.status_code == 200, resp.text
+
+    resp = client.get("/planillas", params={"estado": "procesada"}, headers=headers)
+    assert [p["id"] for p in resp.json()] == [planilla_id]
+
+    resp = client.get("/planillas", params={"estado": "borrador"}, headers=headers)
+    assert len(resp.json()) == 1
+    assert resp.json()[0]["id"] != planilla_id

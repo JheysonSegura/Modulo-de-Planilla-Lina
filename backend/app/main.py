@@ -1,5 +1,7 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
+from app.core.config import settings
 from app.routers import (
     auditoria,
     auth,
@@ -13,10 +15,20 @@ from app.routers import (
     horas_extra,
     liquidaciones,
     planillas,
+    tasas,
+    usuarios_empresas,
     vacaciones,
 )
 
 app = FastAPI(title="Nómina Panamá API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_allowed_origins_list,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.include_router(health.router)
 app.include_router(auth.router)
@@ -31,3 +43,5 @@ app.include_router(vacaciones.router)
 app.include_router(liquidaciones.router)
 app.include_router(ausencias.router)
 app.include_router(auditoria.router)
+app.include_router(usuarios_empresas.router)
+app.include_router(tasas.router)

@@ -17,6 +17,21 @@ def get(db: Session, planilla_id: uuid.UUID) -> Planilla | None:
     return db.get(Planilla, planilla_id)
 
 
+def listar(
+    db: Session,
+    empresa_id: uuid.UUID,
+    tipo: str | None = None,
+    estado: str | None = None,
+) -> list[Planilla]:
+    stmt = select(Planilla).where(Planilla.empresa_id == empresa_id)
+    if tipo is not None:
+        stmt = stmt.where(Planilla.tipo == tipo)
+    if estado is not None:
+        stmt = stmt.where(Planilla.estado == estado)
+    stmt = stmt.order_by(Planilla.periodo_fin.desc())
+    return list(db.execute(stmt).scalars().all())
+
+
 def buscar_por_periodo(
     db: Session,
     empresa_id: uuid.UUID,
