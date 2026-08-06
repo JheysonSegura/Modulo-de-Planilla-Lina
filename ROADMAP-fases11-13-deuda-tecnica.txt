@@ -1,0 +1,150 @@
+ROADMAP FASES 11-13 - DEUDA TECNICA (AUSENCIAS, ART.59, LIQUIDACIONES)
+================================================================
+Nomina Panama - plan aprobado el 2026-08-06
+
+CONTEXTO
+--------
+CLAUDE.md y la memoria de proyecto documentaban 4 limitaciones
+conocidas del backend (10 fases + extensiones ya cerradas al
+2026-08-05). Se pidio un plan para cubrirlas. Se descarto la 4a
+(override de salario minimo por ocupacion especifica en empresas con
+roles mixtos) por decision explicita del usuario -- no hay cliente
+real que lo necesite todavia, y el propio CLAUDE.md ya decia
+"revisar si algun cliente real lo necesita" antes de construirlo.
+Este roadmap cubre las otras 3, en el orden que el usuario eligio:
+Ausencias -> Acumulacion de vacaciones (Art. 59) -> Liquidaciones
+(salarios caidos + Art. 222).
+
+Se verifico el texto real de los articulos relevantes en
+codigo-detrabajo.pdf (extraccion con pdftotext -layout, no de
+memoria -- mismo metodo usado en Fases 5/8/9/10). Dos hallazgos
+cambiaron el diseno respecto a lo que decia la nota de "limitacion
+conocida" en CLAUDE.md:
+
+1. Art. 59: la acumulacion de hasta 2 periodos de vacaciones NO es
+   automatica -- requiere un acuerdo explicito empleador-trabajador,
+   notificado a la autoridad de trabajo, con un descanso minimo
+   garantizado de 15 dias en el primer periodo.
+2. Art. 199/200/208: el efecto de una ausencia sobre "dias
+   trabajados" no es binario. Hay un "fondo de licencia por
+   incapacidad" (12h por cada 26 jornadas, hasta 144h/ano) que se
+   cubre con salario completo y no interrumpe nada -- solo cuando la
+   ausencia excede ese fondo se suspende el contrato, y de esas
+   suspensiones, solo se descuenta de vacaciones la porcion que
+   exceda 15 dias dentro de 11 meses, con 3 excepciones que nunca se
+   descuentan sin importar duracion: embarazo (Art.199.4),
+   accidente/enfermedad profesional (Art.199.5), huelga legal
+   (Art.199.7).
+
+Cada fase sigue el patron ya establecido en el proyecto: modelo de
+datos -> servicio -> migracion con RLS -> tests contra Postgres real
+-> archivo FASE{N}-plan-{tema}.txt de resumen al cerrar -> nunca
+commitear sin que se pida explicitamente.
+
+PUNTO SIN CERRAR -- LA FASE 11 NO SE DA POR CERRADA SOLO CON EL PLAN
+----------------------------------------------------------------------
+Igual que ISR y decimo, la Fase 11 (ausencias) tiene una pieza que
+este plan no puede cerrar por si solo: como trata el Decreto de
+Gabinete 221/1971 (el que rige el decimo, ley distinta al Codigo de
+Trabajo) las ausencias -- los PDFs de ese decreto en el repo
+resultaron ser solo portada/metadata al extraerles texto (paginas
+escaneadas sin texto legible). No hay forma de confirmar si el
+decimo usa la misma regla de "15 dias en 11 meses con 3 excepciones"
+del Codigo de Trabajo, o una regla propia. Se implementara por
+analogia, marcado explicitamente como pendiente de confirmar con el
+contador -- ver detalle completo en FASE11-plan-ausencias.txt.
+
+FASE 11 - AUSENCIAS E INCAPACIDADES
+------------------------------------
+Tabla nueva `ausencias` (contrato_id, tipo, fecha_desde, fecha_hasta,
+certificado_ref, empresa_id). Catalogo de 9 tipos (Art.199 CT), cada
+uno con su tratamiento para decimo y para vacaciones (ver tabla
+completa en FASE11-plan-ausencias.txt). Se resta de decimo_service y
+vacaciones_service dentro del mismo loop segment-aware que ya usan
+sobre historial_salarial. liquidaciones_service hereda el efecto
+automaticamente (ya reutiliza ambos servicios). Detalle completo,
+formula y tests: FASE11-plan-ausencias.txt.
+
+FASE 12 - ACUMULACION DE HASTA 2 PERIODOS DE VACACIONES (ART. 59)
+--------------------------------------------------------------------
+Depende de que la Fase 11 este cerrada (comparten vacaciones_service.py).
+
+provisiones_vacaciones.estado ya soporta 'abierto'/'liquidado' en el
+DDL pero 'liquidado' nunca se uso en codigo -- terreno libre. Cambios:
+- provisiones_vacaciones_repo.get_abierta pasa a get_abiertas
+  (lista de 0-2 filas).
+- Columna nueva `notificado_autoridad_trabajo` (Boolean default
+  false) -- registra el acuerdo exigido por el Art.59; el tramite
+  administrativo real queda fuera del sistema, es un checkbox.
+- Nueva funcion vacaciones_service.acumular_periodo(db, contrato,
+  fecha_acuerdo): solo permite un 2do periodo abierto si el actual
+  tiene al menos 15 dias de saldo sin gozar (minimo garantizado del
+  Art.59).
+- registrar_vacacion_tomada: suma saldo de todos los periodos
+  abiertos, descuenta FIFO (del mas antiguo primero).
+- Endpoint nuevo: POST /contratos/{id}/vacaciones-acumular.
+
+Tests nuevos en test_vacaciones.py: rechazo por saldo insuficiente,
+acumulacion correcta con 2 periodos, consumo FIFO, rechazo de un
+3er periodo (tope legal de 2).
+
+FASE 13 - LIQUIDACIONES: SALARIOS CAIDOS (ART.219/220) Y ART.222
+--------------------------------------------------------------------
+Independiente de las Fases 11/12.
+
+Salarios caidos (Art.219/220): confirmado que NO es una formula que
+el sistema pueda calcular solo -- depende de sentencia judicial de
+reintegro (recargo 50%/25% segun antiguedad + salarios caidos "en la
+forma que senale la sentencia"). Es, por diseno, captura manual:
+2 campos nuevos en GenerarLiquidacionRequest/Liquidacion,
+`monto_salarios_caidos` y `referencia_sentencia`, se suman directo
+al monto_total si vienen en el request.
+
+Penalidad Art.222 (renuncia sin aviso de 15 dias, 2 meses si es
+tecnico): texto confirmado -- el trabajador debe pagar al empleador
+el equivalente a 1 semana de salario, deducible de la prima de
+antiguedad si tuviera derecho a ella. Solo aplica con
+motivo=renuncia_voluntaria. Cambios: columna nueva `es_tecnico` en
+contratos (bool), campo `fecha_aviso_renuncia` en el request (si no
+se manda, se asume que no hubo aviso -- comportamiento conservador),
+nueva funcion _calcular_penalidad_renuncia_sin_aviso. A diferencia
+de todos los conceptos actuales (que suman), esta RESTA del
+monto_total, descontando primero de prima_antiguedad si alcanza.
+
+Tests nuevos en test_liquidaciones.py: penalidad aplica sin aviso,
+no aplica con aviso valido (15d / 2 meses segun es_tecnico), salarios
+caidos se suman y aparecen en el desglose, penalidad se descuenta de
+prima_antiguedad primero.
+
+ORDEN DE EJECUCION Y CHECKPOINTS
+---------------------------------
+1. Fase 11 (ausencias) -- plan detallado ya aprobado en
+   FASE11-plan-ausencias.txt. Codear -> migrar -> tests -> revision
+   manual con caso numerico antes de dar la fase por cerrada.
+2. Fase 12 (Art.59) -- plan corto (FASE12-plan-acumulacion-vacaciones.txt)
+   porque el diseno ya quedo resuelto en este documento.
+3. Fase 13 (liquidaciones) -- plan corto (FASE13-plan-liquidaciones-ext.txt).
+   El modulo de liquidaciones completo (incluida esta extension)
+   sigue con la marca "validar con el contador antes de usar en un
+   caso real" de la Fase 10 original.
+
+Cada fase se commitea por separado solo cuando se pida
+explicitamente al cerrarla, igual que todas las anteriores.
+
+VERIFICACION
+------------
+- docker compose run --rm backend pytest -q en verde despues de cada
+  fase (hoy 56/56, debe seguir subiendo sin regresiones).
+- Para cada fase, al menos un caso de verificacion manual via
+  curl/Postman contra el backend real, contrastado a mano.
+- Actualizar CLAUDE.md (secciones 4 y 6) y la memoria de proyecto al
+  cerrar cada fase, marcando claramente que quedo confirmado y que
+  sigue pendiente de contador -- mismo tratamiento que ISR/decimo/
+  riesgo profesional.
+
+FUERA DE ALCANCE (decision explicita del usuario, 2026-08-06)
+-----------------------------------------------------------------
+Override de salario minimo por ocupacion especifica en empresas con
+roles mixtos -- se deja documentado en CLAUDE.md como limitacion
+conocida, sin fase asignada, hasta que aparezca un cliente real que
+lo necesite.

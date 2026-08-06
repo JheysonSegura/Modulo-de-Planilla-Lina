@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.models import Contrato, ProvisionVacaciones
 from app.repositories import historial_salarial as historial_repo
 from app.repositories import provisiones_vacaciones as provisiones_vacaciones_repo
+from app.services import ausencias_service
 
 # Código de Trabajo, Art. 54.1: "Treinta días por cada once meses
 # continuos de trabajo, a razón de un día por cada once días al
@@ -34,12 +35,11 @@ def _calcular_dias_y_monto_acumulado(
     Fase 8) para que un cambio de salario a mitad del período se calcule
     con precisión, no con un promedio.
 
-    "Días trabajados" se simplifica a días calendario en que el
-    contrato estuvo activo -- no hay tabla de ausencias/licencias en
-    este proyecto todavía. El Art. 54.4 CT cuenta también como días
-    trabajados los descansos semanales, días de fiesta/duelo nacional y
-    licencias por enfermedad dentro de límites -- limitación conocida,
-    igual que en el décimo (Fase 8)."""
+    "Días trabajados" resta los días de ausencias que no cuentan según
+    ausencias_service (Fase 11, Art. 199/200/208 CT -- incluye la
+    regla de "solo se descuenta el exceso sobre 15 días" y las
+    excepciones de embarazo/riesgo profesional/huelga legal, que nunca
+    se descuentan)."""
     if fecha_corte < fecha_inicio_periodo:
         return _CERO, _CERO
 
@@ -55,6 +55,11 @@ def _calcular_dias_y_monto_acumulado(
         if efectivo_fin < efectivo_inicio:
             continue
         dias_calendario = decimal.Decimal((efectivo_fin - efectivo_inicio).days + 1)
+        dias_calendario -= ausencias_service.dias_no_contables(
+            db, contrato.id, efectivo_inicio, efectivo_fin, "vacaciones"
+        )
+        if dias_calendario < _CERO:
+            dias_calendario = _CERO
         salario_diario = segmento.salario_base / DIAS_MES_COMERCIAL
         dias_totales += dias_calendario / DIVISOR_VACACIONES
         monto_total += (dias_calendario / DIVISOR_VACACIONES) * salario_diario

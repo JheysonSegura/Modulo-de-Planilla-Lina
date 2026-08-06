@@ -12,6 +12,7 @@ from app.repositories import movimientos_planilla as movimientos_repo
 from app.repositories import planillas as planillas_repo
 from app.repositories import provisiones_decimo as provisiones_decimo_repo
 from app.repositories import tasas as tasas_repo
+from app.services import ausencias_service
 
 # Decreto de Gabinete N.221 de 1971, Art. 2: "Un día de salario por
 # cada once (11) días, o fracción, de trabajo efectivo". El decreto
@@ -71,10 +72,12 @@ def calcular_decimo_de_contrato(
     """décimo = (días trabajados / 11) × salario_diario, recorriendo
     cada segmento de historial_salarial que se solapa con el rango
     (para que un cambio de salario a mitad de cuatrimestre se calcule
-    con precisión, no con un promedio). No hay tabla de
-    ausencias/incapacidades en este proyecto todavía, así que "días
-    trabajados" se simplifica a días calendario en que el contrato
-    estuvo activo -- limitación conocida, ver FASE8-plan-decimo.txt."""
+    con precisión, no con un promedio). "Días trabajados" resta los
+    días de ausencias que no cuentan según ausencias_service (Fase 11)
+    -- tratamiento por analogía a la regla de vacaciones del Código de
+    Trabajo, PENDIENTE DE CONFIRMAR CON EL CONTADOR (el Decreto
+    221/1971 propio del décimo no se pudo verificar, ver
+    FASE11-plan-ausencias.txt)."""
     if fecha_corte < fecha_inicio_rango:
         return _CERO
 
@@ -87,6 +90,11 @@ def calcular_decimo_de_contrato(
         if efectivo_fin < efectivo_inicio:
             continue
         dias = decimal.Decimal((efectivo_fin - efectivo_inicio).days + 1)
+        dias -= ausencias_service.dias_no_contables(
+            db, contrato.id, efectivo_inicio, efectivo_fin, "decimo"
+        )
+        if dias < _CERO:
+            dias = _CERO
         salario_diario = segmento.salario_base / DIAS_MES_COMERCIAL
         total += (dias / DIVISOR_DECIMO) * salario_diario
 

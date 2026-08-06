@@ -1,0 +1,164 @@
+FASE 11 - AUSENCIAS E INCAPACIDADES
+================================================================
+Nomina Panama - plan propuesto el 2026-08-06, pendiente de tu aprobacion
+
+FUENTE LEGAL
+------------
+Codigo de Trabajo (codigo-detrabajo.pdf, ya en el repo desde Fase 5),
+texto extraido con pdftotext -layout, no de memoria/CLAUDE.md -- mismo
+criterio que Fases 8/9/10. Articulos revisados: 54.4, 199, 200, 208.
+
+Art. 199 (causas de suspension temporal del contrato, sin
+responsabilidad para ninguna parte): enfermedad/accidente no
+profesional que excede el fondo de licencia, arresto o prision
+preventiva, licencia sindical/del Estado, embarazo, accidente o
+enfermedad profesional, licencia autorizada por el empleador, huelga
+legal, fuerza mayor, incapacidad economica autorizada.
+
+Art. 200: desde el inicio del contrato el trabajador acumula un
+"fondo de licencia por incapacidad" de 12 horas por cada 26 jornadas
+servidas (hasta 144h/ano), que se disfruta CON SALARIO COMPLETO en
+caso de enfermedad/accidente no profesional. Mientras la ausencia
+quepa dentro de ese fondo, el contrato NO se suspende -- sigue
+pagandose normal, ya cubierto hoy porque el salario no cambia en
+historial_salarial. Solo cuando la incapacidad EXCEDE el fondo entra
+a jugar el Art. 199.1 (suspension, sin salario del empleador).
+
+Art. 208 (efecto de las suspensiones sobre vacaciones): el periodo de
+suspension NO afecta la antiguedad de servicio en general, PERO si el
+termino de suspension supera 15 dias dentro de 11 meses, el empleador
+SI descuenta esos dias al liquidar las vacaciones anuales -- excepto
+en los casos de los ordinales 4 (embarazo), 5 (accidente/enfermedad
+profesional) y 7 (huelga legal) del Art. 199, que nunca se descuentan
+sin importar la duracion.
+
+Art. 54.4 (vacaciones): confirma que cuentan como "dias trabajados"
+los descansos semanales, dias de fiesta/duelo nacional, licencias por
+enfermedad dentro de los limites del Art. 200, los casos del Art. 208,
+y otras interrupciones autorizadas por el empleador -- coincide con lo
+ya citado en CLAUDE.md, sin discrepancias.
+
+PUNTO SIN VERIFICAR CONTRA FUENTE PRIMARIA -- PEDIR CONFIRMACION AL CONTADOR
+-----------------------------------------------------------------------------
+El decimo tercer mes se rige por el Decreto de Gabinete 221 de 1971
+(ley DISTINTA al Codigo de Trabajo). Los dos PDFs de ese decreto que
+estan en el repo (decreto-de-gabinete-221-de-1971-dec-1-1971.pdf,
+"Decimo tercer mes MINISTERIO DE TRABAJO...pdf") resultaron ser solo
+portada/metadata al extraerles texto -- son 2 paginas escaneadas sin
+texto legible por pdftotext, igual que paso con el texto real del
+decreto en Fase 8 (que se resolvio entonces via OCR/lectura manual del
+usuario). No pude confirmar si el decreto 221 usa la misma regla de
+"15 dias en 11 meses con 3 excepciones" para el decimo, o una regla
+propia (o ninguna mencion, dejandolo fuera del alcance del decreto).
+
+Este plan implementa la MISMA regla del Art. 208 (Codigo de Trabajo)
+para el decimo POR ANALOGIA, marcada explicitamente como supuesto sin
+confirmar -- igual tratamiento que recibio el metodo de ISR antes de
+la confirmacion real del contador en Fase 7. No se debe dar esta parte
+por cerrada sin esa confirmacion.
+
+ARQUITECTURA
+------------
+Tabla nueva `ausencias`, independiente de historial_salarial (no es
+"segmento de salario", es un rango de fechas que se resta del calculo
+existente). Dos servicios consumidores (decimo_service,
+vacaciones_service) restan dias de ausencias no contables dentro del
+mismo loop segment-aware que ya usan sobre historial_salarial -- no se
+toca la logica de segmentacion por cambio de salario, solo se le resta
+un termino adicional al total de dias.
+
+DISENO DE DATOS
+----------------
+Tabla `ausencias` (migracion nueva, encadenada tras 0021_liquidaciones,
+CREATE TABLE + RLS en la misma migracion, patron identico a
+0016_rls_provisiones_decimo / 0020_rls_provisiones_vac):
+
+  id               UUID PK default uuid_generate_v4()
+  contrato_id      UUID NOT NULL REFERENCES contratos(id)
+  tipo             VARCHAR(30) NOT NULL
+  fecha_desde      DATE NOT NULL
+  fecha_hasta      DATE NOT NULL
+  certificado_ref  VARCHAR(100) NULL   -- referencia libre, informativo
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+  empresa_id       UUID REFERENCES empresas(id)
+
+Catalogo de `tipo` (validado en servicio, mismo criterio que `motivo`
+en liquidaciones -- sin tabla de catalogo aparte):
+
+  tipo                          | cuenta p/ decimo | cuenta p/ vacaciones
+  ------------------------------|-------------------|----------------------
+  enfermedad_dentro_fondo       | si (informativo)  | si
+  enfermedad_excede_fondo       | no (analogia, SIN CONFIRMAR) | solo excedente >15d/11m (Art.208)
+  embarazo                      | si                | si, sin excepcion (Art.199.4)
+  riesgo_profesional            | si                | si, sin excepcion (Art.199.5)
+  huelga_legal                  | si                | si, sin excepcion (Art.199.7)
+  licencia_sindical_o_estado    | no (analogia, SIN CONFIRMAR) | solo excedente >15d/11m
+  licencia_autorizada_empleador | no (analogia, SIN CONFIRMAR) | solo excedente >15d/11m
+  arresto_o_prision_preventiva  | no (analogia, SIN CONFIRMAR) | solo excedente >15d/11m
+  injustificada                 | no                | no
+
+FORMULA
+-------
+ausencias_service.dias_no_contables(contrato_id, fecha_inicio,
+fecha_fin, para: "decimo"|"vacaciones"):
+  - para="decimo": suma dias de ausencias con tipo NO contable para
+    decimo, dentro del rango.
+  - para="vacaciones": agrupa ausencias NO exceptuadas (todo menos
+    embarazo/riesgo_profesional/huelga_legal) en ventanas de 11 meses
+    desde el inicio del periodo abierto, descuenta solo el exceso
+    sobre 15 dias acumulados por ventana. embarazo/riesgo_profesional/
+    huelga_legal nunca descuentan, sin importar duracion.
+
+decimo_service.calcular_decimo_de_contrato y
+vacaciones_service._calcular_dias_y_monto_acumulado: dentro del loop
+existente sobre segmentos de historial_salarial, se resta
+dias_no_contables(...) del total de dias del segmento antes de
+multiplicar por salario_diario. No cambia la deteccion de segmentos.
+
+liquidaciones_service NO se toca -- ya reutiliza decimo_service /
+vacaciones_service para el proporcional, hereda el efecto
+automaticamente.
+
+CAPAS DE CODIGO
+----------------
+- Modelo: app/models/ausencias.py (clase Ausencia)
+- Repositorio: app/repositories/ausencias.py (crear, listar_de_contrato)
+- Servicio: app/services/ausencias_service.py (registrar_ausencia,
+  dias_no_contables)
+- Cambios en: app/services/decimo_service.py, app/services/vacaciones_service.py
+  (restar dias_no_contables en el loop existente)
+- Schemas: app/schemas/ausencias.py (AusenciaCreate, AusenciaOut)
+- Router: app/routers/ausencias.py, registrado en main.py
+    POST /contratos/{id}/ausencias
+    GET  /contratos/{id}/ausencias
+
+TESTS (backend/tests/test_ausencias.py)
+----------------------------------------
+Contra Postgres real, mismo patron que test_vacaciones.py/test_decimo.py:
+1. Ausencia `injustificada` reduce el decimo proporcionalmente.
+2. Ausencia `embarazo` de mas de 15 dias NO reduce vacaciones
+   (excepcion del Art. 208).
+3. Ausencia `enfermedad_excede_fondo` de 10 dias no reduce vacaciones
+   (bajo el umbral de 15); de 20 dias reduce solo 5.
+4. Generar planilla dos veces con una ausencia capturada entre medio
+   recalcula correcto (recalculo completo, no acumulativo -- mismo
+   patron ya validado en decimo/vacaciones).
+
+VERIFICACION
+------------
+- docker compose run --rm backend alembic upgrade head
+- docker compose run --rm backend pytest -q (debe seguir en verde,
+  hoy 56/56, sin regresiones)
+- Validacion manual con curl contra el backend real, contrastando a
+  mano al menos un caso con ausencia y uno sin ausencia.
+- Actualizar CLAUDE.md (seccion 4, decimo y vacaciones) marcando la
+  parte de decimo como "implementado por analogia, pendiente confirmar
+  con el contador" -- no reportar esta pieza como cerrada.
+
+PENDIENTE EXPLICITO -- NO NEGOCIABLE
+-------------------------------------
+"Confirmar con el contador si el Decreto 221/1971 del decimo aplica la
+misma regla de 15 dias/11 meses del Art. 208 del Codigo de Trabajo, o
+una regla propia." Mismo tratamiento que recibieron ISR y decimo antes
+de sus confirmaciones reales -- no dar esta pieza por cerrada sin esa
+confirmacion.

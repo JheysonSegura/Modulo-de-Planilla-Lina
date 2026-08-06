@@ -2,6 +2,7 @@ from fastapi import FastAPI
 
 from app.routers import (
     auth,
+    ausencias,
     conceptos_variables_pendientes,
     contratos,
     decimo,
@@ -27,3 +28,4 @@ app.include_router(planillas.router)
 app.include_router(decimo.router)
 app.include_router(vacaciones.router)
 app.include_router(liquidaciones.router)
+app.include_router(ausencias.router)

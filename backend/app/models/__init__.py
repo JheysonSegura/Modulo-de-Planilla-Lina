@@ -1,5 +1,6 @@
 from app.models.auditoria import AuditoriaCambio
 from app.models.auth import RefreshToken
+from app.models.ausencias import Ausencia
 from app.models.base import Base
 from app.models.conceptos_variables_pendientes import ConceptoVariablePendiente
 from app.models.empleados import Contrato, Empleado, HistorialSalarial
@@ -20,6 +21,7 @@ from app.models.usuarios import Usuario
 
 __all__ = [
     "Base",
+    "Ausencia",
     "Rol",
     "Usuario",
     "Empresa",
