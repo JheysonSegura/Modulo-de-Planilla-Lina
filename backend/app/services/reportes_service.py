@@ -27,7 +27,7 @@ _env = Environment(
     autoescape=select_autoescape(["html"]),
 )
 
-COLUMNAS_BOLETA_PAGO = [
+COLUMNAS_RECIBO_PAGO = [
     ("empleado_nombre", "Empleado"),
     ("empleado_identificacion", "Identificación"),
     ("cargo", "Cargo"),
@@ -44,7 +44,7 @@ COLUMNAS_BOLETA_PAGO = [
     ("salario_neto", "Salario neto"),
 ]
 
-COLUMNAS_BOLETA_VACACION = [
+COLUMNAS_RECIBO_VACACION = [
     ("empleado_nombre", "Empleado"),
     ("empleado_identificacion", "Identificación"),
     ("fecha", "Fecha"),
@@ -54,7 +54,7 @@ COLUMNAS_BOLETA_VACACION = [
     ("saldo_despues", "Saldo después"),
 ]
 
-COLUMNAS_BOLETA_LIQUIDACION = [
+COLUMNAS_RECIBO_LIQUIDACION = [
     ("empleado_nombre", "Empleado"),
     ("empleado_identificacion", "Identificación"),
     ("fecha_terminacion", "Fecha terminación"),
@@ -113,7 +113,7 @@ def armar_contexto_empresa(empresa) -> dict:
     }
 
 
-def armar_boleta_pago(db: Session, movimiento: MovimientoPlanilla) -> dict:
+def armar_recibo_pago(db: Session, movimiento: MovimientoPlanilla) -> dict:
     """Junta lo que planilla_service ya calculó y guardó -- nunca
     recalcula nada, solo ensambla y valida que el desglose cuadre con
     lo persistido (campo `cuadra`, usado también en el test de este
@@ -178,7 +178,7 @@ def armar_boleta_pago(db: Session, movimiento: MovimientoPlanilla) -> dict:
     }
 
 
-def armar_boleta_vacacion(db: Session, evento: VacacionTomada) -> dict:
+def armar_recibo_vacacion(db: Session, evento: VacacionTomada) -> dict:
     contrato = contratos_repo.get(db, evento.contrato_id)
     empresa = empresas_repo.get(db, evento.empresa_id)
     return {
@@ -196,7 +196,7 @@ def armar_boleta_vacacion(db: Session, evento: VacacionTomada) -> dict:
     }
 
 
-def armar_boleta_liquidacion(db: Session, liquidacion: Liquidacion) -> dict:
+def armar_recibo_liquidacion(db: Session, liquidacion: Liquidacion) -> dict:
     contrato = contratos_repo.get(db, liquidacion.contrato_id)
     empresa = empresas_repo.get(db, liquidacion.empresa_id)
     conceptos = [

@@ -31,7 +31,7 @@ class EmpresaOut(BaseModel):
 class EmpresaUpdate(BaseModel):
     """De momento solo expone región/actividad económica/tamaño de
     empresa (para salario_minimo_service) más dv/dirección/teléfono
-    (Fase 16, membrete de boletas y reportes) -- el logo se sube aparte
+    (Fase 16, membrete de recibos y reportes) -- el logo se sube aparte
     vía PUT /empresas/actual/logo (multipart, no encaja en un body JSON)."""
 
     region: str | None = Field(default=None, max_length=100)

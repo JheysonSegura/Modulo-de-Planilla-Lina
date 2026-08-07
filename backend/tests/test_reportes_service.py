@@ -12,8 +12,8 @@ from tests.conftest import crear_empresa, crear_salario_minimo, crear_usuario, l
 # Salario $2,500/mes es el caso de verificación del contador para ISR
 # (CLAUDE.md sección 5): bruto anual con décimo $32,500 -> excedente
 # $21,500 -> 15% -> $3,225.00/año -> $268.75/mes. Se usa acá para que
-# la boleta tenga ISR > 0, además de horas extra, tal como pide el
-# criterio de verificación de la Fase 16 ("boleta con horas extra e
+# el recibo tenga ISR > 0, además de horas extra, tal como pide el
+# criterio de verificación de la Fase 16 ("recibo con horas extra e
 # ISR, confirmar que el desglose cuadra con el neto").
 SALARIO_BASE = decimal.Decimal("2500.00")
 ISR_ESPERADO = decimal.Decimal("268.75")
@@ -112,7 +112,7 @@ def _preparar_movimiento_con_horas_extra_e_isr(db, client):
     return empresa, headers, planilla, mov
 
 
-def test_armar_boleta_pago_cuadra_con_el_neto_persistido(db, client):
+def test_armar_recibo_pago_cuadra_con_el_neto_persistido(db, client):
     empresa, headers, planilla, mov = _preparar_movimiento_con_horas_extra_e_isr(db, client)
 
     # RLS: db no es la sesión de una request (no pasó por get_db_rls),
@@ -123,7 +123,7 @@ def test_armar_boleta_pago_cuadra_con_el_neto_persistido(db, client):
     )
     movimiento = db.get(MovimientoPlanilla, uuid.UUID(mov["id"]))
 
-    contexto = reportes_service.armar_boleta_pago(db, movimiento)
+    contexto = reportes_service.armar_recibo_pago(db, movimiento)
 
     assert contexto["cuadra"] is True
     assert contexto["isr_retenido"] == ISR_ESPERADO
@@ -145,11 +145,11 @@ def test_armar_boleta_pago_cuadra_con_el_neto_persistido(db, client):
     assert contexto["salario_bruto"] - contexto["total_deducciones"] == contexto["salario_neto"]
 
 
-def test_boleta_pago_pdf_endpoint(db, client):
+def test_recibo_pago_pdf_endpoint(db, client):
     _empresa, headers, planilla, mov = _preparar_movimiento_con_horas_extra_e_isr(db, client)
 
     resp = client.get(
-        f"/planillas/{planilla['id']}/movimientos/{mov['id']}/boleta?formato=pdf",
+        f"/planillas/{planilla['id']}/movimientos/{mov['id']}/recibo?formato=pdf",
         headers=headers,
     )
     assert resp.status_code == 200, resp.text
@@ -157,11 +157,11 @@ def test_boleta_pago_pdf_endpoint(db, client):
     assert resp.content.startswith(b"%PDF")
 
 
-def test_boleta_pago_excel_endpoint(db, client):
+def test_recibo_pago_excel_endpoint(db, client):
     _empresa, headers, planilla, mov = _preparar_movimiento_con_horas_extra_e_isr(db, client)
 
     resp = client.get(
-        f"/planillas/{planilla['id']}/movimientos/{mov['id']}/boleta?formato=excel",
+        f"/planillas/{planilla['id']}/movimientos/{mov['id']}/recibo?formato=excel",
         headers=headers,
     )
     assert resp.status_code == 200, resp.text
@@ -191,7 +191,7 @@ def test_exportar_planilla_pdf_consolidado(db, client):
     assert resp.content.startswith(b"%PDF")
 
 
-def test_boleta_vacacion_pdf_endpoint(db, client):
+def test_recibo_vacacion_pdf_endpoint(db, client):
     _empresa, headers = _preparar_empresa(db, client)
     contrato_id = _crear_empleado_con_contrato(client, headers)
     _generar_planilla_periodo(client, headers)
@@ -208,14 +208,14 @@ def test_boleta_vacacion_pdf_endpoint(db, client):
     evento_id = eventos.json()[0]["id"]
 
     resp = client.get(
-        f"/contratos/{contrato_id}/vacaciones-tomadas/{evento_id}/boleta?formato=pdf",
+        f"/contratos/{contrato_id}/vacaciones-tomadas/{evento_id}/recibo?formato=pdf",
         headers=headers,
     )
     assert resp.status_code == 200, resp.text
     assert resp.content.startswith(b"%PDF")
 
 
-def test_boleta_liquidacion_pdf_endpoint(db, client):
+def test_recibo_liquidacion_pdf_endpoint(db, client):
     _empresa, headers = _preparar_empresa(db, client)
     contrato_id = _crear_empleado_con_contrato(client, headers)
     _generar_planilla_periodo(client, headers)
@@ -228,7 +228,7 @@ def test_boleta_liquidacion_pdf_endpoint(db, client):
     assert resp.status_code == 201, resp.text
     liquidacion_id = resp.json()["id"]
 
-    resp = client.get(f"/liquidaciones/{liquidacion_id}/boleta?formato=pdf", headers=headers)
+    resp = client.get(f"/liquidaciones/{liquidacion_id}/recibo?formato=pdf", headers=headers)
     assert resp.status_code == 200, resp.text
     assert resp.content.startswith(b"%PDF")
 

@@ -157,7 +157,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
       >
         <p class="text-xs text-gray-500">
           Región/actividad/tamaño determinan qué fila de salario mínimo aplica. DV/dirección/teléfono
-          se imprimen en el membrete de boletas y reportes (Fase 16).
+          se imprimen en el membrete de recibos y reportes (Fase 16).
         </p>
         <UFormField
           label="Región"
@@ -235,7 +235,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
 
     <UCard class="mt-4">
       <template #header>
-        <span class="font-medium">Logo (membrete de boletas y reportes)</span>
+        <span class="font-medium">Logo (membrete de recibos y reportes)</span>
       </template>
       <div class="flex items-center gap-4">
         <img

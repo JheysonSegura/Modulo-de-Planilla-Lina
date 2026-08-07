@@ -24,7 +24,7 @@ def actualizar_empresa_activa(db: Session, empresa: Empresa, data: EmpresaUpdate
 
 
 def actualizar_logo(db: Session, empresa: Empresa, contenido: bytes, content_type: str) -> Empresa:
-    """Fase 16: logo para el membrete de boletas/reportes. Se guarda en
+    """Fase 16: logo para el membrete de recibos/reportes. Se guarda en
     la propia tabla empresas (bytea) -- no hay volumen de archivos en
     docker-compose.yml, y así queda consistente con el resto de datos
     de la empresa."""

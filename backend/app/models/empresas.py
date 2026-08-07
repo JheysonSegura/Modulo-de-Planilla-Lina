@@ -33,7 +33,7 @@ class Empresa(Base):
     telefono: Mapped[str | None] = mapped_column(String(30))
     email_contacto: Mapped[str | None] = mapped_column(String(150))
     representante_legal: Mapped[str | None] = mapped_column(String(200))
-    # Fase 16: membrete para boletas y reportes (junto con ruc/dv/direccion/
+    # Fase 16: membrete para recibos y reportes (junto con ruc/dv/direccion/
     # telefono, que ya existían pero no se usaban en ningún documento).
     logo: Mapped[bytes | None] = mapped_column(LargeBinary)
     logo_content_type: Mapped[str | None] = mapped_column(String(50))

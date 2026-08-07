@@ -64,17 +64,17 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
 }
 
 const descargando = ref(false)
-async function descargarBoleta(liquidacionId: string, motivo: string, formato: 'pdf' | 'excel') {
+async function descargarRecibo(liquidacionId: string, motivo: string, formato: 'pdf' | 'excel') {
   descargando.value = true
   const extension = formato === 'pdf' ? 'pdf' : 'xlsx'
   try {
     await descargar(
-      `/liquidaciones/${liquidacionId}/boleta`,
+      `/liquidaciones/${liquidacionId}/recibo`,
       { formato },
-      `boleta-liquidacion-${motivo}.${extension}`
+      `recibo-liquidacion-${motivo}.${extension}`
     )
   } catch (error) {
-    toast.add({ title: 'No se pudo descargar la boleta', description: String(error), color: 'error' })
+    toast.add({ title: 'No se pudo descargar el recibo', description: String(error), color: 'error' })
   } finally {
     descargando.value = false
   }
@@ -215,7 +215,7 @@ async function marcarPagada(liquidacionId: string) {
               color="neutral"
               icon="i-lucide-file-text"
               :loading="descargando"
-              @click="descargarBoleta(liq.id, liq.motivo, 'pdf')"
+              @click="descargarRecibo(liq.id, liq.motivo, 'pdf')"
             >
               PDF
             </UButton>
@@ -225,7 +225,7 @@ async function marcarPagada(liquidacionId: string) {
               color="neutral"
               icon="i-lucide-file-spreadsheet"
               :loading="descargando"
-              @click="descargarBoleta(liq.id, liq.motivo, 'excel')"
+              @click="descargarRecibo(liq.id, liq.motivo, 'excel')"
             >
               Excel
             </UButton>

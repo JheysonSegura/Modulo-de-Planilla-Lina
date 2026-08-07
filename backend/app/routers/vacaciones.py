@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.deps import get_db_rls, get_empresa_activa_id
 from app.core.responses import respuesta_archivo
 from app.models import ProvisionVacaciones, VacacionTomada
-from app.schemas.reportes import FormatoBoleta
+from app.schemas.reportes import FormatoRecibo
 from app.schemas.vacaciones import (
     AcumularVacacionesRequest,
     ProvisionVacacionesOut,
@@ -58,21 +58,21 @@ def listar_vacaciones_tomadas(
     return vacaciones_service.listar_eventos_tomados(db, contrato_id)
 
 
-@router.get("/contratos/{contrato_id}/vacaciones-tomadas/{evento_id}/boleta")
-def boleta_vacacion(
+@router.get("/contratos/{contrato_id}/vacaciones-tomadas/{evento_id}/recibo")
+def recibo_vacacion(
     contrato_id: uuid.UUID,
     evento_id: uuid.UUID,
     db: Annotated[Session, Depends(get_db_rls)],
-    formato: Annotated[FormatoBoleta, Query()] = "pdf",
+    formato: Annotated[FormatoRecibo, Query()] = "pdf",
 ) -> Response:
     evento = vacaciones_service.obtener_evento_tomado(db, contrato_id, evento_id)
-    contexto = reportes_service.armar_boleta_vacacion(db, evento)
-    nombre_base = f"boleta-vacaciones-{contexto['empleado_identificacion']}-{contexto['fecha']}"
+    contexto = reportes_service.armar_recibo_vacacion(db, evento)
+    nombre_base = f"recibo-vacaciones-{contexto['empleado_identificacion']}-{contexto['fecha']}"
     if formato == "pdf":
-        contenido = reportes_service.render_pdf("boleta_vacacion.html", contexto)
+        contenido = reportes_service.render_pdf("recibo_vacacion.html", contexto)
     else:
         contenido = reportes_service.render_excel(
-            [contexto], reportes_service.COLUMNAS_BOLETA_VACACION
+            [contexto], reportes_service.COLUMNAS_RECIBO_VACACION
         )
     return respuesta_archivo(contenido, formato, nombre_base)
 

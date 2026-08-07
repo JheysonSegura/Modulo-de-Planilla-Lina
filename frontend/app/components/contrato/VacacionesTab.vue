@@ -42,20 +42,20 @@ async function onSubmitTomar(event: FormSubmitEvent<SchemaTomar>) {
   }
 }
 
-const descargandoBoleta = ref(false)
-async function descargarBoletaVacacion(eventoId: string, fecha: string, formato: 'pdf' | 'excel') {
-  descargandoBoleta.value = true
+const descargandoRecibo = ref(false)
+async function descargarReciboVacacion(eventoId: string, fecha: string, formato: 'pdf' | 'excel') {
+  descargandoRecibo.value = true
   const extension = formato === 'pdf' ? 'pdf' : 'xlsx'
   try {
     await descargar(
-      `/contratos/${props.contratoId}/vacaciones-tomadas/${eventoId}/boleta`,
+      `/contratos/${props.contratoId}/vacaciones-tomadas/${eventoId}/recibo`,
       { formato },
-      `boleta-vacaciones-${fecha}.${extension}`
+      `recibo-vacaciones-${fecha}.${extension}`
     )
   } catch (error) {
-    toast.add({ title: 'No se pudo descargar la boleta', description: String(error), color: 'error' })
+    toast.add({ title: 'No se pudo descargar el recibo', description: String(error), color: 'error' })
   } finally {
-    descargandoBoleta.value = false
+    descargandoRecibo.value = false
   }
 }
 
@@ -252,7 +252,7 @@ async function onSubmitAcumular(event: FormSubmitEvent<SchemaAcumular>) {
               Monto
             </th>
             <th class="py-2">
-              Boleta
+              Recibo
             </th>
           </tr>
         </thead>
@@ -282,8 +282,8 @@ async function onSubmitAcumular(event: FormSubmitEvent<SchemaAcumular>) {
                   color="neutral"
                   icon="i-lucide-file-text"
                   title="Descargar PDF"
-                  :loading="descargandoBoleta"
-                  @click="descargarBoletaVacacion(e.id, e.fecha, 'pdf')"
+                  :loading="descargandoRecibo"
+                  @click="descargarReciboVacacion(e.id, e.fecha, 'pdf')"
                 />
                 <UButton
                   size="xs"
@@ -291,8 +291,8 @@ async function onSubmitAcumular(event: FormSubmitEvent<SchemaAcumular>) {
                   color="neutral"
                   icon="i-lucide-file-spreadsheet"
                   title="Descargar Excel"
-                  :loading="descargandoBoleta"
-                  @click="descargarBoletaVacacion(e.id, e.fecha, 'excel')"
+                  :loading="descargandoRecibo"
+                  @click="descargarReciboVacacion(e.id, e.fecha, 'excel')"
                 />
               </div>
             </td>

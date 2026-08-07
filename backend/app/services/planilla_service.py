@@ -133,9 +133,9 @@ def listar_movimientos(db: Session, planilla_id: uuid.UUID) -> list[MovimientoPl
 def obtener_movimiento(
     db: Session, planilla_id: uuid.UUID, movimiento_id: uuid.UUID
 ) -> MovimientoPlanilla:
-    """Fase 16: usado por el endpoint de boleta de pago. RLS ya filtra
+    """Fase 16: usado por el endpoint de recibo de pago. RLS ya filtra
     por empresa; acá solo se valida que el movimiento pertenezca a la
-    planilla de la URL (evita boletas cruzadas entre planillas)."""
+    planilla de la URL (evita recibos cruzados entre planillas)."""
     movimiento = movimientos_repo.get(db, movimiento_id)
     if movimiento is None or movimiento.planilla_id != planilla_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Movimiento no encontrado")

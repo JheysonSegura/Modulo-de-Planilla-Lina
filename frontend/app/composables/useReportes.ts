@@ -1,5 +1,5 @@
 /**
- * Fase 16: descarga de boletas/reportes (PDF/Excel/CSV) y logo de
+ * Fase 16: descarga de recibos/reportes (PDF/Excel/CSV) y logo de
  * empresa. Primer composable del repo que maneja binarios -- mismo
  * patrón de token + reintento tras 401 que useApi.ts, pero con
  * responseType 'blob' en vez de JSON.

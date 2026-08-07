@@ -1,9 +1,9 @@
 from typing import Literal
 
-# Una boleta es un recibo de una sola entidad (pago/vacación/liquidación):
+# Un recibo es el documento de una sola entidad (pago/vacación/liquidación):
 # PDF para imprimir/entregar, Excel como una fila para reimportar a
 # contabilidad. CSV no aplica -- no es un documento tabular.
-FormatoBoleta = Literal["pdf", "excel"]
+FormatoRecibo = Literal["pdf", "excel"]
 
 # Exportación de planilla completa (todos los empleados de un período):
 # Excel/CSV para contabilidad, PDF como reporte consolidado para

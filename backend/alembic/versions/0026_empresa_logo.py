@@ -1,6 +1,6 @@
 """Logo de empresa (Fase 16)
 
-Columna nueva en empresas para el logo que se imprime en boletas y
+Columna nueva en empresas para el logo que se imprime en recibos y
 reportes (junto con RUC/DV/dirección/teléfono, que ya existían en el
 modelo pero no se usaban en ningún documento hasta ahora). Se guarda
 como bytea en la propia tabla -- no hay volumen de archivos en

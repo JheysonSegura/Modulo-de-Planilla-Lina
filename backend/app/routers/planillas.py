@@ -8,7 +8,7 @@ from app.core.deps import get_db_rls, get_empresa_activa_id, get_usuario_actual
 from app.core.responses import respuesta_archivo
 from app.models import MovimientoPlanilla, Planilla, Usuario
 from app.schemas.planillas import GenerarPlanillaRequest, MovimientoPlanillaOut, PlanillaOut
-from app.schemas.reportes import FormatoBoleta, FormatoExportacion
+from app.schemas.reportes import FormatoExportacion, FormatoRecibo
 from app.services import planilla_service, reportes_service
 
 router = APIRouter(tags=["planillas"])
@@ -68,21 +68,21 @@ def listar_movimientos(
     return planilla_service.listar_movimientos(db, planilla_id)
 
 
-@router.get("/planillas/{planilla_id}/movimientos/{movimiento_id}/boleta")
-def boleta_pago(
+@router.get("/planillas/{planilla_id}/movimientos/{movimiento_id}/recibo")
+def recibo_pago(
     planilla_id: uuid.UUID,
     movimiento_id: uuid.UUID,
     db: Annotated[Session, Depends(get_db_rls)],
-    formato: Annotated[FormatoBoleta, Query()] = "pdf",
+    formato: Annotated[FormatoRecibo, Query()] = "pdf",
 ) -> Response:
     movimiento = planilla_service.obtener_movimiento(db, planilla_id, movimiento_id)
-    contexto = reportes_service.armar_boleta_pago(db, movimiento)
-    nombre_base = f"boleta-pago-{contexto['empleado_identificacion']}-{contexto['periodo_fin']}"
+    contexto = reportes_service.armar_recibo_pago(db, movimiento)
+    nombre_base = f"recibo-pago-{contexto['empleado_identificacion']}-{contexto['periodo_fin']}"
     if formato == "pdf":
-        contenido = reportes_service.render_pdf("boleta_pago.html", contexto)
+        contenido = reportes_service.render_pdf("recibo_pago.html", contexto)
     else:
         contenido = reportes_service.render_excel(
-            [contexto], reportes_service.COLUMNAS_BOLETA_PAGO
+            [contexto], reportes_service.COLUMNAS_RECIBO_PAGO
         )
     return respuesta_archivo(contenido, formato, nombre_base)
 

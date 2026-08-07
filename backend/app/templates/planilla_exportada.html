@@ -3,14 +3,14 @@
 <head>
     <meta charset="utf-8">
     <title>Planilla</title>
-    <link rel="stylesheet" href="estilos_boleta.css">
+    <link rel="stylesheet" href="estilos_recibo.css">
     <style>
         @page { size: letter landscape; margin: 1.2cm; }
         table.desglose th, table.desglose td { font-size: 8.5pt; padding: 3pt 4pt; }
     </style>
 </head>
 <body>
-    {% include "_base_boleta.html" %}
+    {% include "_base_recibo.html" %}
 
     <h2 class="titulo-documento">
         Planilla {{ planilla_tipo.replace("_", " ") }} — {{ periodo_inicio }} al {{ periodo_fin }}

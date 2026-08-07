@@ -125,7 +125,7 @@ def listar_eventos_tomados(db: Session, contrato_id: uuid.UUID) -> list[Vacacion
 def obtener_evento_tomado(
     db: Session, contrato_id: uuid.UUID, evento_id: uuid.UUID
 ) -> VacacionTomada:
-    """Fase 16: usado por el endpoint de boleta de vacaciones. RLS ya
+    """Fase 16: usado por el endpoint de recibo de vacaciones. RLS ya
     filtra por empresa; acá solo se valida que el evento pertenezca al
     contrato de la URL."""
     evento = provisiones_vacaciones_repo.obtener_evento(db, evento_id)
@@ -206,7 +206,7 @@ def registrar_vacacion_tomada(
             db, periodo, dias_acumulados, nuevos_dias_gozados, monto_provisionado.quantize(_CENTAVO)
         )
         # Fase 16: un registro de historial por cada período efectivamente
-        # tocado, para poder emitir una boleta por esta toma concreta -- ver
+        # tocado, para poder emitir un recibo por esta toma concreta -- ver
         # crear_evento_tomado. Antes del commit final, mismo patrón que
         # registrar_goce (db.flush() adentro, sin refresh tras el commit).
         provisiones_vacaciones_repo.crear_evento_tomado(

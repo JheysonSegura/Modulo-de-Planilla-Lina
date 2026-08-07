@@ -46,17 +46,17 @@ const totalNeto = computed(() =>
   (movs.value ?? []).reduce((acc, m) => acc + Number(m.salario_neto), 0).toFixed(2)
 )
 
-async function descargarBoleta(movimientoId: string, contratoId: string, formato: 'pdf' | 'excel') {
+async function descargarRecibo(movimientoId: string, contratoId: string, formato: 'pdf' | 'excel') {
   const nombre = nombresPorContrato.value[contratoId] || contratoId
   const extension = formato === 'pdf' ? 'pdf' : 'xlsx'
   try {
     await descargar(
-      `/planillas/${planillaId}/movimientos/${movimientoId}/boleta`,
+      `/planillas/${planillaId}/movimientos/${movimientoId}/recibo`,
       { formato },
-      `boleta-pago-${nombre}-${planilla.value?.periodo_fin}.${extension}`
+      `recibo-pago-${nombre}-${planilla.value?.periodo_fin}.${extension}`
     )
   } catch (error) {
-    toast.add({ title: 'No se pudo descargar la boleta', description: String(error), color: 'error' })
+    toast.add({ title: 'No se pudo descargar el recibo', description: String(error), color: 'error' })
   }
 }
 
@@ -161,7 +161,7 @@ async function exportarPlanilla(formato: 'excel' | 'csv' | 'pdf') {
               Neto
             </th>
             <th class="py-2">
-              Boleta
+              Recibo
             </th>
           </tr>
         </thead>
@@ -200,7 +200,7 @@ async function exportarPlanilla(formato: 'excel' | 'csv' | 'pdf') {
                   color="neutral"
                   icon="i-lucide-file-text"
                   title="Descargar PDF"
-                  @click="descargarBoleta(m.id, m.contrato_id, 'pdf')"
+                  @click="descargarRecibo(m.id, m.contrato_id, 'pdf')"
                 />
                 <UButton
                   size="xs"
@@ -208,7 +208,7 @@ async function exportarPlanilla(formato: 'excel' | 'csv' | 'pdf') {
                   color="neutral"
                   icon="i-lucide-file-spreadsheet"
                   title="Descargar Excel"
-                  @click="descargarBoleta(m.id, m.contrato_id, 'excel')"
+                  @click="descargarRecibo(m.id, m.contrato_id, 'excel')"
                 />
               </div>
             </td>

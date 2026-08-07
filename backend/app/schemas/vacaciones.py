@@ -29,7 +29,7 @@ class VacacionTomadaCreate(BaseModel):
 
 
 class VacacionTomadaOut(BaseModel):
-    """Fase 16: historial por evento, para poder emitir boleta por cada
+    """Fase 16: historial por evento, para poder emitir recibo por cada
     toma concreta (ver app/models/provisiones.py::VacacionTomada)."""
 
     model_config = ConfigDict(from_attributes=True)

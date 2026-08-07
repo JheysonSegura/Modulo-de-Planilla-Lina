@@ -2,15 +2,15 @@
 <html lang="es">
 <head>
     <meta charset="utf-8">
-    <title>Boleta de pago</title>
-    <link rel="stylesheet" href="estilos_boleta.css">
+    <title>Recibo de pago</title>
+    <link rel="stylesheet" href="estilos_recibo.css">
 </head>
 <body>
-    {% include "_base_boleta.html" %}
+    {% include "_base_recibo.html" %}
 
     <h2 class="titulo-documento">
-        {% if planilla_tipo == "decimo_tercer_mes" %}Boleta de pago &mdash; Décimo tercer mes
-        {% else %}Boleta de pago{% endif %}
+        {% if planilla_tipo == "decimo_tercer_mes" %}Recibo de pago &mdash; Décimo tercer mes
+        {% else %}Recibo de pago{% endif %}
     </h2>
 
     <table class="datos-empleado">

@@ -42,7 +42,7 @@ class VacacionTomada(Base):
     """Historial por evento de vacaciones_service.registrar_vacacion_tomada
     (Fase 16). Antes de esta tabla, "tomar vacaciones" solo mutaba los
     totales de ProvisionVacaciones en sitio, sin dejar ningún registro
-    individual -- necesario para poder emitir una boleta por cada toma
+    individual -- necesario para poder emitir un recibo por cada toma
     concreta. Una llamada que cruza el período 'acumulado' y el 'abierto'
     genera 2 filas, una por período efectivamente tocado."""
 

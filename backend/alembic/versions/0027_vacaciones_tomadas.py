@@ -3,7 +3,7 @@
 Hasta ahora "tomar vacaciones" (vacaciones_service.registrar_vacacion_tomada)
 solo mutaba los totales de provisiones_vacaciones (dias_gozados/saldo) en
 sitio, sin dejar ningún registro individual de esa toma concreta. Para poder
-emitir una boleta de vacaciones por evento (igual que ya existe una boleta
+emitir un recibo de vacaciones por evento (igual que ya existe un recibo
 por movimiento_planilla o por liquidación), se agrega esta tabla de
 historial: una fila por cada período efectivamente tocado en cada llamada a
 registrar_vacacion_tomada (una toma que cruza el período 'acumulado' y el
