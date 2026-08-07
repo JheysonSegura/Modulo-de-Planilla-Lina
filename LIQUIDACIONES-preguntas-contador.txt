@@ -95,22 +95,35 @@ contador el mismo dia -- ver CLAUDE.md seccion 4 ("Decimo Tercer
 Mes") y FASE8-plan-decimo.txt. Vacaciones NO cambio: sigue su propia
 formula (dias reales/11), independiente del decimo.
 
-PREGUNTAS CONCRETAS PARA EL CONTADOR
------------------------------------------
+PREGUNTAS CONCRETAS PARA EL CONTADOR -- CONFIRMADO 2026-08-06
+-------------------------------------------------------------------
+El contador confirmo el modulo completo (las 5 preguntas de abajo,
+mas salario pendiente y preaviso explicados aparte en la
+conversacion -- ver nota al final). No dio observaciones puntuales
+distintas por pregunta, confirmo en bloque que esta bien.
+
 1. Prima de antiguedad: ¿el promedio de 5 anos del Art. 226 se
    calcula igual como lo hace el sistema (promedio real de planillas,
-   ajustado al tiempo con datos si hay menos historial)?
+   ajustado al tiempo con datos si hay menos historial)? -- CONFIRMADO.
 2. Indemnizacion: ¿la base del Art. 149 (mayor entre promedio de 6
    meses o de 30 dias) y la escala del Art. 225-C estan bien
-   aplicadas?
+   aplicadas? -- CONFIRMADO.
 3. Contratos definidos: ¿el Art. 227 realmente no aplica a renuncia
    justificada / despido por causa economica, o el sistema deberia
-   cubrir tambien esos casos?
+   cubrir tambien esos casos? -- CONFIRMADO como limitacion aceptable
+   (el sistema sigue sin cubrir esos 2 casos; no se interpreto como
+   pedido de ampliar el alcance, solo como "esta bien dejarlo asi por
+   ahora").
 4. Penalidad Art. 222: ¿el criterio de "tecnico = 2 meses de aviso"
    es correcto, y estan de acuerdo con que sin fecha de aviso
-   capturada no se asuma penalidad?
+   capturada no se asuma penalidad? -- CONFIRMADO.
 5. Salarios caidos: ¿confirman que esto debe ser captura manual (no
-   hay forma de que el sistema lo calcule solo)?
+   hay forma de que el sistema lo calcule solo)? -- CONFIRMADO.
+
+Adicional (explicado en la conversacion, no en este documento
+original): salario pendiente (dias trabajados sin pagar) vs. preaviso
+(indemnizacion de 30 dias por falta de aviso, Art. 214) NO se solapan
+-- son conceptos distintos, ambos correctos.
 
 Ver tambien: CLAUDE.md seccion 4 ("Liquidaciones (finiquito)"),
 FASE10-plan-liquidaciones.txt y FASE13-plan-liquidaciones-ext.txt

@@ -209,3 +209,23 @@ Limitaciones conocidas, documentadas, no bloqueantes:
 - El promedio del Art. 149/226 cae al salario_base vigente si no hay
   historial de movimientos_planilla para el contrato (ej. liquidacion
   sin haber corrido nomina nunca en este sistema).
+
+CONFIRMADO POR EL CONTADOR (2026-08-06)
+------------------------------------------
+El pendiente de arriba quedo resuelto: el contador confirmo el modulo
+completo de liquidaciones (los 8 conceptos, incluida la extension de
+la Fase 13 -- ver FASE13-plan-liquidaciones-ext.txt), tras revisar
+LIQUIDACIONES-preguntas-contador.txt y una explicacion puntual de
+salario pendiente vs. preaviso (por que no se solapan: uno es dias
+realmente trabajados sin pagar, el otro es una indemnizacion por falta
+de aviso de 30 dias, Art. 214). El ejemplo numerico que se le mando
+ya incluia la correccion de formula del decimo del mismo dia
+($2,260.26, no el $2,277.53 original de este documento).
+
+Las limitaciones documentadas arriba (Art. 227 en definidos, fallback
+de promedios sin historial) NO fueron objeto de la confirmacion --
+siguen siendo huecos de alcance conocidos, no algo que el contador
+haya revisado y aprobado. Solo la penalidad Art.222/salarios caidos
+"no modelada"/"fuera de alcance" de este parrafo quedo obsoleta: SI
+se implementaron despues en la Fase 13, y esa implementacion tambien
+esta confirmada.

@@ -142,3 +142,10 @@ confirmacion. A diferencia de la Fase 11 (decimo/ausencias), aqui el
 texto legal (Art. 219/220/222) SI se verifico completo contra
 codigo-detrabajo.pdf -- lo pendiente de confirmar es el uso practico
 de estos conceptos por el contador, no la interpretacion del texto.
+
+CONFIRMADO POR EL CONTADOR (2026-08-06)
+------------------------------------------
+Ver FASE10-plan-liquidaciones.txt, seccion "CONFIRMADO POR EL
+CONTADOR" -- el modulo completo de liquidaciones, incluyendo
+salarios caidos (captura manual) y penalidad Art.222 de esta
+extension, quedo confirmado el mismo dia que se implemento. Cerrado.
