@@ -162,3 +162,23 @@ misma regla de 15 dias/11 meses del Art. 208 del Codigo de Trabajo, o
 una regla propia." Mismo tratamiento que recibieron ISR y decimo antes
 de sus confirmaciones reales -- no dar esta pieza por cerrada sin esa
 confirmacion.
+
+RESUELTO SIN OBJETO (2026-08-06)
+---------------------------------
+El pendiente de arriba quedo resuelto, pero no en el sentido en que se
+esperaba: el mismo dia, el contador dio un ejemplo numerico que obligo
+a corregir la formula del decimo (ver FASE8-plan-decimo.txt, nota de
+correccion). La formula nueva usa lo REALMENTE devengado en el
+cuatrimestre (salario + horas extra + variables), no un conteo de
+"dias trabajados" -- asi que la pregunta "aplica la regla de 15 dias
+del Art. 208 o una regla propia" ya no tiene sentido: el decimo no
+necesita NINGUNA regla de dias no contables. Una ausencia sin goce de
+salario simplemente no genero ingreso ese dia (se excluye sola); una
+con goce sigue devengando normal.
+
+Se elimino la integracion que este modulo tenia con decimo_service
+(el set `_CUENTA_DECIMO`, la rama `para == "decimo"` de
+`_dias_no_contables_de_ausencia`, y el parametro `para` de
+`dias_no_contables` -- ya solo queda un caso de uso, vacaciones). El
+catalogo de tipos y su tratamiento para VACACIONES (unico proposito
+que le queda a este modulo) no cambio.

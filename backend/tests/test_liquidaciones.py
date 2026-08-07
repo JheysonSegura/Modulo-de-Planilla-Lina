@@ -136,7 +136,7 @@ def test_despido_justificado_igual_que_renuncia_voluntaria(client, db):
 
     assert decimal.Decimal(str(liq["indemnizacion"])) == decimal.Decimal("0.00")
     assert decimal.Decimal(str(liq["preaviso"])) == decimal.Decimal("0.00")
-    assert decimal.Decimal(str(liq["monto_total"])) == decimal.Decimal("241.19")
+    assert decimal.Decimal(str(liq["monto_total"])) == decimal.Decimal("232.10")
 
 
 def test_despido_injustificado_trae_indemnizacion_y_preaviso(client, db):
@@ -155,8 +155,10 @@ def test_despido_injustificado_trae_indemnizacion_y_preaviso(client, db):
 
     # 15 dias (1-15 feb) * 40.00
     assert decimal.Decimal(str(liq["salario_pendiente"])) == decimal.Decimal("600.00")
-    # decimo/vacaciones: 46 dias (1-ene a 15-feb) / 11 * 40.00 = 167.2727... -> 167.27
-    assert decimal.Decimal(str(liq["decimo_proporcional"])) == decimal.Decimal("167.27")
+    # decimo (fórmula nueva, 30/360): 45 dias comerciales (1-ene a 15-feb)
+    # * 40.00 = 1800.00 devengado / 12 = 150.00.
+    assert decimal.Decimal(str(liq["decimo_proporcional"])) == decimal.Decimal("150.00")
+    # vacaciones (fórmula sin cambios): 46 dias (1-ene a 15-feb) / 11 * 40.00 = 167.2727... -> 167.27
     assert decimal.Decimal(str(liq["vacaciones_pendientes"])) == decimal.Decimal("167.27")
     # prima antigüedad: promedio real (1 mes de movimientos) = 1200.00/mes
     # -> (46/365) * (1200/30*7) = 23.0136... -> 23.01
@@ -166,7 +168,7 @@ def test_despido_injustificado_trae_indemnizacion_y_preaviso(client, db):
     assert decimal.Decimal(str(liq["indemnizacion"])) == decimal.Decimal("119.98")
     # preaviso: 30 * 40.00
     assert decimal.Decimal(str(liq["preaviso"])) == decimal.Decimal("1200.00")
-    assert decimal.Decimal(str(liq["monto_total"])) == decimal.Decimal("2277.53")
+    assert decimal.Decimal(str(liq["monto_total"])) == decimal.Decimal("2260.26")
 
     resp = client.get(f"/contratos/{contrato_id}/liquidaciones", headers=headers)
     assert resp.status_code == 200, resp.text
@@ -232,7 +234,7 @@ def test_contrato_definido_terminado_antes_de_tiempo_art_227(client, db):
     # (15-feb a 31-dic-2025) * 40.00 = 12,760.00.
     assert decimal.Decimal(str(liq["indemnizacion"])) == decimal.Decimal("12760.00")
     assert decimal.Decimal(str(liq["preaviso"])) == decimal.Decimal("1200.00")
-    assert decimal.Decimal(str(liq["monto_total"])) == decimal.Decimal("14894.54")
+    assert decimal.Decimal(str(liq["monto_total"])) == decimal.Decimal("14877.27")
 
 
 def test_contrato_por_obra_determinada_sin_fecha_fin_rechaza_indemnizacion(client, db):
@@ -281,7 +283,7 @@ def test_renuncia_sin_datos_de_aviso_no_asume_penalidad(client, db):
     _generar_planilla(client, headers, "mensual", datetime.date(2025, 1, 1), datetime.date(2025, 1, 31))
 
     # Sin fecha_aviso_renuncia (dato no capturado) -> NO se asume que
-    # faltó el aviso, mismo total base de 241.19 que la Fase 10 (no
+    # faltó el aviso, mismo total base de 232.10 que la Fase 10 (no
     # romper cálculos ya cerrados solo por agregar un campo opcional).
     resp = _generar_liquidacion(
         client, headers, contrato_id, "renuncia_voluntaria", datetime.date(2025, 1, 30)
@@ -290,7 +292,7 @@ def test_renuncia_sin_datos_de_aviso_no_asume_penalidad(client, db):
     liq = resp.json()
 
     assert decimal.Decimal(str(liq["penalidad_renuncia_sin_aviso"])) == decimal.Decimal("0.00")
-    assert decimal.Decimal(str(liq["monto_total"])) == decimal.Decimal("241.19")
+    assert decimal.Decimal(str(liq["monto_total"])) == decimal.Decimal("232.10")
 
 
 def test_renuncia_con_aviso_insuficiente_aplica_penalidad_de_una_semana(client, db):
@@ -312,8 +314,8 @@ def test_renuncia_con_aviso_insuficiente_aplica_penalidad_de_una_semana(client, 
     liq = resp.json()
 
     assert decimal.Decimal(str(liq["penalidad_renuncia_sin_aviso"])) == decimal.Decimal("280.00")
-    # 241.19 - 280.00 = -38.81
-    assert decimal.Decimal(str(liq["monto_total"])) == decimal.Decimal("-38.81")
+    # 232.10 - 280.00 = -47.90
+    assert decimal.Decimal(str(liq["monto_total"])) == decimal.Decimal("-47.90")
 
 
 def test_renuncia_con_aviso_de_20_dias_no_aplica_penalidad(client, db):
@@ -322,7 +324,7 @@ def test_renuncia_con_aviso_de_20_dias_no_aplica_penalidad(client, db):
     _generar_planilla(client, headers, "mensual", datetime.date(2025, 1, 1), datetime.date(2025, 1, 31))
 
     # 20 días de aviso (10-ene a 30-ene) >= 15 días exigidos (contrato
-    # no técnico) -> sin penalidad, mismo total base de 241.19.
+    # no técnico) -> sin penalidad, mismo total base de 232.10.
     resp = _generar_liquidacion(
         client,
         headers,
@@ -335,7 +337,7 @@ def test_renuncia_con_aviso_de_20_dias_no_aplica_penalidad(client, db):
     liq = resp.json()
 
     assert decimal.Decimal(str(liq["penalidad_renuncia_sin_aviso"])) == decimal.Decimal("0.00")
-    assert decimal.Decimal(str(liq["monto_total"])) == decimal.Decimal("241.19")
+    assert decimal.Decimal(str(liq["monto_total"])) == decimal.Decimal("232.10")
 
 
 def test_renuncia_tecnico_con_aviso_de_20_dias_si_aplica_penalidad(client, db):
@@ -359,7 +361,7 @@ def test_renuncia_tecnico_con_aviso_de_20_dias_si_aplica_penalidad(client, db):
     liq = resp.json()
 
     assert decimal.Decimal(str(liq["penalidad_renuncia_sin_aviso"])) == decimal.Decimal("280.00")
-    assert decimal.Decimal(str(liq["monto_total"])) == decimal.Decimal("-38.81")
+    assert decimal.Decimal(str(liq["monto_total"])) == decimal.Decimal("-47.90")
 
 
 def test_despido_injustificado_no_aplica_penalidad_aunque_no_haya_aviso(client, db):
@@ -378,7 +380,7 @@ def test_despido_injustificado_no_aplica_penalidad_aunque_no_haya_aviso(client, 
     liq = resp.json()
 
     assert decimal.Decimal(str(liq["penalidad_renuncia_sin_aviso"])) == decimal.Decimal("0.00")
-    assert decimal.Decimal(str(liq["monto_total"])) == decimal.Decimal("2277.53")
+    assert decimal.Decimal(str(liq["monto_total"])) == decimal.Decimal("2260.26")
 
 
 def test_salarios_caidos_se_suman_al_total_y_quedan_trazados(client, db):
@@ -400,5 +402,5 @@ def test_salarios_caidos_se_suman_al_total_y_quedan_trazados(client, db):
 
     assert decimal.Decimal(str(liq["salarios_caidos"])) == decimal.Decimal("500.00")
     assert liq["referencia_sentencia"] == "Junta de Conciliación, expediente 123-2025"
-    # Base 2277.53 (ver test_despido_injustificado_trae_indemnizacion_y_preaviso) + 500.00
-    assert decimal.Decimal(str(liq["monto_total"])) == decimal.Decimal("2777.53")
+    # Base 2260.26 (ver test_despido_injustificado_trae_indemnizacion_y_preaviso) + 500.00
+    assert decimal.Decimal(str(liq["monto_total"])) == decimal.Decimal("2760.26")

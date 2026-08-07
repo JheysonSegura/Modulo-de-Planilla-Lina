@@ -74,18 +74,26 @@ LOS 8 CONCEPTOS
    se manda ese dato, NO asume que falto el aviso (no penaliza por
    defecto).
 
-EJEMPLO NUMERICO (verificado a mano contra el sistema)
+EJEMPLO NUMERICO (verificado a mano y contra el sistema real -- ver
+nota de correccion abajo, actualizado 2026-08-06)
 -----------------------------------------------------------
 Salario $1,200/mes, contrato indefinido, despedido
 injustificadamente 46 dias despues de iniciar:
   Salario pendiente ......... $600.00  (15 dias de febrero)
-  Decimo proporcional ....... $167.27
-  Vacaciones proporcionales . $167.27
+  Decimo proporcional ....... $150.00  (45 dias comerciales/12)
+  Vacaciones proporcionales . $167.27  (46 dias reales/11, sin cambios)
   Prima de antiguedad ....... $23.01
   Indemnizacion (Art.225-C) . $119.98
   Preaviso ................... $1,200.00
   ------------------------------------
-  TOTAL ...................... $2,277.53
+  TOTAL ...................... $2,260.26
+
+NOTA DE CORRECCION (2026-08-06): el "Decimo proporcional" de este
+ejemplo cambio de $167.27 a $150.00 (y el TOTAL de $2,277.53 a
+$2,260.26) por la correccion de formula del decimo confirmada por el
+contador el mismo dia -- ver CLAUDE.md seccion 4 ("Decimo Tercer
+Mes") y FASE8-plan-decimo.txt. Vacaciones NO cambio: sigue su propia
+formula (dias reales/11), independiente del decimo.
 
 PREGUNTAS CONCRETAS PARA EL CONTADOR
 -----------------------------------------

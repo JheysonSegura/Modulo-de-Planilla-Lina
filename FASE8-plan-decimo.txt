@@ -189,3 +189,37 @@ marcados arriba:
   2. Tratamiento real de CSS sobre el decimo (exencion del decreto
      original vs. cuotas especiales 7.25%/10.75% ya sembradas).
 No dar este modulo por cerrado sin esa confirmacion.
+
+CORRECCION DE FORMULA (2026-08-06) -- mismo tipo de correccion que ya
+paso una vez con ISR en Fase 7
+---------------------------------------------------------------------------
+Los dos puntos de arriba (fecha de partidas, CSS especial) SI se
+confirmaron el 2026-08-05 y siguen cerrados. Pero el contador dio
+despues un ejemplo numerico real que no coincidia con la formula de
+"dias/11 x salario_diario" implementada en esta fase -- esa formula
+resulto ser una interpretacion incorrecta del Decreto 221/1971.
+
+Formula real confirmada por el contador con caso numerico completo:
+decimo = (TODOS los ingresos brutos devengados en el cuatrimestre --
+salario, horas extra, comisiones/bonos) / 4 (meses) / 3 (partidas al
+ano) = / 12. El conteo de dias del salario base pasa a usar la
+convencion "30/360" (cualquier mes completo = 30 dias, sin importar
+si tiene 28/29/30/31 reales) aplicada al RANGO de fechas, no solo a
+la tarifa diaria -- antes se usaban dias reales de calendario.
+
+Verificado a mano y con curl contra el backend real: cuatrimestre
+completo (16-dic a 15-abr) a $900/mes -> 120 dias comerciales x
+$30/12 = $300.00 exacto (antes el sistema daba $330.00 con la formula
+vieja).
+
+Consecuencia directa: como la base ahora es lo REALMENTE devengado,
+las ausencias/incapacidades ya NO necesitan tratamiento especial para
+el decimo (una ausencia sin goce simplemente no genero ingreso ese
+dia, se excluye sola) -- se elimino la integracion con
+ausencias_service que este modulo tenia. Ver FASE11-plan-ausencias.txt
+para el detalle de esa simplificacion.
+
+No se reescribe el resto de este documento (metodo de conteo de dias
+viejo, ejemplos con la formula anterior) para mantener el historico
+de como se penso originalmente -- ver decimo_service.py y CLAUDE.md
+seccion 4 ("Decimo Tercer Mes") para la formula real vigente.
