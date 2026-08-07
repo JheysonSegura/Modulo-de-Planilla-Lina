@@ -193,6 +193,23 @@ def test_dias_tomados_debe_ser_mayor_que_cero(client, db):
     assert resp.status_code == 422, resp.text
 
 
+def test_dias_tomados_rechaza_decimales(client, db):
+    """2026-08-07: días tomados debe ser siempre un número entero -- un
+    trabajador toma días de calendario completos, nunca una fracción de
+    día (a diferencia de días acumulados, que sigue siendo decimal por
+    diseño, Art. 54.1 CT). Un decimal como "1.01" ya no se acepta."""
+    headers = _preparar_empresa(db, client)
+    contrato_id = _crear_empleado_con_contrato(client, headers, datetime.date(2024, 12, 15))
+    _generar_planilla(client, headers, "mensual", datetime.date(2025, 4, 1), datetime.date(2025, 4, 30))
+
+    resp = _registrar_vacacion_tomada(client, headers, contrato_id, datetime.date(2025, 4, 30), "1.01")
+    assert resp.status_code == 422, resp.text
+
+    # El saldo no debe haber cambiado tras el intento rechazado.
+    prov = _provision_abierta(client, headers, contrato_id)
+    assert decimal.Decimal(str(prov["dias_gozados"])) == decimal.Decimal("0.00")
+
+
 # --- Fase 12: acumulación de hasta 2 períodos (Art. 59 CT) ---
 # 2024-12-15 a 2025-05-31 = 168 días (17 dic + 31 ene + 28 feb + 31 mar
 # + 30 abr + 31 may) -> 168/11=15.272727... -> 15.27 días;
@@ -271,18 +288,22 @@ def test_vacacion_tomada_consume_el_abierto_cuando_el_acumulado_no_alcanza(clien
     _generar_planilla(client, headers, "mensual", datetime.date(2025, 5, 1), datetime.date(2025, 5, 31))
     _acumular_periodo(client, headers, contrato_id, datetime.date(2025, 5, 31))
 
-    # El 'abierto' recién creado (fecha_inicio_periodo=2025-06-01) ya
-    # acumuló 1 día al 2025-06-01 (mismo día inclusive): 1/11=0.09 días,
-    # 1/11*30.00=2.73. saldo total = 15.27 (acumulado) + 0.09 (abierto)
-    # = 15.36 -- pedir 15.30 agota el acumulado (15.27) y toma 0.03 del
-    # abierto.
-    resp = _registrar_vacacion_tomada(client, headers, contrato_id, datetime.date(2025, 6, 1), "15.30")
+    # El 'abierto' recién creado (fecha_inicio_periodo=2025-06-01) acumuló
+    # 10 días al 2025-06-10 (ambos extremos inclusive): 10/11=0.909090...
+    # -> 0.91 días, 0.909090...*30.00=27.2727... -> 27.27. saldo total =
+    # 15.27 (acumulado) + 0.91 (abierto) = 16.18 -- pedir 16 (entero,
+    # 2026-08-07: dias_tomados ya no acepta decimales) agota el
+    # acumulado (15.27) y toca 0.73 del abierto. La fracción que queda
+    # por período es esperada (ver docstring de registrar_vacacion_tomada
+    # sobre el límite conocido de Fase 12 con tomas enteras que cruzan
+    # períodos), aunque el total pedido sí fue un entero.
+    resp = _registrar_vacacion_tomada(client, headers, contrato_id, datetime.date(2025, 6, 10), "16")
     assert resp.status_code == 201, resp.text
     tocado = resp.json()
     assert tocado["estado"] == "abierto"
-    assert decimal.Decimal(str(tocado["dias_gozados"])) == decimal.Decimal("0.03")
-    # 2.73 - 0.03*30.00 = 1.83
-    assert decimal.Decimal(str(tocado["monto_provisionado"])) == decimal.Decimal("1.83")
+    assert decimal.Decimal(str(tocado["dias_gozados"])) == decimal.Decimal("0.73")
+    # 27.27 - 0.73*30.00 = 5.37
+    assert decimal.Decimal(str(tocado["monto_provisionado"])) == decimal.Decimal("5.37")
 
     acumulado = _provision_acumulada(client, headers, contrato_id)
     assert decimal.Decimal(str(acumulado["dias_gozados"])) == decimal.Decimal("15.27")
@@ -319,16 +340,17 @@ def test_una_toma_que_cruza_acumulado_y_abierto_genera_dos_eventos(client, db):
 
     # Mismo escenario que
     # test_vacacion_tomada_consume_el_abierto_cuando_el_acumulado_no_alcanza:
-    # 15.30 días agota el 'acumulado' (15.27) y toca 0.03 del 'abierto'
-    # en una sola llamada -> 2 filas de historial, una por período.
-    resp = _registrar_vacacion_tomada(client, headers, contrato_id, datetime.date(2025, 6, 1), "15.30")
+    # 16 días (entero) agota el 'acumulado' (15.27) y toca 0.73 del
+    # 'abierto' en una sola llamada -> 2 filas de historial, una por
+    # período.
+    resp = _registrar_vacacion_tomada(client, headers, contrato_id, datetime.date(2025, 6, 10), "16")
     assert resp.status_code == 201, resp.text
 
     eventos = _vacaciones_tomadas(client, headers, contrato_id)
     assert len(eventos) == 2
     dias_por_evento = sorted(decimal.Decimal(str(e["dias_tomados"])) for e in eventos)
-    assert dias_por_evento == [decimal.Decimal("0.03"), decimal.Decimal("15.27")]
-    assert sum(dias_por_evento) == decimal.Decimal("15.30")
+    assert dias_por_evento == [decimal.Decimal("0.73"), decimal.Decimal("15.27")]
+    assert sum(dias_por_evento) == decimal.Decimal("16.00")
 
 
 def test_periodo_acumulado_no_crece_en_planillas_posteriores(client, db):

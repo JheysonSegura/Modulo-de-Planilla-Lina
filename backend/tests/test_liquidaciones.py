@@ -211,6 +211,43 @@ def test_despido_injustificado_es_mas_que_renuncia_voluntaria(client, db):
         assert decimal.Decimal(str(liq_a[campo])) == decimal.Decimal(str(liq_b[campo])), campo
 
 
+def test_vacaciones_pendientes_en_liquidacion_conserva_decimales_tras_tomar_dias_enteros(client, db):
+    """2026-08-07: la restricción de días ENTEROS en 'vacaciones tomadas'
+    (POST /contratos/{id}/vacaciones-tomadas, ver test_vacaciones.py) es
+    solo para cuando el empleado sigue activo y se toma días de descanso
+    de calendario. La liquidación paga el SALDO restante completo,
+    decimales incluidos, porque a alguien que se va de la empresa no se
+    le puede hacer "tomar" la fracción de día que le quedaba -- se le
+    compensa en dinero. Este test confirma que ambos caminos conviven
+    sin que el entero de uno le quite precisión al otro."""
+    headers = _preparar_empresa(db, client)
+    contrato_id = _crear_empleado_con_contrato(client, headers, datetime.date(2025, 1, 1))
+    _generar_planilla(client, headers, "mensual", datetime.date(2025, 1, 1), datetime.date(2025, 1, 31))
+
+    # Mismo escenario base que test_despido_injustificado_trae_indemnizacion_y_preaviso
+    # (vacaciones_pendientes sin tomar nada = 167.27), pero acá el
+    # empleado ya tomó 1 día entero de vacaciones antes de irse.
+    resp = client.post(
+        f"/contratos/{contrato_id}/vacaciones-tomadas",
+        json={"fecha": "2025-01-31", "dias": "1"},
+        headers=headers,
+    )
+    assert resp.status_code == 201, resp.text
+
+    resp = _generar_liquidacion(
+        client, headers, contrato_id, "despido_injustificado", datetime.date(2025, 2, 15)
+    )
+    assert resp.status_code == 201, resp.text
+    liq = resp.json()
+
+    # 46 dias (1-ene a 15-feb) / 11 * 40.00 = 167.2727... -> 167.27
+    # acumulado bruto, menos 1 día ya tomado (40.00) = 127.27 -- el
+    # saldo real que queda (167.27-40.00=127.27, equivalente a 3.18 días
+    # a 40.00/día) se paga completo, sin redondear a un múltiplo de día
+    # entero.
+    assert decimal.Decimal(str(liq["vacaciones_pendientes"])) == decimal.Decimal("127.27")
+
+
 def test_contrato_definido_terminado_antes_de_tiempo_art_227(client, db):
     headers = _preparar_empresa(db, client)
     contrato_id = _crear_empleado_con_contrato(

@@ -142,10 +142,24 @@ def registrar_vacacion_tomada(
     fecha: datetime.date,
 ) -> ProvisionVacaciones:
     """Registra días de vacación efectivamente gozados, descontándolos
-    del saldo disponible. Si el contrato acumuló un segundo período
-    (Fase 12, Art. 59 CT), consume primero el período 'acumulado' (el
-    más antiguo) y luego el 'abierto' (FIFO, mismo criterio que
-    horas_extra_service para topes) -- ver get_todas_activas.
+    del saldo disponible. `dias_tomados` llega siempre como entero desde
+    el schema (VacacionTomadaCreate.dias: int, 2026-08-07) -- un
+    trabajador toma días de calendario completos, nunca una fracción de
+    día, a diferencia de dias_acumulados (Art. 54.1 CT, decimal por
+    diseño). Si el contrato acumuló un segundo período (Fase 12, Art. 59
+    CT), consume primero el período 'acumulado' (el más antiguo) y luego
+    el 'abierto' (FIFO, mismo criterio que horas_extra_service para
+    topes) -- ver get_todas_activas.
+
+    Limitación conocida, no resuelta acá: si una toma entera cruza los
+    dos períodos y el saldo del primero no es también entero (ej.
+    acumulado con saldo 15.27 y se piden 20 días), el reparto por período
+    en `vacaciones_tomadas` puede mostrar una fila fraccionaria para ese
+    evento puntual (15.27 + 4.73), aunque el total tomado sí sea entero
+    -- la fracción ahí refleja fielmente cuánto quedaba en ese balde
+    legado, no es un error de cálculo. No se resolvió por ser un caso de
+    borde de Fase 12 (ya confirmada) fuera del alcance pedido el
+    2026-08-07 (que era sobre el caso simple de un solo período).
 
     El período 'abierto' se recalcula fresco a `fecha` antes de validar
     el saldo (mismo criterio que decimo_service.generar_pago_decimo).

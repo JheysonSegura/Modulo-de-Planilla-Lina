@@ -16,7 +16,10 @@ const { data: eventos, refresh: refrescarEventos } = await useAsyncData(
 const mostrarTomar = ref(false)
 const mostrarAcumular = ref(false)
 
-const schemaTomar = z.object({ fecha: z.string().min(1, 'Obligatorio'), dias: z.number().positive() })
+// Días tomados: siempre entero -- un trabajador toma días de calendario
+// completos, nunca una fracción (confirmado 2026-08-07; días acumulados
+// sigue siendo decimal, ver useVacaciones.ts).
+const schemaTomar = z.object({ fecha: z.string().min(1, 'Obligatorio'), dias: z.number().int().positive() })
 type SchemaTomar = z.output<typeof schemaTomar>
 const stateTomar = reactive<Partial<SchemaTomar>>({ fecha: '', dias: undefined })
 const guardandoTomar = ref(false)
@@ -118,8 +121,8 @@ async function onSubmitAcumular(event: FormSubmitEvent<SchemaAcumular>) {
         >
           <UInputNumber
             v-model="stateTomar.dias"
-            :min="0.01"
-            :step="0.5"
+            :min="1"
+            :step="1"
             class="w-full"
           />
         </UFormField>

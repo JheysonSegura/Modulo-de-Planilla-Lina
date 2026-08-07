@@ -1,3 +1,4 @@
+import decimal
 import uuid
 from typing import Annotated
 
@@ -43,7 +44,7 @@ def registrar_vacacion_tomada(
 ) -> ProvisionVacaciones:
     contrato = contratos_service.obtener_contrato(db, contrato_id)
     return vacaciones_service.registrar_vacacion_tomada(
-        db, empresa_id, contrato, body.dias, body.fecha
+        db, empresa_id, contrato, decimal.Decimal(body.dias), body.fecha
     )
 
 

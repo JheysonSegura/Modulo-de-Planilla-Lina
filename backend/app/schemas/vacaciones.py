@@ -25,7 +25,12 @@ class ProvisionVacacionesOut(BaseModel):
 
 class VacacionTomadaCreate(BaseModel):
     fecha: datetime.date
-    dias: decimal.Decimal = Field(gt=0)
+    # Días efectivamente gozados: siempre número entero -- a diferencia de
+    # dias_acumulados (Art. 54.1 CT, decimal por diseño, nunca redondear),
+    # un trabajador toma días de calendario completos, no fracciones de
+    # día. Confirmado con el usuario 2026-08-07 tras detectar que un
+    # ingreso decimal (1.01) distorsionaba el monto pagado.
+    dias: int = Field(gt=0)
 
 
 class VacacionTomadaOut(BaseModel):
