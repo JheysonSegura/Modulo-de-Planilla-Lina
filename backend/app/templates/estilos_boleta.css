@@ -1,0 +1,104 @@
+@page {
+    size: letter;
+    margin: 1.5cm;
+}
+
+body {
+    font-family: "DejaVu Sans", sans-serif;
+    font-size: 10pt;
+    color: #1a1a1a;
+}
+
+.membrete {
+    display: flex;
+    align-items: center;
+    gap: 12pt;
+    border-bottom: 2pt solid #1a1a1a;
+    padding-bottom: 8pt;
+    margin-bottom: 12pt;
+}
+
+.membrete img {
+    max-height: 60pt;
+    max-width: 140pt;
+}
+
+.membrete .datos-empresa h1 {
+    font-size: 13pt;
+    margin: 0 0 2pt 0;
+}
+
+.membrete .datos-empresa p {
+    font-size: 8.5pt;
+    margin: 0;
+    color: #444;
+}
+
+h2.titulo-documento {
+    font-size: 12pt;
+    text-align: center;
+    margin: 0 0 12pt 0;
+    text-transform: uppercase;
+    letter-spacing: 0.5pt;
+}
+
+table.datos-empleado {
+    width: 100%;
+    margin-bottom: 12pt;
+    border-collapse: collapse;
+}
+
+table.datos-empleado td {
+    padding: 2pt 4pt;
+    font-size: 9.5pt;
+}
+
+table.datos-empleado td.etiqueta {
+    color: #555;
+    width: 22%;
+}
+
+table.desglose {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 8pt;
+}
+
+table.desglose th {
+    text-align: left;
+    font-size: 9pt;
+    background: #eee;
+    padding: 4pt 6pt;
+    border-bottom: 1pt solid #999;
+}
+
+table.desglose td {
+    padding: 3pt 6pt;
+    font-size: 9.5pt;
+    border-bottom: 0.5pt solid #ddd;
+}
+
+table.desglose td.monto,
+table.desglose th.monto {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+tr.subtotal td {
+    font-weight: bold;
+    border-top: 1pt solid #999;
+}
+
+tr.total td {
+    font-weight: bold;
+    font-size: 11pt;
+    border-top: 2pt solid #1a1a1a;
+}
+
+.seccion-titulo {
+    font-size: 9.5pt;
+    font-weight: bold;
+    text-transform: uppercase;
+    color: #555;
+    margin: 10pt 0 4pt 0;
+}

@@ -3,10 +3,14 @@ export interface Empresa {
   razon_social: string
   nombre_comercial: string | null
   ruc: string
+  dv: string | null
+  direccion: string | null
+  telefono: string | null
   clase_riesgo: string | null
   region: string | null
   actividad_economica: string | null
   tamano_empresa: string | null
+  tiene_logo: boolean
 }
 
 export function useEmpresa() {

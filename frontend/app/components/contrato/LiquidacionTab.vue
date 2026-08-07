@@ -6,6 +6,7 @@ import type { Contrato } from '~/composables/useContratos'
 const props = defineProps<{ contrato: Contrato }>()
 
 const { listarDeContrato, generar, pagar } = useLiquidaciones()
+const { descargar } = useReportes()
 const toast = useToast()
 
 const { data: liquidaciones, refresh } = await useAsyncData(
@@ -59,6 +60,23 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
     toast.add({ title: 'No se pudo generar la liquidación', description: String(error), color: 'error' })
   } finally {
     guardando.value = false
+  }
+}
+
+const descargando = ref(false)
+async function descargarBoleta(liquidacionId: string, motivo: string, formato: 'pdf' | 'excel') {
+  descargando.value = true
+  const extension = formato === 'pdf' ? 'pdf' : 'xlsx'
+  try {
+    await descargar(
+      `/liquidaciones/${liquidacionId}/boleta`,
+      { formato },
+      `boleta-liquidacion-${motivo}.${extension}`
+    )
+  } catch (error) {
+    toast.add({ title: 'No se pudo descargar la boleta', description: String(error), color: 'error' })
+  } finally {
+    descargando.value = false
   }
 }
 
@@ -191,6 +209,26 @@ async function marcarPagada(liquidacionId: string) {
             <UBadge variant="subtle">
               {{ liq.estado }}
             </UBadge>
+            <UButton
+              size="xs"
+              variant="ghost"
+              color="neutral"
+              icon="i-lucide-file-text"
+              :loading="descargando"
+              @click="descargarBoleta(liq.id, liq.motivo, 'pdf')"
+            >
+              PDF
+            </UButton>
+            <UButton
+              size="xs"
+              variant="ghost"
+              color="neutral"
+              icon="i-lucide-file-spreadsheet"
+              :loading="descargando"
+              @click="descargarBoleta(liq.id, liq.motivo, 'excel')"
+            >
+              Excel
+            </UButton>
             <UButton
               v-if="liq.estado !== 'pagada'"
               size="xs"

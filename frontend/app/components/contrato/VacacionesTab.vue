@@ -4,10 +4,14 @@ import type { FormSubmitEvent } from '@nuxt/ui'
 
 const props = defineProps<{ contratoId: string }>()
 
-const { provisiones, tomar, acumular } = useVacaciones()
+const { provisiones, tomar, acumular, tomadas } = useVacaciones()
+const { descargar } = useReportes()
 const toast = useToast()
 
 const { data: provs, refresh } = await useAsyncData(`vacaciones-${props.contratoId}`, () => provisiones(props.contratoId))
+const { data: eventos, refresh: refrescarEventos } = await useAsyncData(
+  `vacaciones-tomadas-${props.contratoId}`, () => tomadas(props.contratoId)
+)
 
 const mostrarTomar = ref(false)
 const mostrarAcumular = ref(false)
@@ -30,10 +34,28 @@ async function onSubmitTomar(event: FormSubmitEvent<SchemaTomar>) {
     mostrarTomar.value = false
     stateTomar.dias = undefined
     await refresh()
+    await refrescarEventos()
   } catch (error) {
     toast.add({ title: 'No se pudo registrar', description: String(error), color: 'error' })
   } finally {
     guardandoTomar.value = false
+  }
+}
+
+const descargandoBoleta = ref(false)
+async function descargarBoletaVacacion(eventoId: string, fecha: string, formato: 'pdf' | 'excel') {
+  descargandoBoleta.value = true
+  const extension = formato === 'pdf' ? 'pdf' : 'xlsx'
+  try {
+    await descargar(
+      `/contratos/${props.contratoId}/vacaciones-tomadas/${eventoId}/boleta`,
+      { formato },
+      `boleta-vacaciones-${fecha}.${extension}`
+    )
+  } catch (error) {
+    toast.add({ title: 'No se pudo descargar la boleta', description: String(error), color: 'error' })
+  } finally {
+    descargandoBoleta.value = false
   }
 }
 
@@ -204,6 +226,83 @@ async function onSubmitAcumular(event: FormSubmitEvent<SchemaAcumular>) {
               class="py-8 text-center text-gray-500"
             >
               Sin provisiones todavía.
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </UCard>
+
+    <UCard>
+      <template #header>
+        <span class="font-medium">Vacaciones tomadas</span>
+      </template>
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-left text-gray-500 border-b border-gray-200 dark:border-gray-800">
+            <th class="py-2 pr-4">
+              Fecha
+            </th>
+            <th class="py-2 pr-4">
+              Días tomados
+            </th>
+            <th class="py-2 pr-4">
+              Valor día
+            </th>
+            <th class="py-2 pr-4">
+              Monto
+            </th>
+            <th class="py-2">
+              Boleta
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="e in eventos"
+            :key="e.id"
+            class="border-b border-gray-100 dark:border-gray-800 last:border-0"
+          >
+            <td class="py-2 pr-4">
+              {{ formatearFecha(e.fecha) }}
+            </td>
+            <td class="py-2 pr-4">
+              {{ e.dias_tomados }}
+            </td>
+            <td class="py-2 pr-4">
+              ${{ e.valor_dia }}
+            </td>
+            <td class="py-2 pr-4 font-medium text-gray-900 dark:text-white">
+              ${{ e.monto }}
+            </td>
+            <td class="py-2">
+              <div class="flex gap-1">
+                <UButton
+                  size="xs"
+                  variant="ghost"
+                  color="neutral"
+                  icon="i-lucide-file-text"
+                  title="Descargar PDF"
+                  :loading="descargandoBoleta"
+                  @click="descargarBoletaVacacion(e.id, e.fecha, 'pdf')"
+                />
+                <UButton
+                  size="xs"
+                  variant="ghost"
+                  color="neutral"
+                  icon="i-lucide-file-spreadsheet"
+                  title="Descargar Excel"
+                  :loading="descargandoBoleta"
+                  @click="descargarBoletaVacacion(e.id, e.fecha, 'excel')"
+                />
+              </div>
+            </td>
+          </tr>
+          <tr v-if="!eventos || eventos.length === 0">
+            <td
+              colspan="5"
+              class="py-8 text-center text-gray-500"
+            >
+              Todavía no se registraron vacaciones tomadas.
             </td>
           </tr>
         </tbody>

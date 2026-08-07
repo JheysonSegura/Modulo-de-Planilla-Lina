@@ -14,6 +14,10 @@ def crear(db: Session, movimiento: MovimientoPlanilla) -> MovimientoPlanilla:
     return movimiento
 
 
+def get(db: Session, movimiento_id: uuid.UUID) -> MovimientoPlanilla | None:
+    return db.get(MovimientoPlanilla, movimiento_id)
+
+
 def listar_de_planilla(db: Session, planilla_id: uuid.UUID) -> list[MovimientoPlanilla]:
     stmt = select(MovimientoPlanilla).where(MovimientoPlanilla.planilla_id == planilla_id)
     return list(db.execute(stmt).scalars().all())

@@ -5,6 +5,7 @@ const planillaId = route.params.id as string
 const { obtener, movimientos, aprobar } = usePlanillas()
 const { obtener: obtenerContrato } = useContratos()
 const { obtener: obtenerEmpleado } = useEmpleados()
+const { descargar } = useReportes()
 const toast = useToast()
 
 const { data: planilla, refresh: refrescarPlanilla } = await useAsyncData(`planilla-${planillaId}`, () => obtener(planillaId))
@@ -44,6 +45,37 @@ async function aprobarPlanilla() {
 const totalNeto = computed(() =>
   (movs.value ?? []).reduce((acc, m) => acc + Number(m.salario_neto), 0).toFixed(2)
 )
+
+async function descargarBoleta(movimientoId: string, contratoId: string, formato: 'pdf' | 'excel') {
+  const nombre = nombresPorContrato.value[contratoId] || contratoId
+  const extension = formato === 'pdf' ? 'pdf' : 'xlsx'
+  try {
+    await descargar(
+      `/planillas/${planillaId}/movimientos/${movimientoId}/boleta`,
+      { formato },
+      `boleta-pago-${nombre}-${planilla.value?.periodo_fin}.${extension}`
+    )
+  } catch (error) {
+    toast.add({ title: 'No se pudo descargar la boleta', description: String(error), color: 'error' })
+  }
+}
+
+const exportando = ref(false)
+async function exportarPlanilla(formato: 'excel' | 'csv') {
+  exportando.value = true
+  const extension = formato === 'excel' ? 'xlsx' : 'csv'
+  try {
+    await descargar(
+      `/planillas/${planillaId}/exportar`,
+      { formato },
+      `planilla-${planilla.value?.tipo}-${planilla.value?.periodo_inicio}-${planilla.value?.periodo_fin}.${extension}`
+    )
+  } catch (error) {
+    toast.add({ title: 'No se pudo exportar la planilla', description: String(error), color: 'error' })
+  } finally {
+    exportando.value = false
+  }
+}
 </script>
 
 <template>
@@ -61,6 +93,26 @@ const totalNeto = computed(() =>
         <UBadge variant="subtle">
           {{ planilla.estado }}
         </UBadge>
+        <UButton
+          size="xs"
+          variant="soft"
+          color="neutral"
+          icon="i-lucide-file-spreadsheet"
+          :loading="exportando"
+          @click="exportarPlanilla('excel')"
+        >
+          Excel
+        </UButton>
+        <UButton
+          size="xs"
+          variant="soft"
+          color="neutral"
+          icon="i-lucide-file-text"
+          :loading="exportando"
+          @click="exportarPlanilla('csv')"
+        >
+          CSV
+        </UButton>
         <UButton
           v-if="planilla.estado === 'borrador'"
           :loading="aprobando"
@@ -94,8 +146,11 @@ const totalNeto = computed(() =>
             <th class="py-2 pr-4">
               Otras ded.
             </th>
-            <th class="py-2">
+            <th class="py-2 pr-4">
               Neto
+            </th>
+            <th class="py-2">
+              Boleta
             </th>
           </tr>
         </thead>
@@ -123,13 +178,33 @@ const totalNeto = computed(() =>
             <td class="py-2 pr-4 text-error">
               -${{ m.otras_deducciones }}
             </td>
-            <td class="py-2 font-medium text-gray-900 dark:text-white">
+            <td class="py-2 pr-4 font-medium text-gray-900 dark:text-white">
               ${{ m.salario_neto }}
+            </td>
+            <td class="py-2">
+              <div class="flex gap-1">
+                <UButton
+                  size="xs"
+                  variant="ghost"
+                  color="neutral"
+                  icon="i-lucide-file-text"
+                  title="Descargar PDF"
+                  @click="descargarBoleta(m.id, m.contrato_id, 'pdf')"
+                />
+                <UButton
+                  size="xs"
+                  variant="ghost"
+                  color="neutral"
+                  icon="i-lucide-file-spreadsheet"
+                  title="Descargar Excel"
+                  @click="descargarBoleta(m.id, m.contrato_id, 'excel')"
+                />
+              </div>
             </td>
           </tr>
           <tr v-if="!movs || movs.length === 0">
             <td
-              colspan="7"
+              colspan="8"
               class="py-8 text-center text-gray-500"
             >
               Sin movimientos.
@@ -144,7 +219,10 @@ const totalNeto = computed(() =>
             >
               Total neto
             </td>
-            <td class="py-2">
+            <td
+              class="py-2"
+              colspan="2"
+            >
               ${{ totalNeto }}
             </td>
           </tr>

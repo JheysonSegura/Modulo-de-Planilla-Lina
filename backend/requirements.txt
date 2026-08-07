@@ -11,3 +11,12 @@ PyJWT==2.9.0
 email-validator==2.2.0
 pytest==8.3.4
 httpx==0.28.1
+weasyprint==62.3
+# Fijado: pydyf>=0.12 rompe weasyprint 62.3 en runtime (AttributeError:
+# 'super' object has no attribute 'transform', Stream.transform de
+# pydyf 0.12 no es compatible con lo que weasyprint 62.3 espera, aunque
+# su constraint declarado sea solo ">=0.10.0").
+pydyf==0.11.0
+jinja2==3.1.5
+openpyxl==3.1.5
+python-multipart==0.0.20

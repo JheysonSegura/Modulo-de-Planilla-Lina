@@ -1,0 +1,16 @@
+{# Partial de membrete reutilizado por boleta_pago/boleta_vacacion/boleta_liquidacion.
+   Espera una variable `empresa` en el contexto (ver reportes_service.armar_contexto_empresa). #}
+<div class="membrete">
+    {% if empresa.logo_data_uri %}
+    <img src="{{ empresa.logo_data_uri }}" alt="Logo">
+    {% endif %}
+    <div class="datos-empresa">
+        <h1>{{ empresa.nombre_comercial or empresa.razon_social }}</h1>
+        {% if empresa.nombre_comercial %}<p>{{ empresa.razon_social }}</p>{% endif %}
+        <p>
+            RUC: {{ empresa.ruc }}{% if empresa.dv %} DV {{ empresa.dv }}{% endif %}
+            {% if empresa.direccion %} &middot; {{ empresa.direccion }}{% endif %}
+            {% if empresa.telefono %} &middot; Tel. {{ empresa.telefono }}{% endif %}
+        </p>
+    </div>
+</div>

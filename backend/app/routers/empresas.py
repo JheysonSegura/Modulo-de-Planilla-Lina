@@ -1,13 +1,15 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_db, get_empresa_activa_id, require_roles
 from app.models import Empresa
 from app.schemas.empresas import EmpresaOut, EmpresaUpdate
 from app.services import empresas_service
+
+_TIPOS_LOGO_PERMITIDOS = {"image/png", "image/jpeg", "image/svg+xml", "image/webp"}
 
 router = APIRouter(prefix="/empresas", tags=["empresas"])
 
@@ -29,3 +31,31 @@ def actualizar_empresa_actual(
 ) -> Empresa:
     empresa = empresas_service.obtener_empresa_activa(db, empresa_id)
     return empresas_service.actualizar_empresa_activa(db, empresa, body)
+
+
+@router.put("/actual/logo", response_model=EmpresaOut)
+async def subir_logo_empresa(
+    empresa_id: Annotated[uuid.UUID, Depends(get_empresa_activa_id)],
+    db: Annotated[Session, Depends(get_db)],
+    _rol: Annotated[str, Depends(require_roles("admin"))],
+    archivo: UploadFile,
+) -> Empresa:
+    if archivo.content_type not in _TIPOS_LOGO_PERMITIDOS:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"Formato de imagen no soportado: {archivo.content_type}",
+        )
+    empresa = empresas_service.obtener_empresa_activa(db, empresa_id)
+    contenido = await archivo.read()
+    return empresas_service.actualizar_logo(db, empresa, contenido, archivo.content_type)
+
+
+@router.get("/actual/logo")
+def obtener_logo_empresa(
+    empresa_id: Annotated[uuid.UUID, Depends(get_empresa_activa_id)],
+    db: Annotated[Session, Depends(get_db)],
+) -> Response:
+    empresa = empresas_service.obtener_empresa_activa(db, empresa_id)
+    if empresa.logo is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Esta empresa no tiene logo cargado")
+    return Response(content=empresa.logo, media_type=empresa.logo_content_type or "image/png")

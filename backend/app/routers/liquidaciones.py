@@ -1,13 +1,15 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_db_rls, get_empresa_activa_id, get_usuario_actual
+from app.core.responses import respuesta_archivo
 from app.models import Liquidacion, Usuario
 from app.schemas.liquidaciones import GenerarLiquidacionRequest, LiquidacionOut
-from app.services import contratos_service, liquidaciones_service
+from app.schemas.reportes import FormatoBoleta
+from app.services import contratos_service, liquidaciones_service, reportes_service
 
 router = APIRouter(tags=["liquidaciones"])
 
@@ -59,3 +61,21 @@ def pagar_liquidacion(
 ) -> Liquidacion:
     liquidacion = liquidaciones_service.obtener_liquidacion(db, liquidacion_id)
     return liquidaciones_service.pagar_liquidacion(db, empresa_id, usuario.id, liquidacion)
+
+
+@router.get("/liquidaciones/{liquidacion_id}/boleta")
+def boleta_liquidacion(
+    liquidacion_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db_rls)],
+    formato: Annotated[FormatoBoleta, Query()] = "pdf",
+) -> Response:
+    liquidacion = liquidaciones_service.obtener_liquidacion(db, liquidacion_id)
+    contexto = reportes_service.armar_boleta_liquidacion(db, liquidacion)
+    nombre_base = f"boleta-liquidacion-{contexto['empleado_identificacion']}-{contexto['fecha_terminacion']}"
+    if formato == "pdf":
+        contenido = reportes_service.render_pdf("boleta_liquidacion.html", contexto)
+    else:
+        contenido = reportes_service.render_excel(
+            [contexto], reportes_service.COLUMNAS_BOLETA_LIQUIDACION
+        )
+    return respuesta_archivo(contenido, formato, nombre_base)

@@ -3,16 +3,46 @@ import { z } from 'zod'
 import type { FormSubmitEvent } from '@nuxt/ui'
 
 const { obtenerActual, actualizarActual } = useEmpresa()
+const { obtenerLogoUrl, subirLogo } = useReportes()
 const { rolActivo } = useAuth()
 const toast = useToast()
 
 const { data: empresa, refresh } = await useAsyncData('empresa-actual', () => obtenerActual())
 
+const logoUrl = ref<string | null>(null)
+const subiendoLogo = ref(false)
+const inputLogo = ref<HTMLInputElement>()
+
+async function cargarLogo() {
+  logoUrl.value = empresa.value?.tiene_logo ? await obtenerLogoUrl() : null
+}
+await cargarLogo()
+
+async function onSeleccionarLogo(event: Event) {
+  const archivo = (event.target as HTMLInputElement).files?.[0]
+  if (!archivo) return
+  subiendoLogo.value = true
+  try {
+    await subirLogo(archivo)
+    toast.add({ title: 'Logo actualizado', color: 'success' })
+    await refresh()
+    await cargarLogo()
+  } catch (error) {
+    toast.add({ title: 'No se pudo subir el logo', description: String(error), color: 'error' })
+  } finally {
+    subiendoLogo.value = false
+    if (inputLogo.value) inputLogo.value.value = ''
+  }
+}
+
 const editando = ref(false)
 const schema = z.object({
   region: z.string().optional(),
   actividad_economica: z.string().optional(),
-  tamano_empresa: z.enum(['Pequeña Empresa', 'Gran Empresa']).optional()
+  tamano_empresa: z.enum(['Pequeña Empresa', 'Gran Empresa']).optional(),
+  dv: z.string().optional(),
+  direccion: z.string().optional(),
+  telefono: z.string().optional()
 })
 type Schema = z.output<typeof schema>
 const state = reactive<Partial<Schema>>({})
@@ -22,6 +52,9 @@ function abrirEdicion() {
   state.region = empresa.value?.region ?? undefined
   state.actividad_economica = empresa.value?.actividad_economica ?? undefined
   state.tamano_empresa = (empresa.value?.tamano_empresa as Schema['tamano_empresa']) ?? undefined
+  state.dv = empresa.value?.dv ?? undefined
+  state.direccion = empresa.value?.direccion ?? undefined
+  state.telefono = empresa.value?.telefono ?? undefined
   editando.value = true
 }
 
@@ -81,7 +114,17 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
         <div>
           <dt class="text-gray-500">
             RUC
-          </dt><dd>{{ empresa.ruc }}</dd>
+          </dt><dd>{{ empresa.ruc }}{{ empresa.dv ? ` DV ${empresa.dv}` : '' }}</dd>
+        </div>
+        <div>
+          <dt class="text-gray-500">
+            Dirección
+          </dt><dd>{{ empresa.direccion || '—' }}</dd>
+        </div>
+        <div>
+          <dt class="text-gray-500">
+            Teléfono
+          </dt><dd>{{ empresa.telefono || '—' }}</dd>
         </div>
         <div>
           <dt class="text-gray-500">
@@ -113,7 +156,8 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
         @submit="onSubmit"
       >
         <p class="text-xs text-gray-500">
-          Solo estos 3 campos son editables desde el sistema -- determinan qué fila de salario mínimo aplica.
+          Región/actividad/tamaño determinan qué fila de salario mínimo aplica. DV/dirección/teléfono
+          se imprimen en el membrete de boletas y reportes (Fase 16).
         </p>
         <UFormField
           label="Región"
@@ -144,6 +188,33 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
             class="w-full"
           />
         </UFormField>
+        <UFormField
+          label="DV (dígito verificador del RUC)"
+          name="dv"
+        >
+          <UInput
+            v-model="state.dv"
+            class="w-full"
+          />
+        </UFormField>
+        <UFormField
+          label="Dirección"
+          name="direccion"
+        >
+          <UInput
+            v-model="state.direccion"
+            class="w-full"
+          />
+        </UFormField>
+        <UFormField
+          label="Teléfono"
+          name="telefono"
+        >
+          <UInput
+            v-model="state.telefono"
+            class="w-full"
+          />
+        </UFormField>
         <div class="flex gap-2">
           <UButton
             type="submit"
@@ -160,6 +231,40 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
           </UButton>
         </div>
       </UForm>
+    </UCard>
+
+    <UCard class="mt-4">
+      <template #header>
+        <span class="font-medium">Logo (membrete de boletas y reportes)</span>
+      </template>
+      <div class="flex items-center gap-4">
+        <img
+          v-if="logoUrl"
+          :src="logoUrl"
+          alt="Logo de la empresa"
+          class="h-16 max-w-40 object-contain border rounded"
+        >
+        <span
+          v-else
+          class="text-sm text-gray-500"
+        >Esta empresa no tiene logo cargado.</span>
+        <UButton
+          v-if="rolActivo === 'admin'"
+          size="xs"
+          variant="soft"
+          :loading="subiendoLogo"
+          @click="inputLogo?.click()"
+        >
+          {{ logoUrl ? 'Cambiar logo' : 'Subir logo' }}
+        </UButton>
+        <input
+          ref="inputLogo"
+          type="file"
+          accept="image/png,image/jpeg,image/svg+xml,image/webp"
+          class="hidden"
+          @change="onSeleccionarLogo"
+        >
+      </div>
     </UCard>
   </div>
 </template>

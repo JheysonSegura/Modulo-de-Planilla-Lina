@@ -21,3 +21,14 @@ def actualizar_empresa_activa(db: Session, empresa: Empresa, data: EmpresaUpdate
         setattr(empresa, campo, valor)
     db.commit()
     return empresa
+
+
+def actualizar_logo(db: Session, empresa: Empresa, contenido: bytes, content_type: str) -> Empresa:
+    """Fase 16: logo para el membrete de boletas/reportes. Se guarda en
+    la propia tabla empresas (bytea) -- no hay volumen de archivos en
+    docker-compose.yml, y así queda consistente con el resto de datos
+    de la empresa."""
+    empresa.logo = contenido
+    empresa.logo_content_type = content_type
+    db.commit()
+    return empresa

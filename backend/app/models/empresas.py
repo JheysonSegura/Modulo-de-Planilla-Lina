@@ -1,7 +1,7 @@
 import datetime
 import uuid
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, LargeBinary, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -33,6 +33,10 @@ class Empresa(Base):
     telefono: Mapped[str | None] = mapped_column(String(30))
     email_contacto: Mapped[str | None] = mapped_column(String(150))
     representante_legal: Mapped[str | None] = mapped_column(String(200))
+    # Fase 16: membrete para boletas y reportes (junto con ruc/dv/direccion/
+    # telefono, que ya existían pero no se usaban en ningún documento).
+    logo: Mapped[bytes | None] = mapped_column(LargeBinary)
+    logo_content_type: Mapped[str | None] = mapped_column(String(50))
     moneda: Mapped[str] = mapped_column(String(10), nullable=False, server_default="USD")
     activo: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
     created_at: Mapped[datetime.datetime] = mapped_column(

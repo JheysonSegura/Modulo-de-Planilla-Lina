@@ -28,6 +28,22 @@ class VacacionTomadaCreate(BaseModel):
     dias: decimal.Decimal = Field(gt=0)
 
 
+class VacacionTomadaOut(BaseModel):
+    """Fase 16: historial por evento, para poder emitir boleta por cada
+    toma concreta (ver app/models/provisiones.py::VacacionTomada)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    provision_id: uuid.UUID
+    contrato_id: uuid.UUID
+    fecha: datetime.date
+    dias_tomados: decimal.Decimal
+    valor_dia: decimal.Decimal
+    monto: decimal.Decimal
+    created_at: datetime.datetime
+
+
 class AcumularVacacionesRequest(BaseModel):
     fecha_acuerdo: datetime.date
     notificado_autoridad_trabajo: bool = False

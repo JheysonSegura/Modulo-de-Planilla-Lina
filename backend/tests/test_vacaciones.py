@@ -94,6 +94,12 @@ def _provision_acumulada(client, headers, contrato_id):
     return next(p for p in _provisiones(client, headers, contrato_id) if p["estado"] == "acumulado")
 
 
+def _vacaciones_tomadas(client, headers, contrato_id):
+    resp = client.get(f"/contratos/{contrato_id}/vacaciones-tomadas", headers=headers)
+    assert resp.status_code == 200, resp.text
+    return resp.json()
+
+
 def test_dias_acumulados_para_137_dias_trabajados(client, db):
     headers = _preparar_empresa(db, client)
     # 2024-12-15 a 2025-04-30 inclusive = 137 días exactos (17 días de
@@ -281,6 +287,48 @@ def test_vacacion_tomada_consume_el_abierto_cuando_el_acumulado_no_alcanza(clien
     acumulado = _provision_acumulada(client, headers, contrato_id)
     assert decimal.Decimal(str(acumulado["dias_gozados"])) == decimal.Decimal("15.27")
     assert decimal.Decimal(str(acumulado["saldo_disponible"])) == decimal.Decimal("0.00")
+
+
+def test_una_toma_dentro_de_un_solo_periodo_genera_un_evento(client, db):
+    headers = _preparar_empresa(db, client)
+    contrato_id = _crear_empleado_con_contrato(client, headers, datetime.date(2024, 12, 15))
+    _generar_planilla(client, headers, "mensual", datetime.date(2025, 4, 1), datetime.date(2025, 4, 30))
+
+    resp = _registrar_vacacion_tomada(client, headers, contrato_id, datetime.date(2025, 4, 30), "5")
+    assert resp.status_code == 201, resp.text
+
+    eventos = _vacaciones_tomadas(client, headers, contrato_id)
+    assert len(eventos) == 1
+    assert decimal.Decimal(str(eventos[0]["dias_tomados"])) == decimal.Decimal("5.00")
+    # 5 días * valor_dia 30.00 = 150.00
+    assert decimal.Decimal(str(eventos[0]["monto"])) == decimal.Decimal("150.00")
+
+    # Una segunda toma (todavía dentro del mismo período 'abierto') es
+    # un segundo evento independiente, no se acumula al primero.
+    resp = _registrar_vacacion_tomada(client, headers, contrato_id, datetime.date(2025, 4, 30), "7")
+    assert resp.status_code == 201, resp.text
+    eventos = _vacaciones_tomadas(client, headers, contrato_id)
+    assert len(eventos) == 2
+
+
+def test_una_toma_que_cruza_acumulado_y_abierto_genera_dos_eventos(client, db):
+    headers = _preparar_empresa(db, client)
+    contrato_id = _crear_empleado_con_contrato(client, headers, datetime.date(2024, 12, 15))
+    _generar_planilla(client, headers, "mensual", datetime.date(2025, 5, 1), datetime.date(2025, 5, 31))
+    _acumular_periodo(client, headers, contrato_id, datetime.date(2025, 5, 31))
+
+    # Mismo escenario que
+    # test_vacacion_tomada_consume_el_abierto_cuando_el_acumulado_no_alcanza:
+    # 15.30 días agota el 'acumulado' (15.27) y toca 0.03 del 'abierto'
+    # en una sola llamada -> 2 filas de historial, una por período.
+    resp = _registrar_vacacion_tomada(client, headers, contrato_id, datetime.date(2025, 6, 1), "15.30")
+    assert resp.status_code == 201, resp.text
+
+    eventos = _vacaciones_tomadas(client, headers, contrato_id)
+    assert len(eventos) == 2
+    dias_por_evento = sorted(decimal.Decimal(str(e["dias_tomados"])) for e in eventos)
+    assert dias_por_evento == [decimal.Decimal("0.03"), decimal.Decimal("15.27")]
+    assert sum(dias_por_evento) == decimal.Decimal("15.30")
 
 
 def test_periodo_acumulado_no_crece_en_planillas_posteriores(client, db):

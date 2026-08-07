@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <title>Boleta de pago</title>
+    <link rel="stylesheet" href="estilos_boleta.css">
+</head>
+<body>
+    {% include "_base_boleta.html" %}
+
+    <h2 class="titulo-documento">
+        {% if planilla_tipo == "decimo_tercer_mes" %}Boleta de pago &mdash; Décimo tercer mes
+        {% else %}Boleta de pago{% endif %}
+    </h2>
+
+    <table class="datos-empleado">
+        <tr>
+            <td class="etiqueta">Empleado</td>
+            <td>{{ empleado_nombre }} ({{ empleado_identificacion }})</td>
+            <td class="etiqueta">Cargo</td>
+            <td>{{ cargo }}</td>
+        </tr>
+        <tr>
+            <td class="etiqueta">Período</td>
+            <td>{{ periodo_inicio }} al {{ periodo_fin }}</td>
+            <td class="etiqueta">Fecha de pago</td>
+            <td>{{ fecha_pago }}</td>
+        </tr>
+    </table>
+
+    <div class="seccion-titulo">Ingresos</div>
+    <table class="desglose">
+        <thead>
+            <tr><th>Concepto</th><th class="monto">Monto</th></tr>
+        </thead>
+        <tbody>
+            <tr><td>Salario base del período</td><td class="monto">{{ "%.2f"|format(salario_base_periodo) }}</td></tr>
+            {% for h in horas_extra_por_tipo %}
+            <tr><td>Horas extra &mdash; {{ h.tipo_hora }} ({{ h.horas }} h)</td><td class="monto">{{ "%.2f"|format(h.monto) }}</td></tr>
+            {% endfor %}
+            {% for c in otros_ingresos %}
+            <tr><td>{{ c.descripcion or c.codigo }}</td><td class="monto">{{ "%.2f"|format(c.monto) }}</td></tr>
+            {% endfor %}
+            <tr class="subtotal"><td>Salario bruto</td><td class="monto">{{ "%.2f"|format(salario_bruto) }}</td></tr>
+        </tbody>
+    </table>
+
+    <div class="seccion-titulo">Deducciones</div>
+    <table class="desglose">
+        <thead>
+            <tr><th>Concepto</th><th class="monto">Monto</th></tr>
+        </thead>
+        <tbody>
+            <tr><td>Cuota obrero CSS</td><td class="monto">{{ "%.2f"|format(css_empleado) }}</td></tr>
+            <tr><td>Seguro Educativo</td><td class="monto">{{ "%.2f"|format(seguro_educativo_empleado) }}</td></tr>
+            <tr><td>ISR retenido</td><td class="monto">{{ "%.2f"|format(isr_retenido) }}</td></tr>
+            {% for c in otras_deducciones_detalle %}
+            <tr><td>{{ c.descripcion or c.codigo }}</td><td class="monto">{{ "%.2f"|format(c.monto) }}</td></tr>
+            {% endfor %}
+            <tr class="subtotal"><td>Total deducciones</td><td class="monto">{{ "%.2f"|format(total_deducciones) }}</td></tr>
+        </tbody>
+    </table>
+
+    <table class="desglose">
+        <tbody>
+            <tr class="total"><td>Neto a pagar</td><td class="monto">{{ "%.2f"|format(salario_neto) }}</td></tr>
+        </tbody>
+    </table>
+</body>
+</html>

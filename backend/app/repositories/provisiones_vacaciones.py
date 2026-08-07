@@ -5,7 +5,7 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import ProvisionVacaciones
+from app.models import ProvisionVacaciones, VacacionTomada
 
 
 def get_abierta(db: Session, contrato_id: uuid.UUID) -> ProvisionVacaciones | None:
@@ -106,3 +106,48 @@ def listar_de_contrato(db: Session, contrato_id: uuid.UUID) -> list[ProvisionVac
         .order_by(ProvisionVacaciones.fecha_inicio_periodo)
     )
     return list(db.execute(stmt).scalars().all())
+
+
+def crear_evento_tomado(
+    db: Session,
+    empresa_id: uuid.UUID,
+    provision: ProvisionVacaciones,
+    contrato_id: uuid.UUID,
+    fecha: datetime.date,
+    dias_tomados: decimal.Decimal,
+    valor_dia: decimal.Decimal,
+    monto: decimal.Decimal,
+    dias_acumulados_snapshot: decimal.Decimal,
+    dias_gozados_snapshot: decimal.Decimal,
+) -> VacacionTomada:
+    """Fase 16: un registro por cada período efectivamente tocado dentro
+    de una llamada a vacaciones_service.registrar_vacacion_tomada -- ver
+    ese servicio para el detalle de por qué puede haber más de una fila
+    por llamada (toma que cruza el período 'acumulado' y el 'abierto')."""
+    evento = VacacionTomada(
+        empresa_id=empresa_id,
+        provision_id=provision.id,
+        contrato_id=contrato_id,
+        fecha=fecha,
+        dias_tomados=dias_tomados,
+        valor_dia=valor_dia,
+        monto=monto,
+        dias_acumulados_snapshot=dias_acumulados_snapshot,
+        dias_gozados_snapshot=dias_gozados_snapshot,
+    )
+    db.add(evento)
+    db.flush()
+    return evento
+
+
+def listar_eventos_de_contrato(db: Session, contrato_id: uuid.UUID) -> list[VacacionTomada]:
+    stmt = (
+        select(VacacionTomada)
+        .where(VacacionTomada.contrato_id == contrato_id)
+        .order_by(VacacionTomada.fecha.desc(), VacacionTomada.created_at.desc())
+    )
+    return list(db.execute(stmt).scalars().all())
+
+
+def obtener_evento(db: Session, evento_id: uuid.UUID) -> VacacionTomada | None:
+    return db.get(VacacionTomada, evento_id)

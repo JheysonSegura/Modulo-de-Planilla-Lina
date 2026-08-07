@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <title>Boleta de liquidación</title>
+    <link rel="stylesheet" href="estilos_boleta.css">
+</head>
+<body>
+    {% include "_base_boleta.html" %}
+
+    <h2 class="titulo-documento">Boleta de liquidación</h2>
+
+    <table class="datos-empleado">
+        <tr>
+            <td class="etiqueta">Empleado</td>
+            <td>{{ empleado_nombre }} ({{ empleado_identificacion }})</td>
+            <td class="etiqueta">Cargo</td>
+            <td>{{ cargo }}</td>
+        </tr>
+        <tr>
+            <td class="etiqueta">Fecha de terminación</td>
+            <td>{{ fecha_terminacion }}</td>
+            <td class="etiqueta">Motivo</td>
+            <td>{{ motivo.replace("_", " ")|capitalize }}</td>
+        </tr>
+    </table>
+
+    <table class="desglose">
+        <thead>
+            <tr><th>Concepto</th><th class="monto">Monto</th></tr>
+        </thead>
+        <tbody>
+            {% for nombre, monto in conceptos %}
+            <tr><td>{{ nombre }}</td><td class="monto">{{ "%.2f"|format(monto) }}</td></tr>
+            {% endfor %}
+            <tr class="total"><td>Monto total</td><td class="monto">{{ "%.2f"|format(monto_total) }}</td></tr>
+        </tbody>
+    </table>
+
+    {% if referencia_sentencia %}
+    <p style="font-size: 8.5pt; color: #555;">Salarios caídos según sentencia: {{ referencia_sentencia }}</p>
+    {% endif %}
+</body>
+</html>

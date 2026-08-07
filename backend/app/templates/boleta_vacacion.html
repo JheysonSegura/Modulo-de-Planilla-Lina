@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <title>Boleta de vacaciones</title>
+    <link rel="stylesheet" href="estilos_boleta.css">
+</head>
+<body>
+    {% include "_base_boleta.html" %}
+
+    <h2 class="titulo-documento">Boleta de vacaciones</h2>
+
+    <table class="datos-empleado">
+        <tr>
+            <td class="etiqueta">Empleado</td>
+            <td>{{ empleado_nombre }} ({{ empleado_identificacion }})</td>
+            <td class="etiqueta">Cargo</td>
+            <td>{{ cargo }}</td>
+        </tr>
+        <tr>
+            <td class="etiqueta">Fecha de goce</td>
+            <td>{{ fecha }}</td>
+            <td class="etiqueta">Días tomados</td>
+            <td>{{ dias_tomados }}</td>
+        </tr>
+    </table>
+
+    <table class="desglose">
+        <thead>
+            <tr><th>Concepto</th><th class="monto">Valor</th></tr>
+        </thead>
+        <tbody>
+            <tr><td>Valor por día</td><td class="monto">{{ "%.2f"|format(valor_dia) }}</td></tr>
+            <tr><td>Días tomados</td><td class="monto">{{ dias_tomados }}</td></tr>
+            <tr class="total"><td>Monto pagado</td><td class="monto">{{ "%.2f"|format(monto) }}</td></tr>
+        </tbody>
+    </table>
+
+    <div class="seccion-titulo">Saldo del período tras esta toma</div>
+    <table class="desglose">
+        <tbody>
+            <tr><td>Días acumulados</td><td class="monto">{{ dias_acumulados_snapshot }}</td></tr>
+            <tr><td>Días gozados (acumulado a la fecha)</td><td class="monto">{{ dias_gozados_snapshot }}</td></tr>
+            <tr class="subtotal"><td>Saldo disponible</td><td class="monto">{{ saldo_despues }}</td></tr>
+        </tbody>
+    </table>
+</body>
+</html>

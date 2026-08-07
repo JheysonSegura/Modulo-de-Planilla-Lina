@@ -8,7 +8,7 @@ from app.models.empresas import Empresa, UsuarioEmpresa
 from app.models.horas_extra import RegistroHorasExtra
 from app.models.liquidaciones import Liquidacion
 from app.models.planillas import ConceptoVariable, MovimientoPlanilla, Planilla
-from app.models.provisiones import ProvisionDecimo, ProvisionVacaciones
+from app.models.provisiones import ProvisionDecimo, ProvisionVacaciones, VacacionTomada
 from app.models.roles import Rol
 from app.models.tasas import (
     ParametroIsr,
@@ -41,6 +41,7 @@ __all__ = [
     "ConceptoVariablePendiente",
     "ProvisionDecimo",
     "ProvisionVacaciones",
+    "VacacionTomada",
     "Liquidacion",
     "AuditoriaCambio",
     "RefreshToken",

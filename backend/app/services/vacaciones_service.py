@@ -5,7 +5,7 @@ import uuid
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.models import Contrato, ProvisionVacaciones
+from app.models import Contrato, ProvisionVacaciones, VacacionTomada
 from app.repositories import historial_salarial as historial_repo
 from app.repositories import provisiones_vacaciones as provisiones_vacaciones_repo
 from app.services import ausencias_service
@@ -118,6 +118,22 @@ def listar_provisiones(db: Session, contrato_id: uuid.UUID) -> list[ProvisionVac
     return provisiones_vacaciones_repo.listar_de_contrato(db, contrato_id)
 
 
+def listar_eventos_tomados(db: Session, contrato_id: uuid.UUID) -> list[VacacionTomada]:
+    return provisiones_vacaciones_repo.listar_eventos_de_contrato(db, contrato_id)
+
+
+def obtener_evento_tomado(
+    db: Session, contrato_id: uuid.UUID, evento_id: uuid.UUID
+) -> VacacionTomada:
+    """Fase 16: usado por el endpoint de boleta de vacaciones. RLS ya
+    filtra por empresa; acá solo se valida que el evento pertenezca al
+    contrato de la URL."""
+    evento = provisiones_vacaciones_repo.obtener_evento(db, evento_id)
+    if evento is None or evento.contrato_id != contrato_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Evento de vacaciones no encontrado")
+    return evento
+
+
 def registrar_vacacion_tomada(
     db: Session,
     empresa_id: uuid.UUID,
@@ -188,6 +204,22 @@ def registrar_vacacion_tomada(
 
         ultimo_modificado = provisiones_vacaciones_repo.registrar_goce(
             db, periodo, dias_acumulados, nuevos_dias_gozados, monto_provisionado.quantize(_CENTAVO)
+        )
+        # Fase 16: un registro de historial por cada período efectivamente
+        # tocado, para poder emitir una boleta por esta toma concreta -- ver
+        # crear_evento_tomado. Antes del commit final, mismo patrón que
+        # registrar_goce (db.flush() adentro, sin refresh tras el commit).
+        provisiones_vacaciones_repo.crear_evento_tomado(
+            db,
+            empresa_id,
+            ultimo_modificado,
+            contrato.id,
+            fecha,
+            tomar,
+            valor_dia,
+            (tomar * valor_dia).quantize(_CENTAVO),
+            dias_acumulados,
+            nuevos_dias_gozados,
         )
         restante -= tomar
 

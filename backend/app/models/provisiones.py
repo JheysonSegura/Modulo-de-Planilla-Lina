@@ -38,6 +38,40 @@ class ProvisionDecimo(Base):
     )
 
 
+class VacacionTomada(Base):
+    """Historial por evento de vacaciones_service.registrar_vacacion_tomada
+    (Fase 16). Antes de esta tabla, "tomar vacaciones" solo mutaba los
+    totales de ProvisionVacaciones en sitio, sin dejar ningún registro
+    individual -- necesario para poder emitir una boleta por cada toma
+    concreta. Una llamada que cruza el período 'acumulado' y el 'abierto'
+    genera 2 filas, una por período efectivamente tocado."""
+
+    __tablename__ = "vacaciones_tomadas"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.uuid_generate_v4()
+    )
+    provision_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("provisiones_vacaciones.id"), nullable=False
+    )
+    contrato_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("contratos.id"), nullable=False
+    )
+    fecha: Mapped[datetime.date] = mapped_column(Date, nullable=False)
+    dias_tomados: Mapped[decimal.Decimal] = mapped_column(Numeric(6, 2), nullable=False)
+    valor_dia: Mapped[decimal.Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    monto: Mapped[decimal.Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    # Snapshot de auditoría: estado del período justo después de esta toma.
+    dias_acumulados_snapshot: Mapped[decimal.Decimal] = mapped_column(Numeric(6, 2), nullable=False)
+    dias_gozados_snapshot: Mapped[decimal.Decimal] = mapped_column(Numeric(6, 2), nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    empresa_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("empresas.id")
+    )
+
+
 class ProvisionVacaciones(Base):
     __tablename__ = "provisiones_vacaciones"
 
