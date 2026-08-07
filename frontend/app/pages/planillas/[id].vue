@@ -61,9 +61,10 @@ async function descargarBoleta(movimientoId: string, contratoId: string, formato
 }
 
 const exportando = ref(false)
-async function exportarPlanilla(formato: 'excel' | 'csv') {
+async function exportarPlanilla(formato: 'excel' | 'csv' | 'pdf') {
   exportando.value = true
-  const extension = formato === 'excel' ? 'xlsx' : 'csv'
+  const extension = formato === 'excel' ? 'xlsx' : formato
+
   try {
     await descargar(
       `/planillas/${planillaId}/exportar`,
@@ -112,6 +113,16 @@ async function exportarPlanilla(formato: 'excel' | 'csv') {
           @click="exportarPlanilla('csv')"
         >
           CSV
+        </UButton>
+        <UButton
+          size="xs"
+          variant="soft"
+          color="neutral"
+          icon="i-lucide-file"
+          :loading="exportando"
+          @click="exportarPlanilla('pdf')"
+        >
+          PDF
         </UButton>
         <UButton
           v-if="planilla.estado === 'borrador'"

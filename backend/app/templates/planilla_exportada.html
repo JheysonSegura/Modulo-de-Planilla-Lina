@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <title>Planilla</title>
+    <link rel="stylesheet" href="estilos_boleta.css">
+    <style>
+        @page { size: letter landscape; margin: 1.2cm; }
+        table.desglose th, table.desglose td { font-size: 8.5pt; padding: 3pt 4pt; }
+    </style>
+</head>
+<body>
+    {% include "_base_boleta.html" %}
+
+    <h2 class="titulo-documento">
+        Planilla {{ planilla_tipo.replace("_", " ") }} — {{ periodo_inicio }} al {{ periodo_fin }}
+    </h2>
+    <p style="text-align:center; font-size: 9pt; color:#555; margin-top:-8pt;">Fecha de pago: {{ fecha_pago }}</p>
+
+    <table class="desglose">
+        <thead>
+            <tr>
+                <th>Empleado</th>
+                <th>Identificación</th>
+                <th>Cargo</th>
+                <th class="monto">Salario base</th>
+                <th class="monto">Salario bruto</th>
+                <th class="monto">CSS empl.</th>
+                <th class="monto">S.E. empl.</th>
+                <th class="monto">ISR</th>
+                <th class="monto">Otras ded.</th>
+                <th class="monto">Neto</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for f in filas %}
+            <tr>
+                <td>{{ f.empleado }}</td>
+                <td>{{ f.identificacion }}</td>
+                <td>{{ f.cargo }}</td>
+                <td class="monto">{{ "%.2f"|format(f.salario_base) }}</td>
+                <td class="monto">{{ "%.2f"|format(f.salario_bruto) }}</td>
+                <td class="monto">{{ "%.2f"|format(f.css_empleado) }}</td>
+                <td class="monto">{{ "%.2f"|format(f.seguro_educativo_empleado) }}</td>
+                <td class="monto">{{ "%.2f"|format(f.isr_retenido) }}</td>
+                <td class="monto">{{ "%.2f"|format(f.otras_deducciones) }}</td>
+                <td class="monto">{{ "%.2f"|format(f.salario_neto) }}</td>
+            </tr>
+            {% endfor %}
+            <tr class="total">
+                <td colspan="9">Total neto</td>
+                <td class="monto">{{ "%.2f"|format(total_neto) }}</td>
+            </tr>
+        </tbody>
+    </table>
+</body>
+</html>

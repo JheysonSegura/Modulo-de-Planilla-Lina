@@ -1,5 +1,7 @@
 <script setup lang="ts">
 const { listar } = useAuditoria()
+const { descargar } = useReportes()
+const toast = useToast()
 
 const filtroTabla = ref<string | undefined>(undefined)
 const filtroAccion = ref<string | undefined>(undefined)
@@ -8,6 +10,23 @@ const { data: eventos, pending, refresh } = await useAsyncData(
   'auditoria', () => listar(undefined, filtroTabla.value, filtroAccion.value),
   { watch: [filtroTabla, filtroAccion] }
 )
+
+const exportando = ref(false)
+async function exportarAuditoria(formato: 'excel' | 'csv') {
+  exportando.value = true
+  const extension = formato === 'excel' ? 'xlsx' : 'csv'
+  try {
+    await descargar(
+      '/auditoria/exportar',
+      { formato, tabla_afectada: filtroTabla.value, accion: filtroAccion.value },
+      `auditoria.${extension}`
+    )
+  } catch (error) {
+    toast.add({ title: 'No se pudo exportar la auditoría', description: String(error), color: 'error' })
+  } finally {
+    exportando.value = false
+  }
+}
 
 const opcionesTabla = [
   { label: 'Todas', value: undefined },
@@ -40,21 +59,45 @@ onActivated(() => refresh())
       Auditoría
     </h1>
 
-    <div class="flex gap-3 mb-4">
-      <USelect
-        v-model="filtroTabla"
-        :items="opcionesTabla"
-        value-key="value"
-        placeholder="Tabla afectada"
-        class="w-56"
-      />
-      <USelect
-        v-model="filtroAccion"
-        :items="opcionesAccion"
-        value-key="value"
-        placeholder="Tipo de evento"
-        class="w-56"
-      />
+    <div class="flex items-center justify-between mb-4">
+      <div class="flex gap-3">
+        <USelect
+          v-model="filtroTabla"
+          :items="opcionesTabla"
+          value-key="value"
+          placeholder="Tabla afectada"
+          class="w-56"
+        />
+        <USelect
+          v-model="filtroAccion"
+          :items="opcionesAccion"
+          value-key="value"
+          placeholder="Tipo de evento"
+          class="w-56"
+        />
+      </div>
+      <div class="flex gap-2">
+        <UButton
+          size="xs"
+          variant="soft"
+          color="neutral"
+          icon="i-lucide-file-spreadsheet"
+          :loading="exportando"
+          @click="exportarAuditoria('excel')"
+        >
+          Excel
+        </UButton>
+        <UButton
+          size="xs"
+          variant="soft"
+          color="neutral"
+          icon="i-lucide-file-text"
+          :loading="exportando"
+          @click="exportarAuditoria('csv')"
+        >
+          CSV
+        </UButton>
+      </div>
     </div>
 
     <UCard>

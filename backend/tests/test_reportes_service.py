@@ -182,6 +182,15 @@ def test_exportar_planilla_excel_y_csv(db, client):
     assert b"Salario neto" in resp_csv.content
 
 
+def test_exportar_planilla_pdf_consolidado(db, client):
+    _empresa, headers, planilla, _mov = _preparar_movimiento_con_horas_extra_e_isr(db, client)
+
+    resp = client.get(f"/planillas/{planilla['id']}/exportar?formato=pdf", headers=headers)
+    assert resp.status_code == 200, resp.text
+    assert resp.headers["content-type"] == "application/pdf"
+    assert resp.content.startswith(b"%PDF")
+
+
 def test_boleta_vacacion_pdf_endpoint(db, client):
     _empresa, headers = _preparar_empresa(db, client)
     contrato_id = _crear_empleado_con_contrato(client, headers)

@@ -197,3 +197,32 @@ def test_auditoria_se_aisla_entre_empresas(client, db):
     eventos = resp.json()
     assert len(eventos) == 1
     assert eventos[0]["datos_nuevos"]["salario_base"] == "1000.00"
+
+
+# --- Fase 16 (extensión 2026-08-07): reporte de auditoría descargable ---
+
+
+def test_exportar_auditoria_excel_y_csv(client, db):
+    headers = _preparar_empresa(db, client)
+    empleado_id, contrato_id = _crear_empleado_con_contrato(client, headers)
+    client.post(
+        f"/contratos/{contrato_id}/salario",
+        json={"salario_base": "1000.00", "fecha_vigencia_desde": "2025-06-01"},
+        headers=headers,
+    )
+
+    resp_excel = client.get("/auditoria/exportar?formato=excel", headers=headers)
+    assert resp_excel.status_code == 200, resp_excel.text
+    assert "spreadsheetml" in resp_excel.headers["content-type"]
+
+    resp_csv = client.get("/auditoria/exportar?formato=csv", headers=headers)
+    assert resp_csv.status_code == 200, resp_csv.text
+    assert resp_csv.headers["content-type"].startswith("text/csv")
+    assert b"cambio_salario" in resp_csv.content
+
+
+def test_exportar_auditoria_rechaza_rol_no_admin(client, db):
+    headers = _preparar_empresa(db, client, rol="consulta")
+
+    resp = client.get("/auditoria/exportar?formato=excel", headers=headers)
+    assert resp.status_code == 403, resp.text

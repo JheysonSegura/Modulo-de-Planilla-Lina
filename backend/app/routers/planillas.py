@@ -94,10 +94,14 @@ def exportar_planilla(
     formato: Annotated[FormatoExportacion, Query()] = "excel",
 ) -> Response:
     planilla = planilla_service.obtener_planilla(db, planilla_id)
-    filas = reportes_service.exportar_planilla(db, planilla)
     nombre_base = f"planilla-{planilla.tipo}-{planilla.periodo_inicio}-{planilla.periodo_fin}"
-    if formato == "excel":
-        contenido = reportes_service.render_excel(filas, reportes_service.COLUMNAS_EXPORTAR_PLANILLA)
+    if formato == "pdf":
+        contexto = reportes_service.armar_reporte_planilla(db, planilla)
+        contenido = reportes_service.render_pdf("planilla_exportada.html", contexto)
     else:
-        contenido = reportes_service.render_csv(filas, reportes_service.COLUMNAS_EXPORTAR_PLANILLA)
+        filas = reportes_service.exportar_planilla(db, planilla)
+        if formato == "excel":
+            contenido = reportes_service.render_excel(filas, reportes_service.COLUMNAS_EXPORTAR_PLANILLA)
+        else:
+            contenido = reportes_service.render_csv(filas, reportes_service.COLUMNAS_EXPORTAR_PLANILLA)
     return respuesta_archivo(contenido, formato, nombre_base)

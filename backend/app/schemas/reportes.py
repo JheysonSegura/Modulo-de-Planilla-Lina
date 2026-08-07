@@ -5,6 +5,12 @@ from typing import Literal
 # contabilidad. CSV no aplica -- no es un documento tabular.
 FormatoBoleta = Literal["pdf", "excel"]
 
-# La exportación de planilla es una tabla (todos los empleados de un
-# período): Excel/CSV, no PDF -- sería una tabla enorme, no un documento.
-FormatoExportacion = Literal["excel", "csv"]
+# Exportación de planilla completa (todos los empleados de un período):
+# Excel/CSV para contabilidad, PDF como reporte consolidado para
+# imprimir/archivar (Fase 16, extensión 2026-08-07).
+FormatoExportacion = Literal["excel", "csv", "pdf"]
+
+# Reporte de auditoría: tabular (Excel/CSV) para análisis, sin PDF -- un
+# log de auditoría puede crecer indefinidamente, no tiene sentido como
+# documento de una sola página.
+FormatoAuditoria = Literal["excel", "csv"]

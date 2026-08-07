@@ -2,6 +2,7 @@ import base64
 import csv
 import decimal
 import io
+import json
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
@@ -10,11 +11,13 @@ from openpyxl.styles import Font
 from sqlalchemy.orm import Session
 from weasyprint import HTML
 
-from app.models import Liquidacion, MovimientoPlanilla, Planilla, VacacionTomada
+from app.models import AuditoriaCambio, Liquidacion, MovimientoPlanilla, Planilla, VacacionTomada
 from app.repositories import contratos as contratos_repo
+from app.repositories import empleados as empleados_repo
 from app.repositories import empresas as empresas_repo
 from app.repositories import horas_extra as horas_extra_repo
 from app.repositories import movimientos_planilla as movimientos_planilla_repo
+from app.repositories import usuarios as usuarios_repo
 
 _CERO = decimal.Decimal("0")
 
@@ -66,6 +69,17 @@ COLUMNAS_BOLETA_LIQUIDACION = [
     ("otras_deducciones", "Otras deducciones"),
     ("penalidad_renuncia_sin_aviso", "Penalidad renuncia sin aviso"),
     ("monto_total", "Monto total"),
+]
+
+COLUMNAS_AUDITORIA = [
+    ("fecha", "Fecha"),
+    ("tabla_afectada", "Tabla afectada"),
+    ("accion", "Acción"),
+    ("empleado", "Empleado"),
+    ("usuario", "Usuario"),
+    ("registro_id", "ID del registro"),
+    ("datos_anteriores", "Datos anteriores"),
+    ("datos_nuevos", "Datos nuevos"),
 ]
 
 COLUMNAS_EXPORTAR_PLANILLA = [
@@ -237,6 +251,72 @@ def exportar_planilla(db: Session, planilla: Planilla) -> list[dict]:
                 "isr_retenido": movimiento.isr_retenido,
                 "otras_deducciones": movimiento.otras_deducciones,
                 "salario_neto": movimiento.salario_neto,
+            }
+        )
+    return filas
+
+
+def armar_reporte_planilla(db: Session, planilla: Planilla) -> dict:
+    """Contexto para el PDF consolidado de la planilla completa (extensión
+    Fase 16, 2026-08-07) -- reutiliza exportar_planilla, nunca duplica esa
+    lógica de armado de filas."""
+    filas = exportar_planilla(db, planilla)
+    empresa = empresas_repo.get(db, planilla.empresa_id)
+    total_neto = sum((fila["salario_neto"] for fila in filas), _CERO)
+    return {
+        "empresa": armar_contexto_empresa(empresa),
+        "planilla_tipo": planilla.tipo,
+        "periodo_inicio": planilla.periodo_inicio,
+        "periodo_fin": planilla.periodo_fin,
+        "fecha_pago": planilla.fecha_pago,
+        "filas": filas,
+        "total_neto": total_neto,
+    }
+
+
+def exportar_auditoria(db: Session, eventos: list[AuditoriaCambio]) -> list[dict]:
+    """Una fila por evento, para el reporte de auditoría descargable
+    (extensión Fase 16, 2026-08-07) -- ver COLUMNAS_AUDITORIA. Cachea
+    empleado/usuario por id dentro de la misma llamada: un log de
+    auditoría suele repetir el mismo empleado/usuario en muchas filas."""
+    cache_empleados: dict = {}
+    cache_usuarios: dict = {}
+
+    def _nombre_empleado(empleado_id):
+        if empleado_id is None:
+            return None
+        if empleado_id not in cache_empleados:
+            empleado = empleados_repo.get(db, empleado_id)
+            cache_empleados[empleado_id] = empleado.nombre_completo if empleado else str(empleado_id)
+        return cache_empleados[empleado_id]
+
+    def _email_usuario(usuario_id):
+        if usuario_id is None:
+            return None
+        if usuario_id not in cache_usuarios:
+            usuario = usuarios_repo.get_by_id(db, usuario_id)
+            cache_usuarios[usuario_id] = usuario.email if usuario else str(usuario_id)
+        return cache_usuarios[usuario_id]
+
+    filas = []
+    for evento in eventos:
+        filas.append(
+            {
+                # openpyxl no acepta datetimes con tzinfo (created_at es
+                # timestamptz) -- se formatea a texto, igual que el resto
+                # de columnas de este export.
+                "fecha": evento.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+                "tabla_afectada": evento.tabla_afectada,
+                "accion": evento.accion,
+                "empleado": _nombre_empleado(evento.empleado_id),
+                "usuario": _email_usuario(evento.usuario_id),
+                "registro_id": str(evento.registro_id),
+                "datos_anteriores": json.dumps(evento.datos_anteriores, ensure_ascii=False)
+                if evento.datos_anteriores
+                else None,
+                "datos_nuevos": json.dumps(evento.datos_nuevos, ensure_ascii=False)
+                if evento.datos_nuevos
+                else None,
             }
         )
     return filas
