@@ -42,11 +42,24 @@ CREATE TABLE empleados (
     identificacion      VARCHAR(30) NOT NULL,
     nombre_completo     VARCHAR(200) NOT NULL,
     fecha_nacimiento    DATE,
-    fecha_nacionalidad  VARCHAR(50),               -- relevante por afiliación migrante (Ley 462)
+    nacionalidad        VARCHAR(50),               -- relevante por afiliación migrante (Ley 462); columna se llamaba "fecha_nacionalidad" hasta 0028 (bug de nombre heredado)
+    sexo                VARCHAR(20),               -- 'masculino','femenino','otro'
     email_personal      VARCHAR(150),
+    codigo_pais         VARCHAR(5),                -- ej. '+507', separado de telefono desde 0028
     telefono            VARCHAR(30),
     direccion           TEXT,
     numero_seguro_social VARCHAR(30),               -- asignado por la CSS al afiliar
+    padece_enfermedad   BOOLEAN NOT NULL DEFAULT false,
+    detalle_enfermedad  TEXT,
+    -- Documentos personales (0028): mismo patrón que empresas.logo -- bytea
+    -- en la propia tabla, servidos aparte por endpoint dedicado, nunca
+    -- inline en EmpleadoOut.
+    documento_identificacion               BYTEA,
+    documento_identificacion_content_type  VARCHAR(50),
+    documento_identificacion_nombre_archivo VARCHAR(255),
+    documento_certificado_medico               BYTEA,
+    documento_certificado_medico_content_type  VARCHAR(50),
+    documento_certificado_medico_nombre_archivo VARCHAR(255),
     estado              VARCHAR(20) NOT NULL DEFAULT 'activo', -- 'activo','inactivo'
     created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),

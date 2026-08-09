@@ -2,7 +2,17 @@ import datetime
 import decimal
 import uuid
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    Date,
+    DateTime,
+    ForeignKey,
+    LargeBinary,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -28,11 +38,24 @@ class Empleado(Base):
     identificacion: Mapped[str] = mapped_column(String(30), nullable=False)
     nombre_completo: Mapped[str] = mapped_column(String(200), nullable=False)
     fecha_nacimiento: Mapped[datetime.date | None] = mapped_column(Date)
-    fecha_nacionalidad: Mapped[str | None] = mapped_column(String(50))
+    nacionalidad: Mapped[str | None] = mapped_column(String(50))
+    sexo: Mapped[str | None] = mapped_column(String(20))
     email_personal: Mapped[str | None] = mapped_column(String(150))
+    codigo_pais: Mapped[str | None] = mapped_column(String(5))
     telefono: Mapped[str | None] = mapped_column(String(30))
     direccion: Mapped[str | None] = mapped_column(Text)
     numero_seguro_social: Mapped[str | None] = mapped_column(String(30))
+    padece_enfermedad: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    detalle_enfermedad: Mapped[str | None] = mapped_column(Text)
+    # Documentos personales (Fase 17): mismo patrón que Empresa.logo -- bytea
+    # en la propia tabla, servido aparte por endpoint dedicado, nunca inline
+    # en EmpleadoOut.
+    documento_identificacion: Mapped[bytes | None] = mapped_column(LargeBinary)
+    documento_identificacion_content_type: Mapped[str | None] = mapped_column(String(50))
+    documento_identificacion_nombre_archivo: Mapped[str | None] = mapped_column(String(255))
+    documento_certificado_medico: Mapped[bytes | None] = mapped_column(LargeBinary)
+    documento_certificado_medico_content_type: Mapped[str | None] = mapped_column(String(50))
+    documento_certificado_medico_nombre_archivo: Mapped[str | None] = mapped_column(String(255))
     estado: Mapped[str] = mapped_column(String(20), nullable=False, server_default="activo")
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

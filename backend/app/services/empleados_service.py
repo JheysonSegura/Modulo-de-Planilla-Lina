@@ -52,3 +52,27 @@ def actualizar_empleado(db: Session, empleado: Empleado, data: EmpleadoUpdate) -
             "Ya existe un empleado con esa identificación en esta empresa",
         ) from exc
     return empleado
+
+
+def actualizar_documento_identificacion(
+    db: Session, empleado: Empleado, contenido: bytes, content_type: str, nombre_archivo: str
+) -> Empleado:
+    """Documento de cédula/pasaporte del empleado. Se guarda en la propia
+    tabla empleados (bytea), mismo patrón que Empresa.logo -- sin volumen
+    de archivos en docker-compose.yml."""
+    empleado.documento_identificacion = contenido
+    empleado.documento_identificacion_content_type = content_type
+    empleado.documento_identificacion_nombre_archivo = nombre_archivo
+    db.commit()
+    return empleado
+
+
+def actualizar_documento_certificado_medico(
+    db: Session, empleado: Empleado, contenido: bytes, content_type: str, nombre_archivo: str
+) -> Empleado:
+    """Certificación médica que el empleado decida entregar (opcional)."""
+    empleado.documento_certificado_medico = contenido
+    empleado.documento_certificado_medico_content_type = content_type
+    empleado.documento_certificado_medico_nombre_archivo = nombre_archivo
+    db.commit()
+    return empleado

@@ -9,9 +9,15 @@ const schema = z.object({
   tipo_identificacion: z.enum(['cedula', 'pasaporte']),
   identificacion: z.string().min(1, 'Obligatorio'),
   nombre_completo: z.string().min(1, 'Obligatorio'),
+  fecha_nacimiento: z.string().optional(),
+  sexo: z.enum(['masculino', 'femenino', 'otro']).optional(),
+  nacionalidad: z.string().optional(),
   email_personal: z.string().email('Email inválido').optional().or(z.literal('')),
+  codigo_pais: z.string().optional(),
   telefono: z.string().optional(),
-  direccion: z.string().optional()
+  direccion: z.string().optional(),
+  padece_enfermedad: z.boolean().optional(),
+  detalle_enfermedad: z.string().optional()
 })
 type Schema = z.output<typeof schema>
 
@@ -21,7 +27,8 @@ const state = reactive<Partial<Schema>>({
   nombre_completo: '',
   email_personal: '',
   telefono: '',
-  direccion: ''
+  direccion: '',
+  padece_enfermedad: false
 })
 
 const opcionesTipoId = [
@@ -98,24 +105,9 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
             class="w-full"
           />
         </UFormField>
-        <UFormField
-          label="Teléfono"
-          name="telefono"
-        >
-          <UInput
-            v-model="state.telefono"
-            class="w-full"
-          />
-        </UFormField>
-        <UFormField
-          label="Dirección"
-          name="direccion"
-        >
-          <UTextarea
-            v-model="state.direccion"
-            class="w-full"
-          />
-        </UFormField>
+
+        <EmpleadoFormDatosPersonales :state="state" />
+
         <div class="flex gap-2">
           <UButton
             type="submit"

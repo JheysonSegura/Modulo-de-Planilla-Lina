@@ -1,3 +1,4 @@
+import base64
 import datetime
 import decimal
 import uuid
@@ -287,3 +288,177 @@ def test_no_ve_empleados_de_otra_empresa(client, db):
 
     resp = client.get(f"/empleados/{empleado_b_id}", headers=headers_a)
     assert resp.status_code == 404
+
+
+def test_crear_empleado_con_datos_personales_nuevos(client, db):
+    empresa, headers = _preparar_empresa_con_usuario(db, client)
+
+    resp = client.post(
+        "/empleados",
+        json={
+            "identificacion": f"8-{_sufijo()}",
+            "nombre_completo": "Rosa Jiménez",
+            "fecha_nacimiento": "1990-05-20",
+            "nacionalidad": "panameña",
+            "sexo": "femenino",
+            "codigo_pais": "+507",
+            "telefono": "6123-4567",
+            "padece_enfermedad": True,
+            "detalle_enfermedad": "Asma",
+        },
+        headers=headers,
+    )
+    assert resp.status_code == 201, resp.text
+    empleado = resp.json()
+    assert empleado["fecha_nacimiento"] == "1990-05-20"
+    assert empleado["nacionalidad"] == "panameña"
+    assert empleado["sexo"] == "femenino"
+    assert empleado["codigo_pais"] == "+507"
+    assert empleado["telefono"] == "6123-4567"
+    assert empleado["padece_enfermedad"] is True
+    assert empleado["detalle_enfermedad"] == "Asma"
+    assert empleado["tiene_documento_identificacion"] is False
+    assert empleado["tiene_documento_certificado_medico"] is False
+
+
+def test_actualizar_empleado_campos_editables(client, db):
+    empresa, headers = _preparar_empresa_con_usuario(db, client)
+
+    resp = client.post(
+        "/empleados",
+        json={"identificacion": f"8-{_sufijo()}", "nombre_completo": "Julio Ábrego"},
+        headers=headers,
+    )
+    empleado = resp.json()
+
+    resp = client.patch(
+        f"/empleados/{empleado['id']}",
+        json={
+            "telefono": "6789-0000",
+            "codigo_pais": "+507",
+            "direccion": "Vía España, PTY",
+            "fecha_nacimiento": "1985-03-10",
+            "sexo": "masculino",
+            "nacionalidad": "panameña",
+            "padece_enfermedad": True,
+            "detalle_enfermedad": "Hipertensión",
+        },
+        headers=headers,
+    )
+    assert resp.status_code == 200, resp.text
+    actualizado = resp.json()
+    assert actualizado["telefono"] == "6789-0000"
+    assert actualizado["codigo_pais"] == "+507"
+    assert actualizado["direccion"] == "Vía España, PTY"
+    assert actualizado["fecha_nacimiento"] == "1985-03-10"
+    assert actualizado["sexo"] == "masculino"
+    assert actualizado["nacionalidad"] == "panameña"
+    assert actualizado["padece_enfermedad"] is True
+    assert actualizado["detalle_enfermedad"] == "Hipertensión"
+
+
+def test_actualizar_empleado_ignora_identificacion_nombre_y_email(client, db):
+    empresa, headers = _preparar_empresa_con_usuario(db, client)
+
+    resp = client.post(
+        "/empleados",
+        json={
+            "identificacion": f"8-{_sufijo()}",
+            "nombre_completo": "Nombre Original",
+            "email_personal": "original@example.com",
+        },
+        headers=headers,
+    )
+    empleado = resp.json()
+
+    resp = client.patch(
+        f"/empleados/{empleado['id']}",
+        json={
+            "identificacion": "9-999-9999",
+            "nombre_completo": "Nombre Cambiado",
+            "email_personal": "cambiado@example.com",
+            "direccion": "Nueva dirección",
+        },
+        headers=headers,
+    )
+    assert resp.status_code == 200, resp.text
+    actualizado = resp.json()
+    # Los 3 campos bloqueados no se movieron -- EmpleadoUpdate no los
+    # declara, así que Pydantic los descarta antes de llegar al service.
+    assert actualizado["identificacion"] == empleado["identificacion"]
+    assert actualizado["nombre_completo"] == "Nombre Original"
+    assert actualizado["email_personal"] == "original@example.com"
+    assert actualizado["direccion"] == "Nueva dirección"
+
+
+def _png_1x1() -> bytes:
+    return base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk"
+        "+A8AAQUBAScY42YAAAAASUVORK5CYII="
+    )
+
+
+def test_documento_identificacion_subir_y_obtener(client, db):
+    empresa, headers = _preparar_empresa_con_usuario(db, client)
+    resp = client.post(
+        "/empleados",
+        json={"identificacion": f"8-{_sufijo()}", "nombre_completo": "Empleado con cédula"},
+        headers=headers,
+    )
+    empleado_id = resp.json()["id"]
+    png = _png_1x1()
+
+    resp = client.put(
+        f"/empleados/{empleado_id}/documento-identificacion",
+        files={"archivo": ("cedula.png", png, "image/png")},
+        headers=headers,
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["tiene_documento_identificacion"] is True
+    assert resp.json()["documento_identificacion_nombre_archivo"] == "cedula.png"
+
+    resp = client.get(f"/empleados/{empleado_id}/documento-identificacion", headers=headers)
+    assert resp.status_code == 200, resp.text
+    assert resp.headers["content-type"] == "image/png"
+    assert resp.content == png
+
+
+def test_documento_certificado_medico_subir_y_obtener(client, db):
+    empresa, headers = _preparar_empresa_con_usuario(db, client)
+    resp = client.post(
+        "/empleados",
+        json={"identificacion": f"8-{_sufijo()}", "nombre_completo": "Empleado con certificado"},
+        headers=headers,
+    )
+    empleado_id = resp.json()["id"]
+    png = _png_1x1()
+
+    resp = client.put(
+        f"/empleados/{empleado_id}/documento-certificado-medico",
+        files={"archivo": ("certificado.png", png, "image/png")},
+        headers=headers,
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["tiene_documento_certificado_medico"] is True
+
+    resp = client.get(f"/empleados/{empleado_id}/documento-certificado-medico", headers=headers)
+    assert resp.status_code == 200, resp.text
+    assert resp.headers["content-type"] == "image/png"
+    assert resp.content == png
+
+
+def test_documento_identificacion_rechaza_formato_no_soportado(client, db):
+    empresa, headers = _preparar_empresa_con_usuario(db, client)
+    resp = client.post(
+        "/empleados",
+        json={"identificacion": f"8-{_sufijo()}", "nombre_completo": "Empleado formato inválido"},
+        headers=headers,
+    )
+    empleado_id = resp.json()["id"]
+
+    resp = client.put(
+        f"/empleados/{empleado_id}/documento-identificacion",
+        files={"archivo": ("cedula.txt", b"contenido", "text/plain")},
+        headers=headers,
+    )
+    assert resp.status_code == 422
