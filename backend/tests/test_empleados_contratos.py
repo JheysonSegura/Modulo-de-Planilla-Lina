@@ -462,3 +462,71 @@ def test_documento_identificacion_rechaza_formato_no_soportado(client, db):
         headers=headers,
     )
     assert resp.status_code == 422
+
+
+def _fecha_hace_anos(anos: int, dias_extra: int = 0) -> str:
+    hoy = datetime.date.today()
+    try:
+        fecha = hoy.replace(year=hoy.year - anos)
+    except ValueError:
+        fecha = hoy.replace(year=hoy.year - anos, day=28)
+    return (fecha - datetime.timedelta(days=dias_extra)).isoformat()
+
+
+def test_crear_empleado_menor_de_edad_es_rechazado(client, db):
+    empresa, headers = _preparar_empresa_con_usuario(db, client)
+
+    resp = client.post(
+        "/empleados",
+        json={
+            "identificacion": f"8-{_sufijo()}",
+            "nombre_completo": "Menor De Edad",
+            "fecha_nacimiento": _fecha_hace_anos(10),
+        },
+        headers=headers,
+    )
+    assert resp.status_code == 422, resp.text
+
+    # 17 años y 364 días: un día antes de cumplir 18 -- también rechazado.
+    resp = client.post(
+        "/empleados",
+        json={
+            "identificacion": f"8-{_sufijo()}",
+            "nombre_completo": "Casi Mayor De Edad",
+            "fecha_nacimiento": _fecha_hace_anos(18, dias_extra=-1),
+        },
+        headers=headers,
+    )
+    assert resp.status_code == 422, resp.text
+
+
+def test_crear_empleado_exactamente_18_anos_es_aceptado(client, db):
+    empresa, headers = _preparar_empresa_con_usuario(db, client)
+
+    resp = client.post(
+        "/empleados",
+        json={
+            "identificacion": f"8-{_sufijo()}",
+            "nombre_completo": "Recien Mayor De Edad",
+            "fecha_nacimiento": _fecha_hace_anos(18),
+        },
+        headers=headers,
+    )
+    assert resp.status_code == 201, resp.text
+
+
+def test_actualizar_empleado_a_fecha_nacimiento_menor_es_rechazado(client, db):
+    empresa, headers = _preparar_empresa_con_usuario(db, client)
+    resp = client.post(
+        "/empleados",
+        json={"identificacion": f"8-{_sufijo()}", "nombre_completo": "Empleado Adulto"},
+        headers=headers,
+    )
+    empleado_id = resp.json()["id"]
+
+    resp = client.patch(
+        f"/empleados/{empleado_id}",
+        json={"fecha_nacimiento": _fecha_hace_anos(5)},
+        headers=headers,
+    )
+    assert resp.status_code == 422, resp.text

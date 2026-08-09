@@ -28,7 +28,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
     toast.add({ title: 'Planilla generada', color: 'success' })
     await navigateTo(`/planillas/${planilla.id}`)
   } catch (error) {
-    toast.add({ title: 'No se pudo generar la planilla', description: String(error), color: 'error' })
+    toast.add({ title: 'No se pudo generar la planilla', description: extraerMensajeError(error), color: 'error' })
   } finally {
     guardando.value = false
   }

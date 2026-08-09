@@ -48,7 +48,7 @@ async function onSeleccionarIdentificacion(event: Event) {
     await refrescarEmpleado()
     await cargarDocumentos()
   } catch (error) {
-    toast.add({ title: 'No se pudo subir el documento', description: String(error), color: 'error' })
+    toast.add({ title: 'No se pudo subir el documento', description: extraerMensajeError(error), color: 'error' })
   } finally {
     subiendoIdentificacion.value = false
     if (inputIdentificacion.value) inputIdentificacion.value.value = ''
@@ -65,7 +65,7 @@ async function onSeleccionarCertificadoMedico(event: Event) {
     await refrescarEmpleado()
     await cargarDocumentos()
   } catch (error) {
-    toast.add({ title: 'No se pudo subir el documento', description: String(error), color: 'error' })
+    toast.add({ title: 'No se pudo subir el documento', description: extraerMensajeError(error), color: 'error' })
   } finally {
     subiendoCertificadoMedico.value = false
     if (inputCertificadoMedico.value) inputCertificadoMedico.value.value = ''
@@ -75,6 +75,12 @@ async function onSeleccionarCertificadoMedico(event: Event) {
 
 <template>
   <div v-if="empleado">
+    <NuxtLink
+      to="/empleados"
+      class="text-sm text-gray-500 hover:text-primary flex items-center gap-1 mb-1"
+    >
+      <UIcon name="i-lucide-arrow-left" /> Volver a empleados
+    </NuxtLink>
     <div class="flex items-center justify-between mb-4">
       <div>
         <h1 class="text-xl font-semibold text-gray-900 dark:text-white">

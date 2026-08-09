@@ -37,7 +37,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
     Object.assign(state, { email: '', rol: 'consulta', nombre_completo: '', password: '' })
     await refresh()
   } catch (error) {
-    toast.add({ title: 'No se pudo agregar el usuario', description: String(error), color: 'error' })
+    toast.add({ title: 'No se pudo agregar el usuario', description: extraerMensajeError(error), color: 'error' })
   } finally {
     guardando.value = false
   }

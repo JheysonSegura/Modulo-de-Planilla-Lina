@@ -2,7 +2,7 @@ import datetime
 import uuid
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 TipoAusencia = Literal[
     "enfermedad_dentro_fondo",
@@ -39,3 +39,13 @@ class AusenciaOut(BaseModel):
     fecha_desde: datetime.date
     fecha_hasta: datetime.date
     certificado_ref: str | None
+
+    # Nunca el binario inline acá (bloatearía cada fetch) -- mismo patrón
+    # que EmpleadoOut. El binario se sirve aparte vía GET /ausencias/{id}/documento.
+    documento_constancia: bytes | None = Field(default=None, exclude=True, repr=False)
+    documento_constancia_nombre_archivo: str | None = None
+
+    @computed_field
+    @property
+    def tiene_documento_constancia(self) -> bool:
+        return self.documento_constancia is not None

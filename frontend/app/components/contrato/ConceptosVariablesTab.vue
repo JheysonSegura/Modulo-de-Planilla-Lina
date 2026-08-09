@@ -37,7 +37,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
     state.monto = undefined
     await refresh()
   } catch (error) {
-    toast.add({ title: 'No se pudo registrar', description: String(error), color: 'error' })
+    toast.add({ title: 'No se pudo registrar', description: extraerMensajeError(error), color: 'error' })
   } finally {
     guardando.value = false
   }

@@ -4,10 +4,22 @@ import type { FormSubmitEvent } from '@nuxt/ui'
 
 const props = defineProps<{ contratoId: string }>()
 
-const { listar, registrar } = useAusencias()
+const { listar, registrar, obtenerDocumentoUrl, subirDocumento } = useAusencias()
 const toast = useToast()
 
 const { data: ausencias, refresh } = await useAsyncData(`ausencias-${props.contratoId}`, () => listar(props.contratoId))
+
+const urlsDocumento = reactive<Record<string, string>>({})
+
+async function cargarDocumentos() {
+  for (const ausencia of ausencias.value ?? []) {
+    if (ausencia.tiene_documento_constancia && !urlsDocumento[ausencia.id]) {
+      const url = await obtenerDocumentoUrl(ausencia.id)
+      if (url) urlsDocumento[ausencia.id] = url
+    }
+  }
+}
+await cargarDocumentos()
 
 const mostrarFormulario = ref(false)
 const schema = z.object({
@@ -23,6 +35,7 @@ const schema = z.object({
 type Schema = z.output<typeof schema>
 const state = reactive<Partial<Schema>>({ tipo: 'injustificada', fecha_desde: '', fecha_hasta: '', certificado_ref: '' })
 const guardando = ref(false)
+const archivoConstancia = ref<HTMLInputElement>()
 
 const opcionesTipo = [
   { label: 'Enfermedad (dentro del fondo)', value: 'enfermedad_dentro_fondo' },
@@ -41,12 +54,20 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
   try {
     const body: Record<string, unknown> = { ...event.data }
     if (!body.certificado_ref) delete body.certificado_ref
-    await registrar(props.contratoId, body)
+    const ausencia = await registrar(props.contratoId, body)
+
+    const archivo = archivoConstancia.value?.files?.[0]
+    if (archivo) {
+      await subirDocumento(ausencia.id, archivo)
+    }
+
     toast.add({ title: 'Ausencia registrada', color: 'success' })
     mostrarFormulario.value = false
+    if (archivoConstancia.value) archivoConstancia.value.value = ''
     await refresh()
+    await cargarDocumentos()
   } catch (error) {
-    toast.add({ title: 'No se pudo registrar', description: String(error), color: 'error' })
+    toast.add({ title: 'No se pudo registrar', description: extraerMensajeError(error), color: 'error' })
   } finally {
     guardando.value = false
   }
@@ -114,6 +135,18 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
             class="w-full"
           />
         </UFormField>
+        <UFormField
+          label="Documento de constancia (opcional)"
+          name="documento_constancia"
+          class="col-span-2"
+        >
+          <input
+            ref="archivoConstancia"
+            type="file"
+            accept="application/pdf,image/png,image/jpeg"
+            class="block w-full text-sm text-gray-600 dark:text-gray-400"
+          >
+        </UFormField>
         <UButton
           type="submit"
           class="w-fit"
@@ -137,8 +170,11 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
             <th class="py-2 pr-4">
               Hasta
             </th>
-            <th class="py-2">
+            <th class="py-2 pr-4">
               Certificado
+            </th>
+            <th class="py-2">
+              Documento
             </th>
           </tr>
         </thead>
@@ -157,13 +193,26 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
             <td class="py-2 pr-4">
               {{ formatearFecha(a.fecha_hasta) }}
             </td>
-            <td class="py-2 text-gray-500">
+            <td class="py-2 pr-4 text-gray-500">
               {{ a.certificado_ref || '—' }}
+            </td>
+            <td class="py-2 text-gray-500">
+              <a
+                v-if="urlsDocumento[a.id]"
+                :href="urlsDocumento[a.id]"
+                target="_blank"
+                class="text-primary-500 hover:underline"
+              >
+                {{ a.documento_constancia_nombre_archivo || 'Ver documento' }}
+              </a>
+              <template v-else>
+                —
+              </template>
             </td>
           </tr>
           <tr v-if="!ausencias || ausencias.length === 0">
             <td
-              colspan="4"
+              colspan="5"
               class="py-8 text-center text-gray-500"
             >
               Sin ausencias registradas.

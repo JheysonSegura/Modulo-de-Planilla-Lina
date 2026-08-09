@@ -57,7 +57,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
     mostrarFormulario.value = false
     await refresh()
   } catch (error) {
-    toast.add({ title: 'No se pudo generar la liquidación', description: String(error), color: 'error' })
+    toast.add({ title: 'No se pudo generar la liquidación', description: extraerMensajeError(error), color: 'error' })
   } finally {
     guardando.value = false
   }
@@ -74,7 +74,7 @@ async function descargarRecibo(liquidacionId: string, motivo: string, formato: '
       `recibo-liquidacion-${motivo}.${extension}`
     )
   } catch (error) {
-    toast.add({ title: 'No se pudo descargar el recibo', description: String(error), color: 'error' })
+    toast.add({ title: 'No se pudo descargar el recibo', description: extraerMensajeError(error), color: 'error' })
   } finally {
     descargando.value = false
   }
@@ -87,7 +87,7 @@ async function marcarPagada(liquidacionId: string) {
     toast.add({ title: 'Liquidación marcada como pagada', color: 'success' })
     await refresh()
   } catch (error) {
-    toast.add({ title: 'No se pudo marcar como pagada', description: String(error), color: 'error' })
+    toast.add({ title: 'No se pudo marcar como pagada', description: extraerMensajeError(error), color: 'error' })
   } finally {
     pagando.value = false
   }

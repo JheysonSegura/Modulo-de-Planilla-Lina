@@ -1,7 +1,7 @@
 import datetime
 import uuid
 
-from sqlalchemy import Date, DateTime, ForeignKey, String
+from sqlalchemy import Date, DateTime, ForeignKey, LargeBinary, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
@@ -28,6 +28,9 @@ class Ausencia(Base):
     fecha_desde: Mapped[datetime.date] = mapped_column(Date, nullable=False)
     fecha_hasta: Mapped[datetime.date] = mapped_column(Date, nullable=False)
     certificado_ref: Mapped[str | None] = mapped_column(String(100))
+    documento_constancia: Mapped[bytes | None] = mapped_column(LargeBinary)
+    documento_constancia_content_type: Mapped[str | None] = mapped_column(String(50))
+    documento_constancia_nombre_archivo: Mapped[str | None] = mapped_column(String(255))
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

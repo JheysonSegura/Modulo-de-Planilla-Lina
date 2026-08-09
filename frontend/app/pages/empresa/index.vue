@@ -28,7 +28,7 @@ async function onSeleccionarLogo(event: Event) {
     await refresh()
     await cargarLogo()
   } catch (error) {
-    toast.add({ title: 'No se pudo subir el logo', description: String(error), color: 'error' })
+    toast.add({ title: 'No se pudo subir el logo', description: extraerMensajeError(error), color: 'error' })
   } finally {
     subiendoLogo.value = false
     if (inputLogo.value) inputLogo.value.value = ''
@@ -71,7 +71,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
     editando.value = false
     await refresh()
   } catch (error) {
-    toast.add({ title: 'No se pudo actualizar', description: String(error), color: 'error' })
+    toast.add({ title: 'No se pudo actualizar', description: extraerMensajeError(error), color: 'error' })
   } finally {
     guardando.value = false
   }

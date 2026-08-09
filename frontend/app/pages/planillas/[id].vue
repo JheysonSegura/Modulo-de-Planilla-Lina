@@ -36,7 +36,7 @@ async function aprobarPlanilla() {
     toast.add({ title: 'Planilla aprobada', color: 'success' })
     await refrescarPlanilla()
   } catch (error) {
-    toast.add({ title: 'No se pudo aprobar', description: String(error), color: 'error' })
+    toast.add({ title: 'No se pudo aprobar', description: extraerMensajeError(error), color: 'error' })
   } finally {
     aprobando.value = false
   }
@@ -56,7 +56,7 @@ async function descargarRecibo(movimientoId: string, contratoId: string, formato
       `recibo-pago-${nombre}-${planilla.value?.periodo_fin}.${extension}`
     )
   } catch (error) {
-    toast.add({ title: 'No se pudo descargar el recibo', description: String(error), color: 'error' })
+    toast.add({ title: 'No se pudo descargar el recibo', description: extraerMensajeError(error), color: 'error' })
   }
 }
 
@@ -72,7 +72,7 @@ async function exportarPlanilla(formato: 'excel' | 'csv' | 'pdf') {
       `planilla-${planilla.value?.tipo}-${planilla.value?.periodo_inicio}-${planilla.value?.periodo_fin}.${extension}`
     )
   } catch (error) {
-    toast.add({ title: 'No se pudo exportar la planilla', description: String(error), color: 'error' })
+    toast.add({ title: 'No se pudo exportar la planilla', description: extraerMensajeError(error), color: 'error' })
   } finally {
     exportando.value = false
   }

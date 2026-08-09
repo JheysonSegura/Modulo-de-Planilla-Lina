@@ -39,7 +39,7 @@ async function onSubmitTomar(event: FormSubmitEvent<SchemaTomar>) {
     await refresh()
     await refrescarEventos()
   } catch (error) {
-    toast.add({ title: 'No se pudo registrar', description: String(error), color: 'error' })
+    toast.add({ title: 'No se pudo registrar', description: extraerMensajeError(error), color: 'error' })
   } finally {
     guardandoTomar.value = false
   }
@@ -56,7 +56,7 @@ async function descargarReciboVacacion(eventoId: string, fecha: string, formato:
       `recibo-vacaciones-${fecha}.${extension}`
     )
   } catch (error) {
-    toast.add({ title: 'No se pudo descargar el recibo', description: String(error), color: 'error' })
+    toast.add({ title: 'No se pudo descargar el recibo', description: extraerMensajeError(error), color: 'error' })
   } finally {
     descargandoRecibo.value = false
   }
@@ -70,7 +70,7 @@ async function onSubmitAcumular(event: FormSubmitEvent<SchemaAcumular>) {
     mostrarAcumular.value = false
     await refresh()
   } catch (error) {
-    toast.add({ title: 'No se pudo acumular', description: String(error), color: 'error' })
+    toast.add({ title: 'No se pudo acumular', description: extraerMensajeError(error), color: 'error' })
   } finally {
     guardandoAcumular.value = false
   }

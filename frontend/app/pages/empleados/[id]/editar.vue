@@ -11,7 +11,8 @@ const toast = useToast()
 const { data: empleado } = await useAsyncData(`empleado-editar-${empleadoId}`, () => obtener(empleadoId))
 
 const schema = z.object({
-  fecha_nacimiento: z.string().optional(),
+  fecha_nacimiento: z.string().optional()
+    .refine(v => !v || esMayorDeEdad(v), 'El empleado debe ser mayor de edad (18 años o más).'),
   sexo: z.enum(['masculino', 'femenino', 'otro']).optional(),
   nacionalidad: z.string().optional(),
   codigo_pais: z.string().optional(),
@@ -42,7 +43,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
     toast.add({ title: 'Empleado actualizado', color: 'success' })
     await navigateTo(`/empleados/${empleadoId}`)
   } catch (error) {
-    toast.add({ title: 'No se pudo actualizar el empleado', description: String(error), color: 'error' })
+    toast.add({ title: 'No se pudo actualizar el empleado', description: extraerMensajeError(error), color: 'error' })
   } finally {
     guardando.value = false
   }

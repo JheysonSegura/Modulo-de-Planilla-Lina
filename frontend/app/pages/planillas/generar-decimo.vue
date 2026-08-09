@@ -28,7 +28,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
     toast.add({ title: 'Décimo generado', color: 'success' })
     await navigateTo(`/planillas/${planilla.id}`)
   } catch (error) {
-    toast.add({ title: 'No se pudo generar el décimo', description: String(error), color: 'error' })
+    toast.add({ title: 'No se pudo generar el décimo', description: extraerMensajeError(error), color: 'error' })
   } finally {
     guardando.value = false
   }

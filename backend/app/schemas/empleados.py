@@ -2,11 +2,28 @@ import datetime
 import uuid
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
 
 TipoIdentificacion = Literal["cedula", "pasaporte"]
 EstadoEmpleado = Literal["activo", "inactivo"]
 Sexo = Literal["masculino", "femenino", "otro"]
+
+EDAD_MINIMA_ANOS = 18
+
+
+def _validar_mayor_edad(fecha: datetime.date | None) -> datetime.date | None:
+    """Panamá: mayoría de edad a los 18 años (Código Civil). Se calcula
+    contra la fecha de hoy en cada validación, nunca contra un año
+    fijo, para que la regla siga siendo correcta con el paso del tiempo."""
+    if fecha is None:
+        return fecha
+    hoy = datetime.date.today()
+    edad = hoy.year - fecha.year - ((hoy.month, hoy.day) < (fecha.month, fecha.day))
+    if edad < EDAD_MINIMA_ANOS:
+        raise ValueError(
+            f"El empleado debe ser mayor de edad ({EDAD_MINIMA_ANOS} años o más) para poder registrarse."
+        )
+    return fecha
 
 
 class EmpleadoBase(BaseModel):
@@ -29,6 +46,11 @@ class EmpleadoCreate(EmpleadoBase):
     """empresa_id NUNCA viene del cliente: sale de la empresa activa del
     JWT (ver core/deps.get_empresa_activa_id), igual que en /auth."""
 
+    @field_validator("fecha_nacimiento")
+    @classmethod
+    def _validar_fecha_nacimiento(cls, v: datetime.date | None) -> datetime.date | None:
+        return _validar_mayor_edad(v)
+
 
 class EmpleadoUpdate(BaseModel):
     """identificacion, nombre_completo y email_personal NO están acá a
@@ -50,6 +72,11 @@ class EmpleadoUpdate(BaseModel):
     padece_enfermedad: bool | None = None
     detalle_enfermedad: str | None = None
     estado: EstadoEmpleado | None = None
+
+    @field_validator("fecha_nacimiento")
+    @classmethod
+    def _validar_fecha_nacimiento(cls, v: datetime.date | None) -> datetime.date | None:
+        return _validar_mayor_edad(v)
 
 
 class EmpleadoOut(EmpleadoBase):

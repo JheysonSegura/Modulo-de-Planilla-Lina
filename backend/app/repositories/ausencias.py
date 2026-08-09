@@ -36,3 +36,7 @@ def listar_de_contrato(db: Session, contrato_id: uuid.UUID) -> list[Ausencia]:
         .order_by(Ausencia.fecha_desde)
     )
     return list(db.execute(stmt).scalars().all())
+
+
+def obtener(db: Session, ausencia_id: uuid.UUID) -> Ausencia | None:
+    return db.get(Ausencia, ausencia_id)

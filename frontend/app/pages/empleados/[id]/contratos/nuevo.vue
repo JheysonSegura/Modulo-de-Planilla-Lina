@@ -63,7 +63,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
     toast.add({ title: 'Contrato creado', color: 'success' })
     await navigateTo(`/empleados/${empleadoId}/contratos/${contrato.id}`)
   } catch (error) {
-    toast.add({ title: 'No se pudo crear el contrato', description: String(error), color: 'error' })
+    toast.add({ title: 'No se pudo crear el contrato', description: extraerMensajeError(error), color: 'error' })
   } finally {
     guardando.value = false
   }

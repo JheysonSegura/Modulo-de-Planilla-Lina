@@ -22,7 +22,7 @@ async function exportarAuditoria(formato: 'excel' | 'csv') {
       `auditoria.${extension}`
     )
   } catch (error) {
-    toast.add({ title: 'No se pudo exportar la auditoría', description: String(error), color: 'error' })
+    toast.add({ title: 'No se pudo exportar la auditoría', description: extraerMensajeError(error), color: 'error' })
   } finally {
     exportando.value = false
   }

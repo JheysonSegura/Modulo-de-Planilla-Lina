@@ -22,6 +22,7 @@ const opcionesSexo = [
         <UInput
           v-model="state.fecha_nacimiento"
           type="date"
+          :max="fechaMaximaMayorDeEdad()"
           class="w-full"
         />
       </UFormField>

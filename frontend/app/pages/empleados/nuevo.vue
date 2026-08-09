@@ -9,7 +9,8 @@ const schema = z.object({
   tipo_identificacion: z.enum(['cedula', 'pasaporte']),
   identificacion: z.string().min(1, 'Obligatorio'),
   nombre_completo: z.string().min(1, 'Obligatorio'),
-  fecha_nacimiento: z.string().optional(),
+  fecha_nacimiento: z.string().optional()
+    .refine(v => !v || esMayorDeEdad(v), 'El empleado debe ser mayor de edad (18 años o más).'),
   sexo: z.enum(['masculino', 'femenino', 'otro']).optional(),
   nacionalidad: z.string().optional(),
   email_personal: z.string().email('Email inválido').optional().or(z.literal('')),
@@ -47,7 +48,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
     toast.add({ title: 'Empleado creado', color: 'success' })
     await navigateTo(`/empleados/${empleado.id}`)
   } catch (error) {
-    toast.add({ title: 'No se pudo crear el empleado', description: String(error), color: 'error' })
+    toast.add({ title: 'No se pudo crear el empleado', description: extraerMensajeError(error), color: 'error' })
   } finally {
     guardando.value = false
   }

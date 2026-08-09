@@ -84,6 +84,26 @@ def listar_ausencias(db: Session, contrato_id: uuid.UUID) -> list[Ausencia]:
     return ausencias_repo.listar_de_contrato(db, contrato_id)
 
 
+def obtener_ausencia(db: Session, ausencia_id: uuid.UUID) -> Ausencia:
+    ausencia = ausencias_repo.obtener(db, ausencia_id)
+    if ausencia is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Ausencia no encontrada")
+    return ausencia
+
+
+def actualizar_documento_constancia(
+    db: Session, ausencia: Ausencia, contenido: bytes, content_type: str, nombre_archivo: str
+) -> Ausencia:
+    """Documento de constancia (ej. certificado médico) de la ausencia,
+    opcional. Se guarda en la propia tabla ausencias (bytea), mismo
+    patrón que Empresa.logo y los documentos de empleado."""
+    ausencia.documento_constancia = contenido
+    ausencia.documento_constancia_content_type = content_type
+    ausencia.documento_constancia_nombre_archivo = nombre_archivo
+    db.commit()
+    return ausencia
+
+
 def _overlap_dias(
     a_desde: datetime.date,
     a_hasta: datetime.date,

@@ -30,7 +30,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
     mostrarFormulario.value = false
     await refrescarSalario()
   } catch (error) {
-    toast.add({ title: 'No se pudo cambiar el salario', description: String(error), color: 'error' })
+    toast.add({ title: 'No se pudo cambiar el salario', description: extraerMensajeError(error), color: 'error' })
   } finally {
     guardando.value = false
   }

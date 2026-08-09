@@ -1,3 +1,4 @@
+import base64
 import datetime
 import decimal
 import uuid
@@ -184,3 +185,49 @@ def test_fecha_hasta_anterior_a_fecha_desde_es_rechazada(client, db):
         headers=headers,
     )
     assert resp.status_code == 422, resp.text
+
+
+def _png_1x1() -> bytes:
+    return base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk"
+        "+A8AAQUBAScY42YAAAAASUVORK5CYII="
+    )
+
+
+def test_documento_ausencia_subir_y_obtener(client, db):
+    headers = _preparar_empresa(db, client)
+    contrato_id = _crear_empleado_con_contrato(client, headers, datetime.date(2025, 1, 1))
+    ausencia = _registrar_ausencia(
+        client, headers, contrato_id, "injustificada", datetime.date(2025, 1, 5), datetime.date(2025, 1, 6)
+    )
+    assert ausencia["tiene_documento_constancia"] is False
+    png = _png_1x1()
+
+    resp = client.put(
+        f"/ausencias/{ausencia['id']}/documento",
+        files={"archivo": ("constancia.png", png, "image/png")},
+        headers=headers,
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["tiene_documento_constancia"] is True
+    assert resp.json()["documento_constancia_nombre_archivo"] == "constancia.png"
+
+    resp = client.get(f"/ausencias/{ausencia['id']}/documento", headers=headers)
+    assert resp.status_code == 200, resp.text
+    assert resp.headers["content-type"] == "image/png"
+    assert resp.content == png
+
+
+def test_documento_ausencia_rechaza_formato_no_soportado(client, db):
+    headers = _preparar_empresa(db, client)
+    contrato_id = _crear_empleado_con_contrato(client, headers, datetime.date(2025, 1, 1))
+    ausencia = _registrar_ausencia(
+        client, headers, contrato_id, "injustificada", datetime.date(2025, 1, 5), datetime.date(2025, 1, 6)
+    )
+
+    resp = client.put(
+        f"/ausencias/{ausencia['id']}/documento",
+        files={"archivo": ("constancia.txt", b"contenido", "text/plain")},
+        headers=headers,
+    )
+    assert resp.status_code == 422
