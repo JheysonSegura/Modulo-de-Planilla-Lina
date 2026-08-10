@@ -175,6 +175,44 @@ def aprobar_planilla(
     return planilla
 
 
+def anular_planilla(
+    db: Session, empresa_id: uuid.UUID, usuario_id: uuid.UUID, planilla: Planilla
+) -> Planilla:
+    """Transición borrador -> anulada (vocabulario reservado desde el
+    schema original, nunca implementado hasta ahora). Es la vía correcta
+    para descartar una planilla que no se va a usar (ej. faltaba un
+    empleado por ingresar) -- nunca un borrado físico: las provisiones de
+    décimo/vacaciones se recalculan completas en cada planilla real, así
+    que no quedan desincronizadas, pero los conceptos variables pendientes
+    (bonos, comisiones, descuentos puntuales) que esta planilla marcó como
+    aplicados sí quedarían perdidos para siempre si no se revierten."""
+    if planilla.estado != "borrador":
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"La planilla está en estado '{planilla.estado}'; solo se puede anular una planilla "
+            "en borrador.",
+        )
+
+    estado_anterior = planilla.estado
+    planilla.estado = "anulada"
+    pendientes_repo.revertir_aplicados_de_planilla(db, planilla.id)
+
+    auditoria_service.registrar(
+        db,
+        empresa_id,
+        usuario_id,
+        "planillas",
+        planilla.id,
+        "anulada",
+        datos_anteriores={"estado": estado_anterior},
+        datos_nuevos={"estado": planilla.estado},
+    )
+
+    db.commit()
+    # Sin db.refresh(): rompería RLS igual que en el resto del proyecto.
+    return planilla
+
+
 def _calcular_movimiento_de_contrato(
     db: Session,
     empresa: Empresa,

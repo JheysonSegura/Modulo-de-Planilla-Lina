@@ -2,10 +2,10 @@ import datetime
 import decimal
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
-from app.models import ConceptoVariablePendiente
+from app.models import ConceptoVariablePendiente, MovimientoPlanilla
 
 
 def crear(db: Session, concepto: ConceptoVariablePendiente) -> ConceptoVariablePendiente:
@@ -59,6 +59,21 @@ def listar_pendientes_de_contrato(
 def eliminar(db: Session, concepto: ConceptoVariablePendiente) -> None:
     db.delete(concepto)
     db.flush()
+
+
+def revertir_aplicados_de_planilla(db: Session, planilla_id: uuid.UUID) -> None:
+    """Al anular una planilla (planilla_service.anular_planilla): libera
+    los conceptos variables pendientes que esa planilla había marcado
+    como aplicados, para que la planilla de reemplazo del mismo período
+    los vuelva a recoger (listar_pendientes_de_contrato solo trae los
+    no aplicados)."""
+    subquery = select(MovimientoPlanilla.id).where(MovimientoPlanilla.planilla_id == planilla_id)
+    stmt = (
+        update(ConceptoVariablePendiente)
+        .where(ConceptoVariablePendiente.movimiento_planilla_id.in_(subquery))
+        .values(aplicado=False, movimiento_planilla_id=None)
+    )
+    db.execute(stmt)
 
 
 def sumar_monto_ingresos_periodo(

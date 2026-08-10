@@ -263,6 +263,7 @@ def armar_reporte_planilla(db: Session, planilla: Planilla) -> dict:
     filas = exportar_planilla(db, planilla)
     empresa = empresas_repo.get(db, planilla.empresa_id)
     total_neto = sum((fila["salario_neto"] for fila in filas), _CERO)
+    elaborado_por = usuarios_repo.get_by_id(db, planilla.procesada_por) if planilla.procesada_por else None
     return {
         "empresa": armar_contexto_empresa(empresa),
         "planilla_tipo": planilla.tipo,
@@ -271,6 +272,7 @@ def armar_reporte_planilla(db: Session, planilla: Planilla) -> dict:
         "fecha_pago": planilla.fecha_pago,
         "filas": filas,
         "total_neto": total_neto,
+        "elaborado_por": elaborado_por.nombre_completo if elaborado_por else None,
     }
 
 

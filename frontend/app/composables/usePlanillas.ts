@@ -31,6 +31,7 @@ export function usePlanillas() {
     obtener: (id: string) => api.get<Planilla>(`/planillas/${id}`),
     generar: (body: Record<string, unknown>) => api.post<Planilla>('/planillas/generar', body),
     aprobar: (id: string) => api.post<Planilla>(`/planillas/${id}/aprobar`),
+    anular: (id: string) => api.post<Planilla>(`/planillas/${id}/anular`),
     movimientos: (id: string) => api.get<MovimientoPlanilla[]>(`/planillas/${id}/movimientos`)
   }
 }

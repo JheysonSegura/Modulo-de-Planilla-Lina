@@ -60,6 +60,17 @@ def aprobar_planilla(
     return planilla_service.aprobar_planilla(db, empresa_id, usuario.id, planilla)
 
 
+@router.post("/planillas/{planilla_id}/anular", response_model=PlanillaOut)
+def anular_planilla(
+    planilla_id: uuid.UUID,
+    empresa_id: Annotated[uuid.UUID, Depends(get_empresa_activa_id)],
+    usuario: Annotated[Usuario, Depends(get_usuario_actual)],
+    db: Annotated[Session, Depends(get_db_rls)],
+) -> Planilla:
+    planilla = planilla_service.obtener_planilla(db, planilla_id)
+    return planilla_service.anular_planilla(db, empresa_id, usuario.id, planilla)
+
+
 @router.get("/planillas/{planilla_id}/movimientos", response_model=list[MovimientoPlanillaOut])
 def listar_movimientos(
     planilla_id: uuid.UUID, db: Annotated[Session, Depends(get_db_rls)]

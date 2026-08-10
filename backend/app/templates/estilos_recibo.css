@@ -102,3 +102,35 @@ tr.total td {
     color: #555;
     margin: 10pt 0 4pt 0;
 }
+
+.firmas {
+    display: flex;
+    justify-content: space-between;
+    gap: 24pt;
+    margin-top: 48pt;
+}
+
+.firmas .firma {
+    flex: 1;
+    text-align: center;
+}
+
+.firmas .firma .espacio-firma {
+    height: 28pt;
+}
+
+.firmas .firma .linea {
+    border-top: 0.75pt solid #1a1a1a;
+    padding-top: 4pt;
+}
+
+.firmas .firma .rol {
+    font-size: 9pt;
+    font-weight: bold;
+}
+
+.firmas .firma .detalle {
+    font-size: 8pt;
+    color: #555;
+    min-height: 10pt;
+}

@@ -2,7 +2,7 @@
 const route = useRoute()
 const planillaId = route.params.id as string
 
-const { obtener, movimientos, aprobar } = usePlanillas()
+const { obtener, movimientos, aprobar, anular } = usePlanillas()
 const { obtener: obtenerContrato } = useContratos()
 const { obtener: obtenerEmpleado } = useEmpleados()
 const { descargar } = useReportes()
@@ -39,6 +39,22 @@ async function aprobarPlanilla() {
     toast.add({ title: 'No se pudo aprobar', description: extraerMensajeError(error), color: 'error' })
   } finally {
     aprobando.value = false
+  }
+}
+
+const anulando = ref(false)
+const confirmandoAnular = ref(false)
+async function anularPlanilla() {
+  anulando.value = true
+  try {
+    await anular(planillaId)
+    toast.add({ title: 'Planilla anulada', color: 'success' })
+    await refrescarPlanilla()
+  } catch (error) {
+    toast.add({ title: 'No se pudo anular', description: extraerMensajeError(error), color: 'error' })
+  } finally {
+    anulando.value = false
+    confirmandoAnular.value = false
   }
 }
 
@@ -81,6 +97,12 @@ async function exportarPlanilla(formato: 'excel' | 'csv' | 'pdf') {
 
 <template>
   <div v-if="planilla">
+    <NuxtLink
+      to="/planillas"
+      class="text-sm text-gray-500 hover:text-primary flex items-center gap-1 mb-1"
+    >
+      <UIcon name="i-lucide-arrow-left" /> Volver a planillas
+    </NuxtLink>
     <div class="flex items-center justify-between mb-4">
       <div>
         <h1 class="text-xl font-semibold text-gray-900 dark:text-white capitalize">
@@ -124,14 +146,46 @@ async function exportarPlanilla(formato: 'excel' | 'csv' | 'pdf') {
         >
           PDF
         </UButton>
-        <UButton
-          v-if="planilla.estado === 'borrador'"
-          :loading="aprobando"
-          icon="i-lucide-check"
-          @click="aprobarPlanilla"
-        >
-          Aprobar
-        </UButton>
+        <template v-if="planilla.estado === 'borrador'">
+          <template v-if="confirmandoAnular">
+            <span class="text-sm text-gray-500">¿Seguro?</span>
+            <UButton
+              size="xs"
+              color="error"
+              :loading="anulando"
+              @click="anularPlanilla"
+            >
+              Sí, anular
+            </UButton>
+            <UButton
+              size="xs"
+              variant="ghost"
+              color="neutral"
+              :disabled="anulando"
+              @click="confirmandoAnular = false"
+            >
+              Cancelar
+            </UButton>
+          </template>
+          <template v-else>
+            <UButton
+              size="xs"
+              variant="soft"
+              color="error"
+              icon="i-lucide-ban"
+              @click="confirmandoAnular = true"
+            >
+              Anular
+            </UButton>
+            <UButton
+              :loading="aprobando"
+              icon="i-lucide-check"
+              @click="aprobarPlanilla"
+            >
+              Aprobar
+            </UButton>
+          </template>
+        </template>
       </div>
     </div>
 
