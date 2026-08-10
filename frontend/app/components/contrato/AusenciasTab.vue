@@ -22,6 +22,9 @@ async function cargarDocumentos() {
 await cargarDocumentos()
 
 const mostrarFormulario = ref(false)
+const nombreArchivoElegido = ref('')
+const subiendoDocumentoDe = ref<string | null>(null)
+const inputsDocumentoExistente = reactive<Record<string, HTMLInputElement | undefined>>({})
 const schema = z.object({
   tipo: z.enum([
     'enfermedad_dentro_fondo', 'enfermedad_excede_fondo', 'embarazo', 'riesgo_profesional',
@@ -64,12 +67,35 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
     toast.add({ title: 'Ausencia registrada', color: 'success' })
     mostrarFormulario.value = false
     if (archivoConstancia.value) archivoConstancia.value.value = ''
+    nombreArchivoElegido.value = ''
     await refresh()
     await cargarDocumentos()
   } catch (error) {
     toast.add({ title: 'No se pudo registrar', description: extraerMensajeError(error), color: 'error' })
   } finally {
     guardando.value = false
+  }
+}
+
+function onArchivoElegido() {
+  nombreArchivoElegido.value = archivoConstancia.value?.files?.[0]?.name ?? ''
+}
+
+async function subirDocumentoExistente(ausenciaId: string) {
+  const archivo = inputsDocumentoExistente[ausenciaId]?.files?.[0]
+  if (!archivo) return
+  subiendoDocumentoDe.value = ausenciaId
+  try {
+    await subirDocumento(ausenciaId, archivo)
+    toast.add({ title: 'Documento subido', color: 'success' })
+    await refresh()
+    await cargarDocumentos()
+  } catch (error) {
+    toast.add({ title: 'No se pudo subir el documento', description: extraerMensajeError(error), color: 'error' })
+  } finally {
+    subiendoDocumentoDe.value = null
+    const input = inputsDocumentoExistente[ausenciaId]
+    if (input) input.value = ''
   }
 }
 </script>
@@ -139,13 +165,29 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
           label="Documento de constancia (opcional)"
           name="documento_constancia"
           class="col-span-2"
+          help="El documento se sube automáticamente al presionar Guardar."
         >
           <input
             ref="archivoConstancia"
             type="file"
             accept="application/pdf,image/png,image/jpeg"
-            class="block w-full text-sm text-gray-600 dark:text-gray-400"
+            class="hidden"
+            @change="onArchivoElegido"
           >
+          <div class="flex items-center gap-3">
+            <UButton
+              type="button"
+              icon="i-lucide-paperclip"
+              color="neutral"
+              variant="outline"
+              @click="archivoConstancia?.click()"
+            >
+              Seleccionar archivo
+            </UButton>
+            <span class="text-sm text-gray-500">
+              {{ nombreArchivoElegido || 'Ningún archivo seleccionado' }}
+            </span>
+          </div>
         </UFormField>
         <UButton
           type="submit"
@@ -205,9 +247,28 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
               >
                 {{ a.documento_constancia_nombre_archivo || 'Ver documento' }}
               </a>
-              <template v-else>
-                —
-              </template>
+              <div
+                v-else
+                class="flex items-center gap-2"
+              >
+                <input
+                  :ref="(el) => { inputsDocumentoExistente[a.id] = el as HTMLInputElement | undefined }"
+                  type="file"
+                  accept="application/pdf,image/png,image/jpeg"
+                  class="hidden"
+                  @change="subirDocumentoExistente(a.id)"
+                >
+                <UButton
+                  size="xs"
+                  icon="i-lucide-upload"
+                  color="neutral"
+                  variant="outline"
+                  :loading="subiendoDocumentoDe === a.id"
+                  @click="inputsDocumentoExistente[a.id]?.click()"
+                >
+                  Subir documento
+                </UButton>
+              </div>
             </td>
           </tr>
           <tr v-if="!ausencias || ausencias.length === 0">

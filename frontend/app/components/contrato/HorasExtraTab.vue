@@ -3,6 +3,8 @@ import { z } from 'zod'
 import type { FormSubmitEvent } from '@nuxt/ui'
 
 const props = defineProps<{ contratoId: string }>()
+const route = useRoute()
+const empleadoId = route.params.id as string
 
 const { listar, registrar, eliminar } = useHorasExtra()
 const toast = useToast()
@@ -93,6 +95,7 @@ async function borrar(registroId: string) {
             :min="0.01"
             :max="24"
             :step="0.5"
+            :step-snapping="false"
             class="w-full"
           />
         </UFormField>
@@ -181,7 +184,16 @@ async function borrar(registroId: string) {
             <td class="py-2 pr-4 font-medium text-gray-900 dark:text-white">
               ${{ r.monto_calculado }}
             </td>
-            <td class="py-2 text-right">
+            <td class="py-2 text-right space-x-1">
+              <UButton
+                size="xs"
+                color="neutral"
+                variant="ghost"
+                icon="i-lucide-calculator"
+                :to="`/empleados/${empleadoId}/contratos/${contratoId}/horas-extra/${r.id}`"
+              >
+                Ver desglose
+              </UButton>
               <UButton
                 size="xs"
                 color="error"
