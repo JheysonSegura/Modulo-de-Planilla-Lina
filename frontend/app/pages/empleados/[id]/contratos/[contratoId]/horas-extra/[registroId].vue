@@ -30,10 +30,10 @@ const hayExceso = computed(() => Number(registro.value?.horas_exceso_limite ?? '
   <div v-if="registro">
     <div class="mb-4">
       <NuxtLink
-        :to="`/empleados/${empleadoId}/contratos/${contratoId}`"
+        :to="`/empleados/${empleadoId}/contratos/${contratoId}?tab=horas-extra`"
         class="text-sm text-gray-500 hover:text-primary flex items-center gap-1"
       >
-        <UIcon name="i-lucide-arrow-left" /> Volver al contrato
+        <UIcon name="i-lucide-arrow-left" /> Volver a horas extra
       </NuxtLink>
       <h1 class="text-xl font-semibold text-gray-900 dark:text-white mt-1">
         Desglose de hora extra — {{ formatearFecha(registro.fecha) }}
@@ -77,7 +77,7 @@ const hayExceso = computed(() => Number(registro.value?.horas_exceso_limite ?? '
               Horas registradas
             </dt>
             <dd class="font-medium">
-              {{ registro.horas }}
+              {{ formatearHorasDecimal(registro.horas) }} ({{ registro.horas }} h)
             </dd>
           </div>
         </dl>

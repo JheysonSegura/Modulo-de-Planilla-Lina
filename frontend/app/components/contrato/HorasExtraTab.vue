@@ -16,11 +16,18 @@ const schema = z.object({
   fecha: z.string().min(1, 'Obligatorio'),
   tipo_hora: z.enum(['diurna', 'nocturna', 'prolongacion_nocturna']),
   tipo_dia: z.enum(['ordinario', 'domingo_descanso', 'feriado_duelo_nacional']),
-  horas: z.number().positive().max(24),
+  horas_horas: z.number().int('Debe ser un número entero').min(0, 'Mínimo 0').max(24, 'Máximo 24'),
+  horas_minutos: z.number().int('Debe ser un número entero').min(0, 'Mínimo 0').max(59, 'Máximo 59'),
   observaciones: z.string().optional()
+}).refine(data => data.horas_horas > 0 || data.horas_minutos > 0, {
+  message: 'Debe registrar al menos algún tiempo',
+  path: ['horas_minutos']
+}).refine(data => data.horas_horas + data.horas_minutos / 60 <= 24, {
+  message: 'No puede superar 24 horas en total',
+  path: ['horas_horas']
 })
 type Schema = z.output<typeof schema>
-const state = reactive<Partial<Schema>>({ fecha: '', tipo_hora: 'diurna', tipo_dia: 'ordinario', horas: undefined, observaciones: '' })
+const state = reactive<Partial<Schema>>({ fecha: '', tipo_hora: 'diurna', tipo_dia: 'ordinario', horas_horas: undefined, horas_minutos: undefined, observaciones: '' })
 const guardando = ref(false)
 
 const opcionesTipoHora = [
@@ -37,12 +44,19 @@ const opcionesTipoDia = [
 async function onSubmit(event: FormSubmitEvent<Schema>) {
   guardando.value = true
   try {
-    const body: Record<string, unknown> = { ...event.data }
+    const body: Record<string, unknown> = {
+      fecha: event.data.fecha,
+      tipo_hora: event.data.tipo_hora,
+      tipo_dia: event.data.tipo_dia,
+      horas: combinarHorasYMinutos(event.data.horas_horas, event.data.horas_minutos),
+      observaciones: event.data.observaciones
+    }
     if (!body.observaciones) delete body.observaciones
     await registrar(props.contratoId, body)
     toast.add({ title: 'Hora extra registrada', color: 'success' })
     mostrarFormulario.value = false
-    state.horas = undefined
+    state.horas_horas = undefined
+    state.horas_minutos = undefined
     await refresh()
   } catch (error) {
     toast.add({ title: 'No se pudo registrar', description: extraerMensajeError(error), color: 'error' })
@@ -86,18 +100,37 @@ async function borrar(registroId: string) {
             class="w-full"
           />
         </UFormField>
-        <UFormField
-          label="Horas"
-          name="horas"
-        >
-          <UInputNumber
-            v-model="state.horas"
-            :min="0.01"
-            :max="24"
-            :step="0.5"
-            :step-snapping="false"
-            class="w-full"
-          />
+        <UFormField label="Tiempo trabajado">
+          <div class="flex gap-2">
+            <UFormField
+              name="horas_horas"
+              label="Horas"
+              class="flex-1"
+            >
+              <UInputNumber
+                v-model="state.horas_horas"
+                :min="0"
+                :max="24"
+                :step="1"
+                placeholder="0"
+                class="w-full"
+              />
+            </UFormField>
+            <UFormField
+              name="horas_minutos"
+              label="Minutos"
+              class="flex-1"
+            >
+              <UInputNumber
+                v-model="state.horas_minutos"
+                :min="0"
+                :max="59"
+                :step="1"
+                placeholder="0"
+                class="w-full"
+              />
+            </UFormField>
+          </div>
         </UFormField>
         <UFormField
           label="Tipo de hora"
@@ -179,7 +212,7 @@ async function borrar(registroId: string) {
               {{ r.tipo_dia }}
             </td>
             <td class="py-2 pr-4">
-              {{ r.horas }}
+              {{ formatearHorasDecimal(r.horas) }}
             </td>
             <td class="py-2 pr-4 font-medium text-gray-900 dark:text-white">
               ${{ r.monto_calculado }}

@@ -16,7 +16,7 @@ const tabs = [
   { value: 'ausencias', label: 'Ausencias' },
   { value: 'liquidacion', label: 'Liquidación' }
 ]
-const tabActivo = ref('resumen')
+const tabActivo = ref((route.query.tab as string) || 'resumen')
 </script>
 
 <template>
