@@ -3,7 +3,7 @@ import decimal
 import uuid
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 TipoPlanilla = Literal["mensual", "quincenal"]
 
@@ -30,6 +30,17 @@ class PlanillaOut(BaseModel):
     periodo_fin: datetime.date
     fecha_pago: datetime.date
     estado: str
+
+    # Nunca el binario inline acá (bloatearía cada fetch) -- mismo patrón
+    # que AusenciaOut. El binario se sirve aparte vía GET
+    # /planillas/{id}/constancia-pago.
+    documento_constancia_pago: bytes | None = Field(default=None, exclude=True, repr=False)
+    documento_constancia_pago_nombre_archivo: str | None = None
+
+    @computed_field
+    @property
+    def tiene_constancia_pago(self) -> bool:
+        return self.documento_constancia_pago is not None
 
 
 class ConceptoVariableOut(BaseModel):

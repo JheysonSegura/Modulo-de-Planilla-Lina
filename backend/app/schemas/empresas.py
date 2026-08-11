@@ -30,13 +30,19 @@ class EmpresaOut(BaseModel):
 
 class EmpresaUpdate(BaseModel):
     """De momento solo expone región/actividad económica/tamaño de
-    empresa (para salario_minimo_service) más dv/dirección/teléfono
+    empresa (para salario_minimo_service) más ruc/dv/dirección/teléfono
     (Fase 16, membrete de recibos y reportes) -- el logo se sube aparte
-    vía PUT /empresas/actual/logo (multipart, no encaja en un body JSON)."""
+    vía PUT /empresas/actual/logo (multipart, no encaja en un body JSON).
+
+    ruc y dv son dos campos independientes en BD (columnas separadas,
+    nunca combinadas) -- ruc tiene constraint UNIQUE, ver
+    empresas_service.actualizar_empresa_activa para el manejo del 409
+    si ya existe otra empresa con el mismo RUC."""
 
     region: str | None = Field(default=None, max_length=100)
     actividad_economica: str | None = Field(default=None, max_length=150)
     tamano_empresa: str | None = Field(default=None, max_length=50)
+    ruc: str | None = Field(default=None, min_length=1, max_length=30)
     dv: str | None = Field(default=None, max_length=5)
     direccion: str | None = Field(default=None)
     telefono: str | None = Field(default=None, max_length=30)

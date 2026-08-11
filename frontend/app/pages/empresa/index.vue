@@ -40,6 +40,7 @@ const schema = z.object({
   region: z.string().optional(),
   actividad_economica: z.string().optional(),
   tamano_empresa: z.enum(['Pequeña Empresa', 'Gran Empresa']).optional(),
+  ruc: z.string().min(1, 'Obligatorio').optional(),
   dv: z.string().optional(),
   direccion: z.string().optional(),
   telefono: z.string().optional()
@@ -52,6 +53,7 @@ function abrirEdicion() {
   state.region = empresa.value?.region ?? undefined
   state.actividad_economica = empresa.value?.actividad_economica ?? undefined
   state.tamano_empresa = (empresa.value?.tamano_empresa as Schema['tamano_empresa']) ?? undefined
+  state.ruc = empresa.value?.ruc ?? undefined
   state.dv = empresa.value?.dv ?? undefined
   state.direccion = empresa.value?.direccion ?? undefined
   state.telefono = empresa.value?.telefono ?? undefined
@@ -114,7 +116,12 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
         <div>
           <dt class="text-gray-500">
             RUC
-          </dt><dd>{{ empresa.ruc }}{{ empresa.dv ? ` DV ${empresa.dv}` : '' }}</dd>
+          </dt><dd>{{ empresa.ruc }}</dd>
+        </div>
+        <div>
+          <dt class="text-gray-500">
+            DV
+          </dt><dd>{{ empresa.dv || '—' }}</dd>
         </div>
         <div>
           <dt class="text-gray-500">
@@ -189,7 +196,16 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
           />
         </UFormField>
         <UFormField
-          label="DV (dígito verificador del RUC)"
+          label="RUC"
+          name="ruc"
+        >
+          <UInput
+            v-model="state.ruc"
+            class="w-full"
+          />
+        </UFormField>
+        <UFormField
+          label="DV"
           name="dv"
         >
           <UInput

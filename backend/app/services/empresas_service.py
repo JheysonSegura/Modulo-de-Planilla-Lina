@@ -1,6 +1,7 @@
 import uuid
 
 from fastapi import HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import Empresa
@@ -19,7 +20,13 @@ def actualizar_empresa_activa(db: Session, empresa: Empresa, data: EmpresaUpdate
     cambios = data.model_dump(exclude_unset=True)
     for campo, valor in cambios.items():
         setattr(empresa, campo, valor)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "Ya existe una empresa con ese RUC"
+        ) from exc
     return empresa
 
 

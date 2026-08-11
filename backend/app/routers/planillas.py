@@ -1,7 +1,7 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_db_rls, get_empresa_activa_id, get_usuario_actual
@@ -10,6 +10,8 @@ from app.models import MovimientoPlanilla, Planilla, Usuario
 from app.schemas.planillas import GenerarPlanillaRequest, MovimientoPlanillaOut, PlanillaOut
 from app.schemas.reportes import FormatoExportacion, FormatoRecibo
 from app.services import planilla_service, reportes_service
+
+_TIPOS_CONSTANCIA_PAGO_PERMITIDOS = {"application/pdf", "image/png", "image/jpeg"}
 
 router = APIRouter(tags=["planillas"])
 
@@ -58,6 +60,49 @@ def aprobar_planilla(
 ) -> Planilla:
     planilla = planilla_service.obtener_planilla(db, planilla_id)
     return planilla_service.aprobar_planilla(db, empresa_id, usuario.id, planilla)
+
+
+@router.post("/planillas/{planilla_id}/pagar", response_model=PlanillaOut)
+async def pagar_planilla(
+    planilla_id: uuid.UUID,
+    empresa_id: Annotated[uuid.UUID, Depends(get_empresa_activa_id)],
+    usuario: Annotated[Usuario, Depends(get_usuario_actual)],
+    db: Annotated[Session, Depends(get_db_rls)],
+    archivo: UploadFile,
+) -> Planilla:
+    if archivo.content_type not in _TIPOS_CONSTANCIA_PAGO_PERMITIDOS:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"Formato de archivo no soportado: {archivo.content_type}",
+        )
+    planilla = planilla_service.obtener_planilla(db, planilla_id)
+    contenido = await archivo.read()
+    return planilla_service.pagar_planilla(
+        db,
+        empresa_id,
+        usuario.id,
+        planilla,
+        contenido,
+        archivo.content_type,
+        archivo.filename or "constancia",
+    )
+
+
+@router.get("/planillas/{planilla_id}/constancia-pago")
+def obtener_constancia_pago(
+    planilla_id: uuid.UUID, db: Annotated[Session, Depends(get_db_rls)]
+) -> Response:
+    planilla = planilla_service.obtener_planilla(db, planilla_id)
+    if planilla.documento_constancia_pago is None:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND, "Esta planilla no tiene constancia de pago cargada"
+        )
+    nombre = planilla.documento_constancia_pago_nombre_archivo or "constancia"
+    return Response(
+        content=planilla.documento_constancia_pago,
+        media_type=planilla.documento_constancia_pago_content_type or "application/octet-stream",
+        headers={"Content-Disposition": f'inline; filename="{nombre}"'},
+    )
 
 
 @router.post("/planillas/{planilla_id}/anular", response_model=PlanillaOut)

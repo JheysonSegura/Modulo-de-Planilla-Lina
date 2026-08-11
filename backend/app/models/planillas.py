@@ -2,7 +2,7 @@ import datetime
 import decimal
 import uuid
 
-from sqlalchemy import Date, DateTime, ForeignKey, Numeric, SmallInteger, String, Text
+from sqlalchemy import Date, DateTime, ForeignKey, LargeBinary, Numeric, SmallInteger, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -24,6 +24,9 @@ class Planilla(Base):
     procesada_por: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("usuarios.id")
     )
+    documento_constancia_pago: Mapped[bytes | None] = mapped_column(LargeBinary)
+    documento_constancia_pago_content_type: Mapped[str | None] = mapped_column(String(50))
+    documento_constancia_pago_nombre_archivo: Mapped[str | None] = mapped_column(String(255))
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

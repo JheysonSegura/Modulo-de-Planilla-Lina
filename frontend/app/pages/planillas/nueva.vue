@@ -12,7 +12,7 @@ const schema = z.object({
   fecha_pago: z.string().min(1, 'Obligatorio')
 })
 type Schema = z.output<typeof schema>
-const state = reactive<Partial<Schema>>({ tipo: 'mensual', periodo_inicio: '', periodo_fin: '', fecha_pago: '' })
+const state = reactive<Partial<Schema>>({ tipo: 'quincenal', periodo_inicio: '', periodo_fin: '', fecha_pago: '' })
 
 const opcionesTipo = [
   { label: 'Mensual', value: 'mensual' },

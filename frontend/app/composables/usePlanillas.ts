@@ -5,6 +5,8 @@ export interface Planilla {
   periodo_fin: string
   fecha_pago: string
   estado: 'borrador' | 'procesada' | 'pagada' | 'anulada'
+  tiene_constancia_pago: boolean
+  documento_constancia_pago_nombre_archivo: string | null
 }
 
 export interface MovimientoPlanilla {
@@ -25,6 +27,58 @@ export interface MovimientoPlanilla {
 
 export function usePlanillas() {
   const api = useApi()
+  const config = useRuntimeConfig()
+  const { accessToken, refrescarSesion } = useAuth()
+
+  // Mismo patrón de blob + FormData que useAusencias.ts: useApi.ts no
+  // soporta binarios, así que este helper vive duplicado acá en vez
+  // de generalizarse.
+  async function pedirBlob(path: string): Promise<Blob> {
+    const intentar = () =>
+      $fetch<Blob>(path, {
+        baseURL: config.public.apiBase,
+        method: 'GET',
+        responseType: 'blob',
+        headers: { Authorization: `Bearer ${accessToken.value}` }
+      })
+
+    try {
+      return await intentar()
+    } catch (error) {
+      const status = (error as { response?: { status?: number } })?.response?.status
+      if (status === 401) {
+        const refrescado = await refrescarSesion()
+        if (refrescado) return await intentar()
+        await navigateTo('/login')
+      }
+      throw error
+    }
+  }
+
+  async function subirArchivo(path: string, archivo: File): Promise<Planilla> {
+    const formData = new FormData()
+    formData.append('archivo', archivo)
+
+    const intentar = () =>
+      $fetch<Planilla>(path, {
+        baseURL: config.public.apiBase,
+        method: 'POST',
+        body: formData,
+        headers: { Authorization: `Bearer ${accessToken.value}` }
+      })
+
+    try {
+      return await intentar()
+    } catch (error) {
+      const status = (error as { response?: { status?: number } })?.response?.status
+      if (status === 401) {
+        const refrescado = await refrescarSesion()
+        if (refrescado) return await intentar()
+        await navigateTo('/login')
+      }
+      throw error
+    }
+  }
 
   return {
     listar: (tipo?: string, estado?: string) => api.get<Planilla[]>('/planillas', { tipo, estado }),
@@ -32,6 +86,15 @@ export function usePlanillas() {
     generar: (body: Record<string, unknown>) => api.post<Planilla>('/planillas/generar', body),
     aprobar: (id: string) => api.post<Planilla>(`/planillas/${id}/aprobar`),
     anular: (id: string) => api.post<Planilla>(`/planillas/${id}/anular`),
+    pagar: (id: string, archivo: File) => subirArchivo(`/planillas/${id}/pagar`, archivo),
+    obtenerConstanciaPagoUrl: async (id: string): Promise<string | null> => {
+      try {
+        const blob = await pedirBlob(`/planillas/${id}/constancia-pago`)
+        return URL.createObjectURL(blob)
+      } catch {
+        return null
+      }
+    },
     movimientos: (id: string) => api.get<MovimientoPlanilla[]>(`/planillas/${id}/movimientos`)
   }
 }

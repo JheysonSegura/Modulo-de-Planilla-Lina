@@ -175,6 +175,51 @@ def aprobar_planilla(
     return planilla
 
 
+def pagar_planilla(
+    db: Session,
+    empresa_id: uuid.UUID,
+    usuario_id: uuid.UUID,
+    planilla: Planilla,
+    contenido: bytes,
+    content_type: str,
+    nombre_archivo: str,
+) -> Planilla:
+    """Transición procesada -> pagada (vocabulario reservado desde el
+    schema original, nunca implementado hasta ahora). A diferencia de
+    liquidaciones_service.pagar_liquidacion, esta transición exige
+    subir la constancia bancaria del pago -- el router valida que
+    `archivo` esté presente y tenga un content-type soportado antes de
+    llegar acá; este servicio solo persiste el documento junto con el
+    cambio de estado."""
+    if planilla.estado != "procesada":
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"La planilla está en estado '{planilla.estado}'; solo se puede confirmar el pago de "
+            "una planilla aprobada (procesada).",
+        )
+
+    estado_anterior = planilla.estado
+    planilla.estado = "pagada"
+    planilla.documento_constancia_pago = contenido
+    planilla.documento_constancia_pago_content_type = content_type
+    planilla.documento_constancia_pago_nombre_archivo = nombre_archivo
+
+    auditoria_service.registrar(
+        db,
+        empresa_id,
+        usuario_id,
+        "planillas",
+        planilla.id,
+        "pagada",
+        datos_anteriores={"estado": estado_anterior},
+        datos_nuevos={"estado": planilla.estado},
+    )
+
+    db.commit()
+    # Sin db.refresh(): rompería RLS igual que en el resto del proyecto.
+    return planilla
+
+
 def anular_planilla(
     db: Session, empresa_id: uuid.UUID, usuario_id: uuid.UUID, planilla: Planilla
 ) -> Planilla:
