@@ -118,6 +118,22 @@ async function descargarRecibo(movimientoId: string, contratoId: string, formato
   }
 }
 
+const descargandoRecibos = ref(false)
+async function descargarTodosLosRecibos() {
+  descargandoRecibos.value = true
+  try {
+    await descargar(
+      `/planillas/${planillaId}/recibos`,
+      {},
+      `recibos-${planilla.value?.tipo}-${planilla.value?.periodo_inicio}-${planilla.value?.periodo_fin}.zip`
+    )
+  } catch (error) {
+    toast.add({ title: 'No se pudieron descargar los recibos', description: extraerMensajeError(error), color: 'error' })
+  } finally {
+    descargandoRecibos.value = false
+  }
+}
+
 const exportando = ref(false)
 async function exportarPlanilla(formato: 'excel' | 'csv' | 'pdf') {
   exportando.value = true
@@ -188,6 +204,17 @@ async function exportarPlanilla(formato: 'excel' | 'csv' | 'pdf') {
         >
           PDF
         </UButton>
+        <UButton
+          v-if="movs && movs.length > 0"
+          size="xs"
+          variant="soft"
+          color="neutral"
+          icon="i-lucide-download"
+          :loading="descargandoRecibos"
+          @click="descargarTodosLosRecibos"
+        >
+          Descargar todos los recibos
+        </UButton>
         <template v-if="planilla.estado === 'borrador' && puedeEscribir">
           <template v-if="confirmandoAnular">
             <span class="text-sm text-gray-500">¿Seguro?</span>
@@ -257,9 +284,10 @@ async function exportarPlanilla(formato: 'excel' | 'csv' | 'pdf') {
       </div>
     </div>
 
-    <PlanillaConstanciaPagoModal
+    <ConstanciaPagoModal
       v-model:open="modalPagoAbierto"
       :modo="modoModalPago"
+      entidad="planilla"
       :cargando="pagando"
       @confirmar="onConfirmarModalPago"
     />

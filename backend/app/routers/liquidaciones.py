@@ -1,7 +1,7 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_db_rls, get_empresa_activa_id, get_usuario_actual, require_escritura
@@ -10,6 +10,8 @@ from app.models import Liquidacion, Usuario
 from app.schemas.liquidaciones import GenerarLiquidacionRequest, LiquidacionOut
 from app.schemas.reportes import FormatoRecibo
 from app.services import contratos_service, liquidaciones_service, reportes_service
+
+_TIPOS_CONSTANCIA_PAGO_PERMITIDOS = {"application/pdf", "image/png", "image/jpeg"}
 
 router = APIRouter(tags=["liquidaciones"])
 
@@ -53,8 +55,8 @@ def listar_liquidaciones(
     return liquidaciones_service.listar_liquidaciones(db, contrato_id)
 
 
-@router.post("/liquidaciones/{liquidacion_id}/pagar", response_model=LiquidacionOut)
-def pagar_liquidacion(
+@router.post("/liquidaciones/{liquidacion_id}/aprobar", response_model=LiquidacionOut)
+def aprobar_liquidacion(
     liquidacion_id: uuid.UUID,
     empresa_id: Annotated[uuid.UUID, Depends(get_empresa_activa_id)],
     usuario: Annotated[Usuario, Depends(get_usuario_actual)],
@@ -62,7 +64,63 @@ def pagar_liquidacion(
     _rol: Annotated[str, Depends(require_escritura)],
 ) -> Liquidacion:
     liquidacion = liquidaciones_service.obtener_liquidacion(db, liquidacion_id)
-    return liquidaciones_service.pagar_liquidacion(db, empresa_id, usuario.id, liquidacion)
+    return liquidaciones_service.aprobar_liquidacion(db, empresa_id, usuario.id, liquidacion)
+
+
+@router.post("/liquidaciones/{liquidacion_id}/anular", response_model=LiquidacionOut)
+def anular_liquidacion(
+    liquidacion_id: uuid.UUID,
+    empresa_id: Annotated[uuid.UUID, Depends(get_empresa_activa_id)],
+    usuario: Annotated[Usuario, Depends(get_usuario_actual)],
+    db: Annotated[Session, Depends(get_db_rls)],
+    _rol: Annotated[str, Depends(require_escritura)],
+) -> Liquidacion:
+    liquidacion = liquidaciones_service.obtener_liquidacion(db, liquidacion_id)
+    return liquidaciones_service.anular_liquidacion(db, empresa_id, usuario.id, liquidacion)
+
+
+@router.post("/liquidaciones/{liquidacion_id}/pagar", response_model=LiquidacionOut)
+async def pagar_liquidacion(
+    liquidacion_id: uuid.UUID,
+    empresa_id: Annotated[uuid.UUID, Depends(get_empresa_activa_id)],
+    usuario: Annotated[Usuario, Depends(get_usuario_actual)],
+    db: Annotated[Session, Depends(get_db_rls)],
+    _rol: Annotated[str, Depends(require_escritura)],
+    archivo: UploadFile,
+) -> Liquidacion:
+    if archivo.content_type not in _TIPOS_CONSTANCIA_PAGO_PERMITIDOS:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"Formato de archivo no soportado: {archivo.content_type}",
+        )
+    liquidacion = liquidaciones_service.obtener_liquidacion(db, liquidacion_id)
+    contenido = await archivo.read()
+    return liquidaciones_service.pagar_liquidacion(
+        db,
+        empresa_id,
+        usuario.id,
+        liquidacion,
+        contenido,
+        archivo.content_type,
+        archivo.filename or "constancia",
+    )
+
+
+@router.get("/liquidaciones/{liquidacion_id}/constancia-pago")
+def obtener_constancia_pago_liquidacion(
+    liquidacion_id: uuid.UUID, db: Annotated[Session, Depends(get_db_rls)]
+) -> Response:
+    liquidacion = liquidaciones_service.obtener_liquidacion(db, liquidacion_id)
+    if liquidacion.documento_constancia_pago is None:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND, "Esta liquidación no tiene constancia de pago cargada"
+        )
+    nombre = liquidacion.documento_constancia_pago_nombre_archivo or "constancia"
+    return Response(
+        content=liquidacion.documento_constancia_pago,
+        media_type=liquidacion.documento_constancia_pago_content_type or "application/octet-stream",
+        headers={"Content-Disposition": f'inline; filename="{nombre}"'},
+    )
 
 
 @router.get("/liquidaciones/{liquidacion_id}/recibo")

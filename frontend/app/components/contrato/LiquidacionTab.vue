@@ -4,8 +4,9 @@ import type { FormSubmitEvent } from '@nuxt/ui'
 import type { Contrato } from '~/composables/useContratos'
 
 const props = defineProps<{ contrato: Contrato }>()
+const emit = defineEmits<{ 'contrato-actualizado': [] }>()
 
-const { listarDeContrato, generar, pagar } = useLiquidaciones()
+const { listarDeContrato, generar, aprobar, anular, pagar, obtenerConstanciaPagoUrl } = useLiquidaciones()
 const { descargar } = useReportes()
 const { puedeEscribir } = useAuth()
 const toast = useToast()
@@ -13,6 +14,17 @@ const toast = useToast()
 const { data: liquidaciones, refresh } = await useAsyncData(
   `liquidaciones-${props.contrato.id}`, () => listarDeContrato(props.contrato.id)
 )
+
+const constanciaUrls = reactive<Record<string, string>>({})
+async function cargarConstancias() {
+  for (const liq of liquidaciones.value ?? []) {
+    if (liq.tiene_constancia_pago && !constanciaUrls[liq.id]) {
+      const url = await obtenerConstanciaPagoUrl(liq.id)
+      if (url) constanciaUrls[liq.id] = url
+    }
+  }
+}
+await cargarConstancias()
 
 const mostrarFormulario = ref(false)
 const schema = z.object({
@@ -36,7 +48,6 @@ const state = reactive<Partial<Schema>>({
   fecha_aviso_renuncia: ''
 })
 const guardando = ref(false)
-const pagando = ref(false)
 
 const opcionesMotivo = [
   { label: 'Renuncia voluntaria', value: 'renuncia_voluntaria' },
@@ -57,6 +68,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
     toast.add({ title: 'Liquidación generada', color: 'success' })
     mostrarFormulario.value = false
     await refresh()
+    emit('contrato-actualizado')
   } catch (error) {
     toast.add({ title: 'No se pudo generar la liquidación', description: extraerMensajeError(error), color: 'error' })
   } finally {
@@ -81,14 +93,57 @@ async function descargarRecibo(liquidacionId: string, motivo: string, formato: '
   }
 }
 
-async function marcarPagada(liquidacionId: string) {
-  pagando.value = true
+const aprobandoId = ref<string | null>(null)
+async function aprobarLiquidacion(liquidacionId: string) {
+  aprobandoId.value = liquidacionId
   try {
-    await pagar(liquidacionId)
-    toast.add({ title: 'Liquidación marcada como pagada', color: 'success' })
+    await aprobar(liquidacionId)
+    toast.add({ title: 'Liquidación aprobada', color: 'success' })
     await refresh()
   } catch (error) {
-    toast.add({ title: 'No se pudo marcar como pagada', description: extraerMensajeError(error), color: 'error' })
+    toast.add({ title: 'No se pudo aprobar', description: extraerMensajeError(error), color: 'error' })
+  } finally {
+    aprobandoId.value = null
+  }
+}
+
+const anulandoId = ref<string | null>(null)
+const confirmandoAnularId = ref<string | null>(null)
+async function anularLiquidacion(liquidacionId: string) {
+  anulandoId.value = liquidacionId
+  try {
+    await anular(liquidacionId)
+    toast.add({ title: 'Liquidación anulada', color: 'success' })
+    await refresh()
+    emit('contrato-actualizado')
+  } catch (error) {
+    toast.add({ title: 'No se pudo anular', description: extraerMensajeError(error), color: 'error' })
+  } finally {
+    anulandoId.value = null
+    confirmandoAnularId.value = null
+  }
+}
+
+const pagando = ref(false)
+const modalPagoAbierto = ref(false)
+const liquidacionParaPagar = ref<string | null>(null)
+
+function abrirModalPago(liquidacionId: string) {
+  liquidacionParaPagar.value = liquidacionId
+  modalPagoAbierto.value = true
+}
+
+async function onConfirmarPago({ archivo }: { archivo: File, motivo?: string }) {
+  if (!liquidacionParaPagar.value) return
+  pagando.value = true
+  try {
+    await pagar(liquidacionParaPagar.value, archivo)
+    toast.add({ title: 'Pago confirmado', color: 'success' })
+    await refresh()
+    await cargarConstancias()
+    modalPagoAbierto.value = false
+  } catch (error) {
+    toast.add({ title: 'No se pudo confirmar el pago', description: extraerMensajeError(error), color: 'error' })
   } finally {
     pagando.value = false
   }
@@ -230,14 +285,66 @@ async function marcarPagada(liquidacionId: string) {
             >
               Excel
             </UButton>
+
+            <template v-if="liq.estado === 'borrador' && puedeEscribir">
+              <template v-if="confirmandoAnularId === liq.id">
+                <span class="text-sm text-gray-500">¿Seguro?</span>
+                <UButton
+                  size="xs"
+                  color="error"
+                  :loading="anulandoId === liq.id"
+                  @click="anularLiquidacion(liq.id)"
+                >
+                  Sí, anular
+                </UButton>
+                <UButton
+                  size="xs"
+                  variant="ghost"
+                  color="neutral"
+                  :disabled="anulandoId === liq.id"
+                  @click="confirmandoAnularId = null"
+                >
+                  Cancelar
+                </UButton>
+              </template>
+              <template v-else>
+                <UButton
+                  size="xs"
+                  variant="soft"
+                  color="error"
+                  icon="i-lucide-ban"
+                  @click="confirmandoAnularId = liq.id"
+                >
+                  Anular
+                </UButton>
+                <UButton
+                  size="xs"
+                  :loading="aprobandoId === liq.id"
+                  icon="i-lucide-check"
+                  @click="aprobarLiquidacion(liq.id)"
+                >
+                  Aprobar
+                </UButton>
+              </template>
+            </template>
+
             <UButton
-              v-if="liq.estado !== 'pagada' && puedeEscribir"
+              v-if="liq.estado === 'aprobada' && puedeEscribir"
               size="xs"
-              :loading="pagando"
-              @click="marcarPagada(liq.id)"
+              icon="i-lucide-banknote"
+              @click="abrirModalPago(liq.id)"
             >
-              Marcar pagada
+              Confirmar pago
             </UButton>
+
+            <a
+              v-if="liq.estado === 'pagada' && constanciaUrls[liq.id]"
+              :href="constanciaUrls[liq.id]"
+              target="_blank"
+              class="text-sm text-primary-500 hover:underline flex items-center gap-1"
+            >
+              <UIcon name="i-lucide-file-check" /> Ver constancia de pago
+            </a>
           </div>
         </div>
       </template>
@@ -304,5 +411,13 @@ async function marcarPagada(liquidacionId: string) {
     >
       Este contrato no tiene liquidaciones.
     </p>
+
+    <ConstanciaPagoModal
+      v-model:open="modalPagoAbierto"
+      modo="confirmar"
+      entidad="liquidacion"
+      :cargando="pagando"
+      @confirmar="onConfirmarPago"
+    />
   </div>
 </template>

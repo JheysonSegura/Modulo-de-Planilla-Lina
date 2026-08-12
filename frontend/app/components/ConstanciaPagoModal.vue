@@ -2,6 +2,7 @@
 const props = defineProps<{
   open: boolean
   modo: 'confirmar' | 'reemplazar'
+  entidad: 'planilla' | 'liquidacion'
   cargando: boolean
 }>()
 
@@ -41,8 +42,9 @@ function cancelar() {
   emit('update:open', false)
 }
 
+const nombreEntidad = computed(() => props.entidad === 'planilla' ? 'planilla' : 'liquidación')
 const titulo = computed(() =>
-  props.modo === 'confirmar' ? 'Confirmar pago de planilla' : 'Reemplazar constancia de pago'
+  props.modo === 'confirmar' ? `Confirmar pago de ${nombreEntidad.value}` : 'Reemplazar constancia de pago'
 )
 const textoBoton = computed(() =>
   props.modo === 'confirmar' ? 'Confirmar pago' : 'Reemplazar constancia'
@@ -62,14 +64,14 @@ const textoBoton = computed(() =>
         v-if="modo === 'confirmar'"
         class="text-sm text-gray-500 mb-3"
       >
-        Esta acción marca la planilla como pagada y no se puede deshacer. Verificá que el archivo
-        sea la constancia bancaria correcta antes de confirmar.
+        Esta acción marca la {{ nombreEntidad }} como pagada y no se puede deshacer. Verificá que
+        el archivo sea la constancia bancaria correcta antes de confirmar.
       </p>
       <p
         v-else
         class="text-sm text-gray-500 mb-3"
       >
-        Vas a reemplazar la constancia de una planilla ya pagada. La planilla se queda en estado
+        Vas a reemplazar la constancia de una {{ nombreEntidad }} ya pagada. Se queda en estado
         "pagada"; solo cambia el archivo adjunto. Esta acción queda registrada en auditoría.
       </p>
 

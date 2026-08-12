@@ -6,11 +6,13 @@ _MEDIA_TYPES = {
     "pdf": "application/pdf",
     "excel": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     "csv": "text/csv",
+    "zip": "application/zip",
 }
 _EXTENSIONES = {
     "pdf": "pdf",
     "excel": "xlsx",
     "csv": "csv",
+    "zip": "zip",
 }
 
 

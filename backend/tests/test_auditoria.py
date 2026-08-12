@@ -1,3 +1,4 @@
+import base64
 import datetime
 import decimal
 import uuid
@@ -67,6 +68,14 @@ def _generar_liquidacion(client, headers, contrato_id, fecha_terminacion):
     return resp.json()
 
 
+def _pdf_minimo() -> bytes:
+    return base64.b64decode(
+        "JVBERi0xLjENCiXi48/TDQoxIDAgb2JqDQo8PC9UeXBlL0NhdGFsb2cvUGFnZXMgMiAwIFI+"
+        "Pg0KZW5kb2JqDQp4cmVmDQowIDENCjAwMDAwMDAwMDAgNjU1MzUgZg0KdHJhaWxlcg0KPDwv"
+        "U2l6ZSAxPj4NCnN0YXJ0eHJlZg0KOQ0KJSVFT0Y="
+    )
+
+
 def _listar_auditoria(client, headers, **params):
     return client.get("/auditoria", params=params, headers=headers)
 
@@ -128,20 +137,34 @@ def test_calculo_y_pago_de_liquidacion_quedan_auditados(client, db):
     liquidacion = _generar_liquidacion(client, headers, contrato_id, datetime.date(2025, 2, 15))
     assert liquidacion["estado"] == "borrador"
 
-    resp = client.post(f"/liquidaciones/{liquidacion['id']}/pagar", headers=headers)
+    resp = client.post(f"/liquidaciones/{liquidacion['id']}/aprobar", headers=headers)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["estado"] == "aprobada"
+
+    resp = client.post(
+        f"/liquidaciones/{liquidacion['id']}/pagar",
+        files={"archivo": ("constancia.pdf", _pdf_minimo(), "application/pdf")},
+        headers=headers,
+    )
     assert resp.status_code == 200, resp.text
     assert resp.json()["estado"] == "pagada"
 
-    # Pagar de nuevo -> 409.
-    resp2 = client.post(f"/liquidaciones/{liquidacion['id']}/pagar", headers=headers)
+    # Pagar de nuevo -> 409 (ya no está en 'aprobada').
+    resp2 = client.post(
+        f"/liquidaciones/{liquidacion['id']}/pagar",
+        files={"archivo": ("constancia.pdf", _pdf_minimo(), "application/pdf")},
+        headers=headers,
+    )
     assert resp2.status_code == 409, resp2.text
 
     resp = _listar_auditoria(client, headers, empleado_id=empleado_id, tabla_afectada="liquidaciones")
     assert resp.status_code == 200, resp.text
     eventos = {e["accion"]: e for e in resp.json()}
-    assert set(eventos.keys()) == {"calculada", "pagada"}
+    assert set(eventos.keys()) == {"calculada", "aprobada", "pagada"}
     assert eventos["calculada"]["datos_nuevos"]["monto_total"] is not None
-    assert eventos["pagada"]["datos_anteriores"] == {"estado": "borrador"}
+    assert eventos["aprobada"]["datos_anteriores"] == {"estado": "borrador"}
+    assert eventos["aprobada"]["datos_nuevos"] == {"estado": "aprobada"}
+    assert eventos["pagada"]["datos_anteriores"] == {"estado": "aprobada"}
     assert eventos["pagada"]["datos_nuevos"] == {"estado": "pagada"}
 
 

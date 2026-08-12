@@ -363,18 +363,111 @@ def obtener_liquidacion(db: Session, liquidacion_id: uuid.UUID) -> Liquidacion:
     return liquidacion
 
 
-def pagar_liquidacion(
+def aprobar_liquidacion(
     db: Session, empresa_id: uuid.UUID, usuario_id: uuid.UUID, liquidacion: Liquidacion
 ) -> Liquidacion:
-    """Transición a 'pagada' (vocabulario del schema original:
-    'borrador','aprobada','pagada' -- se salta 'aprobada', no pedido
-    explícitamente para liquidaciones). Cambio mínimo: solo el estado +
-    el registro de auditoría."""
-    if liquidacion.estado == "pagada":
-        raise HTTPException(status.HTTP_409_CONFLICT, "Esta liquidación ya está pagada.")
+    """Transición borrador -> aprobada (vocabulario reservado desde el
+    schema original: 'borrador','aprobada','pagada' -- ahora sí
+    implementado, igual que aprobar_planilla/pagar_planilla en
+    planilla_service). Antes de aprobar, cualquier error se corrige
+    anulando y generando una liquidación nueva -- no hay edición."""
+    if liquidacion.estado != "borrador":
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"La liquidación está en estado '{liquidacion.estado}'; solo se puede aprobar una "
+            "liquidación en borrador.",
+        )
+
+    estado_anterior = liquidacion.estado
+    liquidacion.estado = "aprobada"
+
+    contrato = obtener_contrato_de_liquidacion(db, liquidacion)
+    auditoria_service.registrar(
+        db,
+        empresa_id,
+        usuario_id,
+        "liquidaciones",
+        liquidacion.id,
+        "aprobada",
+        empleado_id=contrato.empleado_id if contrato is not None else None,
+        datos_anteriores={"estado": estado_anterior},
+        datos_nuevos={"estado": liquidacion.estado},
+    )
+
+    db.commit()
+    # Sin db.refresh(): rompería RLS igual que en el resto del proyecto.
+    return liquidacion
+
+
+def anular_liquidacion(
+    db: Session, empresa_id: uuid.UUID, usuario_id: uuid.UUID, liquidacion: Liquidacion
+) -> Liquidacion:
+    """Transición borrador -> anulada. A diferencia de anular_planilla
+    (que no tiene que revertir nada más allá de los conceptos variables
+    aplicados), acá sí hay que deshacer un efecto secundario real:
+    generar_liquidacion ya había marcado el contrato como 'terminado'
+    (con fecha_fin_real y motivo_terminacion) apenas se generó, antes
+    de aprobar. Si la liquidación se anula, el contrato vuelve a
+    'vigente' -- confirmado explícitamente por el usuario -- para poder
+    generar una liquidación nueva corregida sin quedar atascado."""
+    if liquidacion.estado != "borrador":
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"La liquidación está en estado '{liquidacion.estado}'; solo se puede anular una "
+            "liquidación en borrador.",
+        )
+
+    estado_anterior = liquidacion.estado
+    liquidacion.estado = "anulada"
+
+    contrato = obtener_contrato_de_liquidacion(db, liquidacion)
+    if contrato is not None:
+        contrato.estado = "vigente"
+        contrato.fecha_fin_real = None
+        contrato.motivo_terminacion = None
+
+    auditoria_service.registrar(
+        db,
+        empresa_id,
+        usuario_id,
+        "liquidaciones",
+        liquidacion.id,
+        "anulada",
+        empleado_id=contrato.empleado_id if contrato is not None else None,
+        datos_anteriores={"estado": estado_anterior},
+        datos_nuevos={"estado": liquidacion.estado},
+    )
+
+    db.commit()
+    # Sin db.refresh(): rompería RLS igual que en el resto del proyecto.
+    return liquidacion
+
+
+def pagar_liquidacion(
+    db: Session,
+    empresa_id: uuid.UUID,
+    usuario_id: uuid.UUID,
+    liquidacion: Liquidacion,
+    contenido: bytes,
+    content_type: str,
+    nombre_archivo: str,
+) -> Liquidacion:
+    """Transición aprobada -> pagada, ahora exige la constancia bancaria
+    del pago -- mismo patrón que planilla_service.pagar_planilla. El
+    router valida que `archivo` esté presente y tenga un content-type
+    soportado antes de llegar acá."""
+    if liquidacion.estado != "aprobada":
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"La liquidación está en estado '{liquidacion.estado}'; solo se puede confirmar el "
+            "pago de una liquidación aprobada.",
+        )
 
     estado_anterior = liquidacion.estado
     liquidacion.estado = "pagada"
+    liquidacion.documento_constancia_pago = contenido
+    liquidacion.documento_constancia_pago_content_type = content_type
+    liquidacion.documento_constancia_pago_nombre_archivo = nombre_archivo
 
     contrato = obtener_contrato_de_liquidacion(db, liquidacion)
     auditoria_service.registrar(

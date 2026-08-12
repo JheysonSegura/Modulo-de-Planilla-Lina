@@ -3,6 +3,7 @@ import csv
 import decimal
 import io
 import json
+import zipfile
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
@@ -176,6 +177,22 @@ def armar_recibo_pago(db: Session, movimiento: MovimientoPlanilla) -> dict:
             and (movimiento.salario_bruto - total_deducciones) == movimiento.salario_neto
         ),
     }
+
+
+def zip_recibos_pago(db: Session, movimientos: list[MovimientoPlanilla]) -> bytes:
+    """Un PDF de recibo individual por movimiento (mismo armar_recibo_pago
+    + render_pdf de siempre, sin recalcular nada), empaquetados en un solo
+    ZIP -- para que el usuario descargue todos los recibos de una planilla
+    de una vez y los reenvíe por email a cada empleado por separado
+    (los archivos quedan sueltos apenas se descomprime)."""
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for movimiento in movimientos:
+            contexto = armar_recibo_pago(db, movimiento)
+            pdf = render_pdf("recibo_pago.html", contexto)
+            nombre = f"recibo-pago-{contexto['empleado_nombre']}-{contexto['periodo_fin']}.pdf"
+            zf.writestr(nombre, pdf)
+    return buffer.getvalue()
 
 
 def armar_recibo_vacacion(db: Session, evento: VacacionTomada) -> dict:

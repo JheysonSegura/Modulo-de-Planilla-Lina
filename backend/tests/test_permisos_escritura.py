@@ -79,7 +79,9 @@ def _endpoints_de_escritura() -> list[tuple[str, str, dict]]:
             f"/contratos/{cid}/liquidacion",
             {"json": {"motivo": "renuncia_voluntaria", "fecha_terminacion": "2025-06-01"}},
         ),
-        ("POST", f"/liquidaciones/{lid}/pagar", {}),
+        ("POST", f"/liquidaciones/{lid}/aprobar", {}),
+        ("POST", f"/liquidaciones/{lid}/anular", {}),
+        ("POST", f"/liquidaciones/{lid}/pagar", {"files": _archivo_dummy()}),
         (
             "POST",
             "/planillas/generar-decimo",

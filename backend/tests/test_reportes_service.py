@@ -1,7 +1,9 @@
 import base64
 import datetime
 import decimal
+import io
 import uuid
+import zipfile
 
 from sqlalchemy import text
 
@@ -167,6 +169,21 @@ def test_recibo_pago_excel_endpoint(db, client):
     assert resp.status_code == 200, resp.text
     assert "spreadsheetml" in resp.headers["content-type"]
     assert len(resp.content) > 0
+
+
+def test_recibos_zip_endpoint(db, client):
+    _empresa, headers, planilla, mov = _preparar_movimiento_con_horas_extra_e_isr(db, client)
+
+    resp = client.get(f"/planillas/{planilla['id']}/recibos", headers=headers)
+    assert resp.status_code == 200, resp.text
+    assert resp.headers["content-type"] == "application/zip"
+
+    with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
+        nombres = zf.namelist()
+        assert len(nombres) == 1  # un solo movimiento en esta planilla de prueba
+        assert nombres[0].startswith("recibo-pago-")
+        assert nombres[0].endswith(".pdf")
+        assert zf.read(nombres[0]).startswith(b"%PDF")
 
 
 def test_exportar_planilla_excel_y_csv(db, client):

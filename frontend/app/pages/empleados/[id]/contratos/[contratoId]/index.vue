@@ -4,7 +4,7 @@ const empleadoId = route.params.id as string
 const contratoId = route.params.contratoId as string
 
 const { obtener } = useContratos()
-const { data: contrato } = await useAsyncData(`contrato-${contratoId}`, () => obtener(contratoId))
+const { data: contrato, refresh: refrescarContrato } = await useAsyncData(`contrato-${contratoId}`, () => obtener(contratoId))
 
 const tabs = [
   { value: 'resumen', label: 'Resumen' },
@@ -23,11 +23,20 @@ const tabActivo = ref((route.query.tab as string) || 'resumen')
   <div v-if="contrato">
     <div class="mb-4">
       <NuxtLink
+        v-if="tabActivo !== 'liquidacion'"
         :to="`/empleados/${empleadoId}`"
         class="text-sm text-gray-500 hover:text-primary flex items-center gap-1"
       >
         <UIcon name="i-lucide-arrow-left" /> Volver al empleado
       </NuxtLink>
+      <button
+        v-else
+        type="button"
+        class="text-sm text-gray-500 hover:text-primary flex items-center gap-1"
+        @click="tabActivo = 'resumen'"
+      >
+        <UIcon name="i-lucide-arrow-left" /> Volver al contrato
+      </button>
       <div class="flex items-center gap-3 mt-1">
         <h1 class="text-xl font-semibold text-gray-900 dark:text-white">
           {{ contrato.cargo }}
@@ -86,6 +95,7 @@ const tabActivo = ref((route.query.tab as string) || 'resumen')
     <ContratoLiquidacionTab
       v-else-if="tabActivo === 'liquidacion'"
       :contrato="contrato"
+      @contrato-actualizado="refrescarContrato"
     />
   </div>
 </template>

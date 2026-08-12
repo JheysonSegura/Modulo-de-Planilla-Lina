@@ -1,3 +1,4 @@
+import base64
 import datetime
 import decimal
 import uuid
@@ -441,3 +442,128 @@ def test_salarios_caidos_se_suman_al_total_y_quedan_trazados(client, db):
     assert liq["referencia_sentencia"] == "Junta de Conciliación, expediente 123-2025"
     # Base 2260.26 (ver test_despido_injustificado_trae_indemnizacion_y_preaviso) + 500.00
     assert decimal.Decimal(str(liq["monto_total"])) == decimal.Decimal("2760.26")
+
+
+def _pdf_minimo() -> bytes:
+    return base64.b64decode(
+        "JVBERi0xLjENCiXi48/TDQoxIDAgb2JqDQo8PC9UeXBlL0NhdGFsb2cvUGFnZXMgMiAwIFI+"
+        "Pg0KZW5kb2JqDQp4cmVmDQowIDENCjAwMDAwMDAwMDAgNjU1MzUgZg0KdHJhaWxlcg0KPDwv"
+        "U2l6ZSAxPj4NCnN0YXJ0eHJlZg0KOQ0KJSVFT0Y="
+    )
+
+
+def test_aprobar_liquidacion_borrador_pasa_a_aprobada(client, db):
+    headers = _preparar_empresa(db, client)
+    contrato_id = _crear_empleado_con_contrato(client, headers, datetime.date(2025, 1, 1))
+    _generar_planilla(client, headers, "mensual", datetime.date(2025, 1, 1), datetime.date(2025, 1, 31))
+    liq = _generar_liquidacion(
+        client, headers, contrato_id, "mutuo_acuerdo", datetime.date(2025, 2, 15)
+    ).json()
+
+    resp = client.post(f"/liquidaciones/{liq['id']}/aprobar", headers=headers)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["estado"] == "aprobada"
+
+
+def test_no_se_puede_aprobar_dos_veces(client, db):
+    headers = _preparar_empresa(db, client)
+    contrato_id = _crear_empleado_con_contrato(client, headers, datetime.date(2025, 1, 1))
+    _generar_planilla(client, headers, "mensual", datetime.date(2025, 1, 1), datetime.date(2025, 1, 31))
+    liq = _generar_liquidacion(
+        client, headers, contrato_id, "mutuo_acuerdo", datetime.date(2025, 2, 15)
+    ).json()
+    client.post(f"/liquidaciones/{liq['id']}/aprobar", headers=headers)
+
+    resp = client.post(f"/liquidaciones/{liq['id']}/aprobar", headers=headers)
+    assert resp.status_code == 409, resp.text
+
+
+def test_no_se_puede_pagar_sin_aprobar(client, db):
+    headers = _preparar_empresa(db, client)
+    contrato_id = _crear_empleado_con_contrato(client, headers, datetime.date(2025, 1, 1))
+    _generar_planilla(client, headers, "mensual", datetime.date(2025, 1, 1), datetime.date(2025, 1, 31))
+    liq = _generar_liquidacion(
+        client, headers, contrato_id, "mutuo_acuerdo", datetime.date(2025, 2, 15)
+    ).json()
+
+    resp = client.post(
+        f"/liquidaciones/{liq['id']}/pagar",
+        files={"archivo": ("constancia.pdf", _pdf_minimo(), "application/pdf")},
+        headers=headers,
+    )
+    assert resp.status_code == 409, resp.text
+
+
+def test_pagar_liquidacion_aprobada_guarda_constancia_y_es_idempotente_al_rechazo(client, db):
+    headers = _preparar_empresa(db, client)
+    contrato_id = _crear_empleado_con_contrato(client, headers, datetime.date(2025, 1, 1))
+    _generar_planilla(client, headers, "mensual", datetime.date(2025, 1, 1), datetime.date(2025, 1, 31))
+    liq = _generar_liquidacion(
+        client, headers, contrato_id, "mutuo_acuerdo", datetime.date(2025, 2, 15)
+    ).json()
+    client.post(f"/liquidaciones/{liq['id']}/aprobar", headers=headers)
+
+    pdf = _pdf_minimo()
+    resp = client.post(
+        f"/liquidaciones/{liq['id']}/pagar",
+        files={"archivo": ("constancia.pdf", pdf, "application/pdf")},
+        headers=headers,
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["estado"] == "pagada"
+    assert body["tiene_constancia_pago"] is True
+    assert body["documento_constancia_pago_nombre_archivo"] == "constancia.pdf"
+
+    resp = client.get(f"/liquidaciones/{liq['id']}/constancia-pago", headers=headers)
+    assert resp.status_code == 200, resp.text
+    assert resp.headers["content-type"] == "application/pdf"
+    assert resp.content == pdf
+
+    resp2 = client.post(
+        f"/liquidaciones/{liq['id']}/pagar",
+        files={"archivo": ("otra.pdf", pdf, "application/pdf")},
+        headers=headers,
+    )
+    assert resp2.status_code == 409, resp2.text
+
+
+def test_anular_liquidacion_borrador_revierte_el_contrato_a_vigente(client, db):
+    headers = _preparar_empresa(db, client)
+    contrato_id = _crear_empleado_con_contrato(client, headers, datetime.date(2025, 1, 1))
+    _generar_planilla(client, headers, "mensual", datetime.date(2025, 1, 1), datetime.date(2025, 1, 31))
+    liq = _generar_liquidacion(
+        client, headers, contrato_id, "mutuo_acuerdo", datetime.date(2025, 2, 15)
+    ).json()
+
+    resp = client.get(f"/contratos/{contrato_id}", headers=headers)
+    assert resp.json()["estado"] == "terminado"
+
+    resp = client.post(f"/liquidaciones/{liq['id']}/anular", headers=headers)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["estado"] == "anulada"
+
+    resp = client.get(f"/contratos/{contrato_id}", headers=headers)
+    contrato = resp.json()
+    assert contrato["estado"] == "vigente"
+    assert contrato["fecha_fin_real"] is None
+    assert contrato["motivo_terminacion"] is None
+
+    # El contrato vuelve a estar disponible para una liquidación nueva.
+    resp = _generar_liquidacion(
+        client, headers, contrato_id, "mutuo_acuerdo", datetime.date(2025, 3, 15)
+    )
+    assert resp.status_code == 201, resp.text
+
+
+def test_no_se_puede_anular_una_liquidacion_ya_aprobada(client, db):
+    headers = _preparar_empresa(db, client)
+    contrato_id = _crear_empleado_con_contrato(client, headers, datetime.date(2025, 1, 1))
+    _generar_planilla(client, headers, "mensual", datetime.date(2025, 1, 1), datetime.date(2025, 1, 31))
+    liq = _generar_liquidacion(
+        client, headers, contrato_id, "mutuo_acuerdo", datetime.date(2025, 2, 15)
+    ).json()
+    client.post(f"/liquidaciones/{liq['id']}/aprobar", headers=headers)
+
+    resp = client.post(f"/liquidaciones/{liq['id']}/anular", headers=headers)
+    assert resp.status_code == 409, resp.text

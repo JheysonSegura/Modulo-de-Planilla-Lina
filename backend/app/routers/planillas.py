@@ -176,6 +176,18 @@ def recibo_pago(
     return respuesta_archivo(contenido, formato, nombre_base)
 
 
+@router.get("/planillas/{planilla_id}/recibos")
+def recibos_pago_zip(
+    planilla_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db_rls)],
+) -> Response:
+    planilla = planilla_service.obtener_planilla(db, planilla_id)
+    movimientos = planilla_service.listar_movimientos(db, planilla_id)
+    contenido = reportes_service.zip_recibos_pago(db, movimientos)
+    nombre_base = f"recibos-{planilla.tipo}-{planilla.periodo_inicio}-{planilla.periodo_fin}"
+    return respuesta_archivo(contenido, "zip", nombre_base)
+
+
 @router.get("/planillas/{planilla_id}/exportar")
 def exportar_planilla(
     planilla_id: uuid.UUID,

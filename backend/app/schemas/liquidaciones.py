@@ -3,7 +3,7 @@ import decimal
 import uuid
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 MotivoTerminacion = Literal[
     "renuncia_voluntaria",
@@ -49,3 +49,14 @@ class LiquidacionOut(BaseModel):
     penalidad_renuncia_sin_aviso: decimal.Decimal
     monto_total: decimal.Decimal
     estado: str
+
+    # Nunca el binario inline acá (bloatearía cada fetch) -- mismo patrón
+    # que PlanillaOut. El binario se sirve aparte vía GET
+    # /liquidaciones/{id}/constancia-pago.
+    documento_constancia_pago: bytes | None = Field(default=None, exclude=True, repr=False)
+    documento_constancia_pago_nombre_archivo: str | None = None
+
+    @computed_field
+    @property
+    def tiene_constancia_pago(self) -> bool:
+        return self.documento_constancia_pago is not None
