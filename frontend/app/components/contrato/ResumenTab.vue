@@ -23,6 +23,14 @@ type Schema = z.output<typeof schema>
 const state = reactive<Partial<Schema>>({ salario_base: undefined, fecha_vigencia_desde: '', motivo: 'ajuste_salarial' })
 const guardando = ref(false)
 
+// El salario de un contrato vigente nunca puede bajar (ver CLAUDE.md) --
+// el backend es la autoridad final, este mínimo solo evita el viaje
+// redondo obvio de escribir un valor que ya se sabe inválido.
+const salarioMinimoNuevo = computed(() => {
+  const actual = Number(salario.value?.salario_base ?? 0)
+  return Math.round((actual + 0.01) * 100) / 100
+})
+
 async function onSubmit(event: FormSubmitEvent<Schema>) {
   guardando.value = true
   try {
@@ -119,7 +127,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
         >
           <UInputNumber
             v-model="state.salario_base"
-            :min="0.01"
+            :min="salarioMinimoNuevo"
             :step="0.01"
             class="w-full"
           />
@@ -143,12 +151,21 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
             class="w-full"
           />
         </UFormField>
-        <UButton
-          type="submit"
-          :loading="guardando"
-        >
-          Guardar
-        </UButton>
+        <div class="flex gap-2">
+          <UButton
+            type="submit"
+            :loading="guardando"
+          >
+            Guardar
+          </UButton>
+          <UButton
+            color="neutral"
+            variant="ghost"
+            @click="mostrarFormulario = false"
+          >
+            Cancelar
+          </UButton>
+        </div>
       </UForm>
     </UCard>
   </div>

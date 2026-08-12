@@ -93,6 +93,18 @@ def cambiar_salario(
             f"({vigente.fecha_vigencia_desde.isoformat()}).",
         )
 
+    # El salario de un contrato vigente nunca puede bajar (irrenunciabilidad
+    # de derechos laborales, confirmado explícitamente por el usuario --
+    # ver CLAUDE.md). Para pagarle menos a alguien hay que liquidar el
+    # contrato (POST /contratos/{id}/liquidacion) y firmar uno nuevo.
+    if data.salario_base <= vigente.salario_base:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"El nuevo salario (${data.salario_base}) debe ser mayor al salario vigente "
+            f"(${vigente.salario_base}). El salario de un contrato vigente no se puede bajar "
+            "-- para pagar menos hay que liquidar el contrato y crear uno nuevo.",
+        )
+
     # Salario mínimo vigente a la fecha en que empieza a regir el nuevo
     # salario (no al salario mínimo actual). Respeta la misma exención
     # del contrato (no se puede "esquivar" el flag cambiando el salario).

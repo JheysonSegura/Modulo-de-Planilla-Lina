@@ -189,6 +189,100 @@ def test_no_permite_retroceder_la_fecha_de_vigencia_del_salario(client, db):
     assert resp.status_code == 422
 
 
+def test_no_permite_bajar_el_salario(client, db):
+    # El salario de un contrato vigente nunca puede bajar (irrenunciabilidad
+    # de derechos laborales) -- para pagar menos hay que liquidar el
+    # contrato y crear uno nuevo, no bajar el salario_base de este.
+    empresa, headers = _preparar_empresa_con_usuario(db, client)
+
+    resp = client.post(
+        "/empleados",
+        json={"identificacion": f"8-{_sufijo()}", "nombre_completo": "Empleado Test"},
+        headers=headers,
+    )
+    empleado_id = resp.json()["id"]
+    resp = client.post(
+        f"/empleados/{empleado_id}/contratos",
+        json={
+            "tipo_contrato": "indefinido",
+            "cargo": "Auxiliar",
+            "fecha_inicio": "2024-01-01",
+            "salario_base": "1500.00",
+        },
+        headers=headers,
+    )
+    contrato_id = resp.json()["id"]
+
+    resp = client.post(
+        f"/contratos/{contrato_id}/salario",
+        json={"salario_base": "1000.00", "fecha_vigencia_desde": "2024-06-01"},
+        headers=headers,
+    )
+    assert resp.status_code == 422
+    assert "no se puede bajar" in resp.json()["detail"]
+
+
+def test_no_permite_mantener_el_mismo_salario(client, db):
+    # "Mayor al actual" es estricto -- mandar el mismo monto también se
+    # rechaza, no es un "cambio" real.
+    empresa, headers = _preparar_empresa_con_usuario(db, client)
+
+    resp = client.post(
+        "/empleados",
+        json={"identificacion": f"8-{_sufijo()}", "nombre_completo": "Empleado Test"},
+        headers=headers,
+    )
+    empleado_id = resp.json()["id"]
+    resp = client.post(
+        f"/empleados/{empleado_id}/contratos",
+        json={
+            "tipo_contrato": "indefinido",
+            "cargo": "Auxiliar",
+            "fecha_inicio": "2024-01-01",
+            "salario_base": "1500.00",
+        },
+        headers=headers,
+    )
+    contrato_id = resp.json()["id"]
+
+    resp = client.post(
+        f"/contratos/{contrato_id}/salario",
+        json={"salario_base": "1500.00", "fecha_vigencia_desde": "2024-06-01"},
+        headers=headers,
+    )
+    assert resp.status_code == 422
+    assert "no se puede bajar" in resp.json()["detail"]
+
+
+def test_permite_subir_el_salario(client, db):
+    empresa, headers = _preparar_empresa_con_usuario(db, client)
+
+    resp = client.post(
+        "/empleados",
+        json={"identificacion": f"8-{_sufijo()}", "nombre_completo": "Empleado Test"},
+        headers=headers,
+    )
+    empleado_id = resp.json()["id"]
+    resp = client.post(
+        f"/empleados/{empleado_id}/contratos",
+        json={
+            "tipo_contrato": "indefinido",
+            "cargo": "Auxiliar",
+            "fecha_inicio": "2024-01-01",
+            "salario_base": "1500.00",
+        },
+        headers=headers,
+    )
+    contrato_id = resp.json()["id"]
+
+    resp = client.post(
+        f"/contratos/{contrato_id}/salario",
+        json={"salario_base": "1500.01", "fecha_vigencia_desde": "2024-06-01"},
+        headers=headers,
+    )
+    assert resp.status_code == 201, resp.text
+
+
 def test_rechaza_salario_por_debajo_del_minimo_vigente_en_la_fecha_del_contrato(client, db):
     empresa, headers = _preparar_empresa_con_usuario(db, client)
     # Salario mínimo vigente SOLO durante 2024.
