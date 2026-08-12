@@ -5,6 +5,7 @@ import type { FormSubmitEvent } from '@nuxt/ui'
 const props = defineProps<{ contratoId: string }>()
 
 const { listar, registrar, eliminar } = useConceptosVariables()
+const { puedeEscribir } = useAuth()
 const toast = useToast()
 
 const { data: conceptos, refresh } = await useAsyncData(`conceptos-${props.contratoId}`, () => listar(props.contratoId))
@@ -51,7 +52,10 @@ async function borrar(conceptoId: string) {
 
 <template>
   <div class="space-y-4">
-    <div class="flex justify-end">
+    <div
+      v-if="puedeEscribir"
+      class="flex justify-end"
+    >
       <UButton
         size="sm"
         icon="i-lucide-plus"
@@ -61,7 +65,7 @@ async function borrar(conceptoId: string) {
       </UButton>
     </div>
 
-    <UCard v-if="mostrarFormulario">
+    <UCard v-if="mostrarFormulario && puedeEscribir">
       <UForm
         :schema="schema"
         :state="state"
@@ -185,7 +189,7 @@ async function borrar(conceptoId: string) {
             </td>
             <td class="py-2 text-right">
               <UButton
-                v-if="!c.aplicado"
+                v-if="!c.aplicado && puedeEscribir"
                 size="xs"
                 color="error"
                 variant="ghost"

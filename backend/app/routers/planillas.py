@@ -4,7 +4,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
-from app.core.deps import get_db_rls, get_empresa_activa_id, get_usuario_actual, require_roles
+from app.core.deps import get_db_rls, get_empresa_activa_id, get_usuario_actual, require_escritura
 from app.core.responses import respuesta_archivo
 from app.models import MovimientoPlanilla, Planilla, Usuario
 from app.schemas.planillas import GenerarPlanillaRequest, MovimientoPlanillaOut, PlanillaOut
@@ -32,6 +32,7 @@ def generar_planilla(
     empresa_id: Annotated[uuid.UUID, Depends(get_empresa_activa_id)],
     usuario: Annotated[Usuario, Depends(get_usuario_actual)],
     db: Annotated[Session, Depends(get_db_rls)],
+    _rol: Annotated[str, Depends(require_escritura)],
 ) -> Planilla:
     return planilla_service.generar_planilla(
         db,
@@ -57,6 +58,7 @@ def aprobar_planilla(
     empresa_id: Annotated[uuid.UUID, Depends(get_empresa_activa_id)],
     usuario: Annotated[Usuario, Depends(get_usuario_actual)],
     db: Annotated[Session, Depends(get_db_rls)],
+    _rol: Annotated[str, Depends(require_escritura)],
 ) -> Planilla:
     planilla = planilla_service.obtener_planilla(db, planilla_id)
     return planilla_service.aprobar_planilla(db, empresa_id, usuario.id, planilla)
@@ -68,6 +70,7 @@ async def pagar_planilla(
     empresa_id: Annotated[uuid.UUID, Depends(get_empresa_activa_id)],
     usuario: Annotated[Usuario, Depends(get_usuario_actual)],
     db: Annotated[Session, Depends(get_db_rls)],
+    _rol: Annotated[str, Depends(require_escritura)],
     archivo: UploadFile,
 ) -> Planilla:
     if archivo.content_type not in _TIPOS_CONSTANCIA_PAGO_PERMITIDOS:
@@ -94,7 +97,7 @@ async def reemplazar_constancia_pago(
     empresa_id: Annotated[uuid.UUID, Depends(get_empresa_activa_id)],
     usuario: Annotated[Usuario, Depends(get_usuario_actual)],
     db: Annotated[Session, Depends(get_db_rls)],
-    _rol: Annotated[str, Depends(require_roles("admin"))],
+    _rol: Annotated[str, Depends(require_escritura)],
     archivo: UploadFile,
     motivo: Annotated[str, Form(min_length=1)],
 ) -> Planilla:
@@ -140,6 +143,7 @@ def anular_planilla(
     empresa_id: Annotated[uuid.UUID, Depends(get_empresa_activa_id)],
     usuario: Annotated[Usuario, Depends(get_usuario_actual)],
     db: Annotated[Session, Depends(get_db_rls)],
+    _rol: Annotated[str, Depends(require_escritura)],
 ) -> Planilla:
     planilla = planilla_service.obtener_planilla(db, planilla_id)
     return planilla_service.anular_planilla(db, empresa_id, usuario.id, planilla)

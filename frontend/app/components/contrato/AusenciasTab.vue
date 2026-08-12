@@ -5,6 +5,7 @@ import type { FormSubmitEvent } from '@nuxt/ui'
 const props = defineProps<{ contratoId: string }>()
 
 const { listar, registrar, obtenerDocumentoUrl, subirDocumento } = useAusencias()
+const { puedeEscribir } = useAuth()
 const toast = useToast()
 
 const { data: ausencias, refresh } = await useAsyncData(`ausencias-${props.contratoId}`, () => listar(props.contratoId))
@@ -102,7 +103,10 @@ async function subirDocumentoExistente(ausenciaId: string) {
 
 <template>
   <div class="space-y-4">
-    <div class="flex justify-end">
+    <div
+      v-if="puedeEscribir"
+      class="flex justify-end"
+    >
       <UButton
         size="sm"
         icon="i-lucide-plus"
@@ -112,7 +116,7 @@ async function subirDocumentoExistente(ausenciaId: string) {
       </UButton>
     </div>
 
-    <UCard v-if="mostrarFormulario">
+    <UCard v-if="mostrarFormulario && puedeEscribir">
       <UForm
         :schema="schema"
         :state="state"
@@ -248,7 +252,7 @@ async function subirDocumentoExistente(ausenciaId: string) {
                 {{ a.documento_constancia_nombre_archivo || 'Ver documento' }}
               </a>
               <div
-                v-else
+                v-else-if="puedeEscribir"
                 class="flex items-center gap-2"
               >
                 <input
@@ -269,6 +273,7 @@ async function subirDocumentoExistente(ausenciaId: string) {
                   Subir documento
                 </UButton>
               </div>
+              <span v-else>—</span>
             </td>
           </tr>
           <tr v-if="!ausencias || ausencias.length === 0">

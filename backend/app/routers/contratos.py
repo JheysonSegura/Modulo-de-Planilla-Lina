@@ -5,7 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
-from app.core.deps import get_db_rls, get_empresa_activa_id, get_usuario_actual
+from app.core.deps import get_db_rls, get_empresa_activa_id, get_usuario_actual, require_escritura
 from app.models import Contrato, HistorialSalarial, Usuario
 from app.schemas.contratos import (
     CambiarSalarioRequest,
@@ -26,6 +26,7 @@ def crear_contrato(
     body: ContratoCreate,
     empresa_id: Annotated[uuid.UUID, Depends(get_empresa_activa_id)],
     db: Annotated[Session, Depends(get_db_rls)],
+    _rol: Annotated[str, Depends(require_escritura)],
 ) -> Contrato:
     return contratos_service.crear_contrato(db, empresa_id, empleado_id, body)
 
@@ -49,6 +50,7 @@ def actualizar_contrato(
     contrato_id: uuid.UUID,
     body: ContratoUpdate,
     db: Annotated[Session, Depends(get_db_rls)],
+    _rol: Annotated[str, Depends(require_escritura)],
 ) -> Contrato:
     contrato = contratos_service.obtener_contrato(db, contrato_id)
     return contratos_service.actualizar_contrato(db, contrato, body)
@@ -62,6 +64,7 @@ def cambiar_salario(
     body: CambiarSalarioRequest,
     db: Annotated[Session, Depends(get_db_rls)],
     usuario: Annotated[Usuario, Depends(get_usuario_actual)],
+    _rol: Annotated[str, Depends(require_escritura)],
 ) -> HistorialSalarial:
     contrato = contratos_service.obtener_contrato(db, contrato_id)
     return contratos_service.cambiar_salario(db, contrato, body, usuario.id)

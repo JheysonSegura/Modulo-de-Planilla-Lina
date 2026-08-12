@@ -237,7 +237,10 @@ def test_no_se_puede_reemplazar_constancia_si_no_esta_pagada(client, db):
     assert resp.status_code == 409, resp.text
 
 
-def test_reemplazar_constancia_requiere_rol_admin(client, db):
+def test_reemplazar_constancia_permite_admin_y_contador(client, db):
+    # contador tiene acceso operativo completo: crea Y corrige (incluida
+    # una constancia mal subida) -- solo admin agrega gobierno del
+    # sistema encima de eso, no reemplaza el trabajo de contador.
     headers = _preparar_empresa(db, client, rol="contador")
     _crear_empleado_con_contrato(client, headers)
     planilla = _generar_planilla(
@@ -251,6 +254,33 @@ def test_reemplazar_constancia_requiere_rol_admin(client, db):
         files={"archivo": ("constancia.pdf", _pdf_minimo(), "application/pdf")},
         data={"motivo": "Motivo cualquiera"},
         headers=headers,
+    )
+    assert resp.status_code == 200, resp.text
+
+
+def test_reemplazar_constancia_rechaza_rol_consulta(client, db):
+    crear_salario_minimo(db, datetime.date(2020, 1, 1), decimal.Decimal("1.00"), fecha_fin=None)
+    empresa = crear_empresa(db, _sufijo())
+    usuario_admin = crear_usuario(db, f"admin-{_sufijo()}@example.com")
+    vincular(db, usuario_admin, empresa, "admin")
+    headers_admin = login_y_seleccionar(client, usuario_admin, empresa)
+
+    _crear_empleado_con_contrato(client, headers_admin)
+    planilla = _generar_planilla(
+        client, headers_admin, datetime.date(2025, 1, 1), datetime.date(2025, 1, 31)
+    ).json()
+    client.post(f"/planillas/{planilla['id']}/aprobar", headers=headers_admin)
+    _pagar_planilla(client, headers_admin, planilla["id"])
+
+    usuario_consulta = crear_usuario(db, f"consulta-{_sufijo()}@example.com")
+    vincular(db, usuario_consulta, empresa, "consulta")
+    headers_consulta = login_y_seleccionar(client, usuario_consulta, empresa)
+
+    resp = client.put(
+        f"/planillas/{planilla['id']}/constancia-pago",
+        files={"archivo": ("constancia.pdf", _pdf_minimo(), "application/pdf")},
+        data={"motivo": "Motivo cualquiera"},
+        headers=headers_consulta,
     )
     assert resp.status_code == 403, resp.text
 

@@ -4,7 +4,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
-from app.core.deps import get_db_rls, get_empresa_activa_id
+from app.core.deps import get_db_rls, get_empresa_activa_id, require_escritura
 from app.models import Ausencia
 from app.schemas.ausencias import AusenciaCreate, AusenciaOut
 from app.services import ausencias_service, contratos_service
@@ -35,6 +35,7 @@ def registrar_ausencia(
     body: AusenciaCreate,
     empresa_id: Annotated[uuid.UUID, Depends(get_empresa_activa_id)],
     db: Annotated[Session, Depends(get_db_rls)],
+    _rol: Annotated[str, Depends(require_escritura)],
 ) -> Ausencia:
     contrato = contratos_service.obtener_contrato(db, contrato_id)
     return ausencias_service.registrar_ausencia(
@@ -52,6 +53,7 @@ def registrar_ausencia(
 async def subir_documento_ausencia(
     ausencia_id: uuid.UUID,
     db: Annotated[Session, Depends(get_db_rls)],
+    _rol: Annotated[str, Depends(require_escritura)],
     archivo: UploadFile,
 ) -> Ausencia:
     if archivo.content_type not in _TIPOS_DOCUMENTO_PERMITIDOS:

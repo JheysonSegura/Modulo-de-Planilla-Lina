@@ -5,7 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from app.core.deps import get_db_rls, get_empresa_activa_id, get_usuario_actual
+from app.core.deps import get_db_rls, get_empresa_activa_id, get_usuario_actual, require_escritura
 from app.models import RegistroHorasExtra, Usuario
 from app.schemas.horas_extra import RegistroHorasExtraCreate, RegistroHorasExtraOut
 from app.services import contratos_service, horas_extra_service
@@ -24,6 +24,7 @@ def registrar_hora_extra(
     empresa_id: Annotated[uuid.UUID, Depends(get_empresa_activa_id)],
     usuario: Annotated[Usuario, Depends(get_usuario_actual)],
     db: Annotated[Session, Depends(get_db_rls)],
+    _rol: Annotated[str, Depends(require_escritura)],
 ) -> RegistroHorasExtra:
     contrato = contratos_service.obtener_contrato(db, contrato_id)
     return horas_extra_service.registrar_hora_extra(
@@ -55,6 +56,7 @@ def eliminar_hora_extra(
     contrato_id: uuid.UUID,
     registro_id: uuid.UUID,
     db: Annotated[Session, Depends(get_db_rls)],
+    _rol: Annotated[str, Depends(require_escritura)],
 ) -> None:
     registro = horas_extra_service.obtener_registro(db, registro_id)
     if registro.contrato_id != contrato_id:

@@ -6,6 +6,7 @@ import type { Contrato } from '~/composables/useContratos'
 const props = defineProps<{ contrato: Contrato }>()
 
 const { salarioVigente, cambiarSalario } = useContratos()
+const { puedeEscribir } = useAuth()
 const toast = useToast()
 
 const { data: salario, refresh: refrescarSalario } = await useAsyncData(
@@ -92,7 +93,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
         <div class="flex items-center justify-between">
           <span class="font-medium">Salario vigente</span>
           <UButton
-            v-if="contrato.estado === 'vigente'"
+            v-if="contrato.estado === 'vigente' && puedeEscribir"
             size="xs"
             variant="soft"
             @click="mostrarFormulario = !mostrarFormulario"

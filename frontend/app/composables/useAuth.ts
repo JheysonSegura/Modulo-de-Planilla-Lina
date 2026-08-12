@@ -42,6 +42,9 @@ export function useAuth() {
     'auth_empresa_activa', () => null
   )
   const rolActivo = useState<string | null>('auth_rol_activo', () => null)
+  // 'consulta' es el único rol sin permiso de escritura -- admin y
+  // contador tienen acceso operativo completo (ver CLAUDE.md).
+  const puedeEscribir = computed(() => rolActivo.value !== 'consulta')
 
   function limpiarSesion() {
     accessToken.value = null
@@ -145,6 +148,7 @@ export function useAuth() {
     usuario,
     empresaActiva,
     rolActivo,
+    puedeEscribir,
     login,
     listarEmpresas,
     seleccionarEmpresa,

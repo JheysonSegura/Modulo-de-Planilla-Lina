@@ -69,15 +69,21 @@ def get_rol_activo(claims: Annotated[dict, Depends(get_claims_actuales)]) -> str
 
 def get_db_rls(
     empresa_id: Annotated[uuid.UUID, Depends(get_empresa_activa_id)],
+    rol_activo: Annotated[str | None, Depends(get_rol_activo)],
     db: Annotated[Session, Depends(get_db)],
 ) -> Session:
-    """Sesión de BD con app.empresa_actual fijado para esta transacción
-    (equivalente a SET LOCAL, vía set_config con is_local=true). A partir
-    de aquí el aislamiento entre empresas lo hacen las políticas RLS de
-    Postgres, no un WHERE empresa_id=... en el código de la ruta."""
+    """Sesión de BD con app.empresa_actual y app.rol_activo fijados para
+    esta transacción (equivalente a SET LOCAL, vía set_config con
+    is_local=true). A partir de aquí el aislamiento entre empresas y el
+    bloqueo de escritura para el rol 'consulta' los hacen las políticas
+    RLS de Postgres, no solo el código de la ruta (require_escritura)."""
     db.execute(
         text("SELECT set_config('app.empresa_actual', :empresa_id, true)"),
         {"empresa_id": str(empresa_id)},
+    )
+    db.execute(
+        text("SELECT set_config('app.rol_activo', :rol, true)"),
+        {"rol": rol_activo or ""},
     )
     return db
 
@@ -91,3 +97,9 @@ def require_roles(*roles_permitidos: str):
         return rol
 
     return dependency
+
+
+# admin y contador tienen acceso operativo completo (crear y corregir);
+# consulta es el único rol sin ningún permiso de escritura. Ver
+# CLAUDE.md sección de roles para el razonamiento completo.
+require_escritura = require_roles("admin", "contador")

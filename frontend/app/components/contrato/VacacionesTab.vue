@@ -6,6 +6,7 @@ const props = defineProps<{ contratoId: string }>()
 
 const { provisiones, tomar, acumular, tomadas } = useVacaciones()
 const { descargar } = useReportes()
+const { puedeEscribir } = useAuth()
 const toast = useToast()
 
 const { data: provs, refresh } = await useAsyncData(`vacaciones-${props.contratoId}`, () => provisiones(props.contratoId))
@@ -79,7 +80,10 @@ async function onSubmitAcumular(event: FormSubmitEvent<SchemaAcumular>) {
 
 <template>
   <div class="space-y-4">
-    <div class="flex justify-end gap-2">
+    <div
+      v-if="puedeEscribir"
+      class="flex justify-end gap-2"
+    >
       <UButton
         size="sm"
         color="neutral"
@@ -98,7 +102,7 @@ async function onSubmitAcumular(event: FormSubmitEvent<SchemaAcumular>) {
       </UButton>
     </div>
 
-    <UCard v-if="mostrarTomar">
+    <UCard v-if="mostrarTomar && puedeEscribir">
       <UForm
         :schema="schemaTomar"
         :state="stateTomar"
@@ -136,7 +140,7 @@ async function onSubmitAcumular(event: FormSubmitEvent<SchemaAcumular>) {
       </UForm>
     </UCard>
 
-    <UCard v-if="mostrarAcumular">
+    <UCard v-if="mostrarAcumular && puedeEscribir">
       <p class="text-sm text-gray-500 mb-4">
         Art. 59 CT: requiere un acuerdo explícito con el trabajador y deja al menos 15 días de descanso garantizados en el período actual.
       </p>

@@ -4,7 +4,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.orm import Session
 
-from app.core.deps import get_db_rls, get_empresa_activa_id, get_usuario_actual
+from app.core.deps import get_db_rls, get_empresa_activa_id, get_usuario_actual, require_escritura
 from app.core.responses import respuesta_archivo
 from app.models import Liquidacion, Usuario
 from app.schemas.liquidaciones import GenerarLiquidacionRequest, LiquidacionOut
@@ -25,6 +25,7 @@ def generar_liquidacion(
     empresa_id: Annotated[uuid.UUID, Depends(get_empresa_activa_id)],
     usuario: Annotated[Usuario, Depends(get_usuario_actual)],
     db: Annotated[Session, Depends(get_db_rls)],
+    _rol: Annotated[str, Depends(require_escritura)],
 ) -> Liquidacion:
     contrato = contratos_service.obtener_contrato(db, contrato_id)
     return liquidaciones_service.generar_liquidacion(
@@ -58,6 +59,7 @@ def pagar_liquidacion(
     empresa_id: Annotated[uuid.UUID, Depends(get_empresa_activa_id)],
     usuario: Annotated[Usuario, Depends(get_usuario_actual)],
     db: Annotated[Session, Depends(get_db_rls)],
+    _rol: Annotated[str, Depends(require_escritura)],
 ) -> Liquidacion:
     liquidacion = liquidaciones_service.obtener_liquidacion(db, liquidacion_id)
     return liquidaciones_service.pagar_liquidacion(db, empresa_id, usuario.id, liquidacion)

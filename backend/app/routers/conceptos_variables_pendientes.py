@@ -5,7 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from app.core.deps import get_db_rls, get_empresa_activa_id, get_usuario_actual
+from app.core.deps import get_db_rls, get_empresa_activa_id, get_usuario_actual, require_escritura
 from app.models import ConceptoVariablePendiente, Usuario
 from app.schemas.conceptos_variables_pendientes import (
     ConceptoVariablePendienteCreate,
@@ -27,6 +27,7 @@ def crear_concepto_variable_pendiente(
     empresa_id: Annotated[uuid.UUID, Depends(get_empresa_activa_id)],
     usuario: Annotated[Usuario, Depends(get_usuario_actual)],
     db: Annotated[Session, Depends(get_db_rls)],
+    _rol: Annotated[str, Depends(require_escritura)],
 ) -> ConceptoVariablePendiente:
     contrato = contratos_service.obtener_contrato(db, contrato_id)
     return conceptos_variables_pendientes_service.crear_pendiente(
@@ -63,6 +64,7 @@ def eliminar_concepto_variable_pendiente(
     contrato_id: uuid.UUID,
     concepto_id: uuid.UUID,
     db: Annotated[Session, Depends(get_db_rls)],
+    _rol: Annotated[str, Depends(require_escritura)],
 ) -> None:
     concepto = conceptos_variables_pendientes_service.obtener(db, concepto_id)
     if concepto.contrato_id != contrato_id:

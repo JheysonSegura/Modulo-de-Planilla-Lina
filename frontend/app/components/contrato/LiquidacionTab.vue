@@ -7,6 +7,7 @@ const props = defineProps<{ contrato: Contrato }>()
 
 const { listarDeContrato, generar, pagar } = useLiquidaciones()
 const { descargar } = useReportes()
+const { puedeEscribir } = useAuth()
 const toast = useToast()
 
 const { data: liquidaciones, refresh } = await useAsyncData(
@@ -97,7 +98,7 @@ async function marcarPagada(liquidacionId: string) {
 <template>
   <div class="space-y-4">
     <UButton
-      v-if="contrato.estado === 'vigente' && !mostrarFormulario"
+      v-if="contrato.estado === 'vigente' && !mostrarFormulario && puedeEscribir"
       size="sm"
       color="error"
       variant="soft"
@@ -107,7 +108,7 @@ async function marcarPagada(liquidacionId: string) {
       Generar liquidación
     </UButton>
 
-    <UCard v-if="mostrarFormulario">
+    <UCard v-if="mostrarFormulario && puedeEscribir">
       <UForm
         :schema="schema"
         :state="state"
@@ -230,7 +231,7 @@ async function marcarPagada(liquidacionId: string) {
               Excel
             </UButton>
             <UButton
-              v-if="liq.estado !== 'pagada'"
+              v-if="liq.estado !== 'pagada' && puedeEscribir"
               size="xs"
               :loading="pagando"
               @click="marcarPagada(liq.id)"

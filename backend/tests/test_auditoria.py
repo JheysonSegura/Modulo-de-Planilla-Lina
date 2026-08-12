@@ -169,8 +169,10 @@ def test_filtro_por_empleado_no_mezcla_eventos_de_otros_empleados(client, db):
 
 
 def test_endpoint_de_auditoria_rechaza_rol_no_admin(client, db):
+    # No hace falta ningún dato de negocio real: solo se prueba que el
+    # rol no-admin no puede leer el log de auditoría. 'consulta' además
+    # no podría crear el empleado igual (ver test_permisos_escritura.py).
     headers = _preparar_empresa(db, client, rol="consulta")
-    _crear_empleado_con_contrato(client, headers)
 
     resp = _listar_auditoria(client, headers)
     assert resp.status_code == 403, resp.text

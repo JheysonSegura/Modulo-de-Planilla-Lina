@@ -2,6 +2,7 @@
 import type { Planilla } from '~/composables/usePlanillas'
 
 const { listar } = usePlanillas()
+const { puedeEscribir } = useAuth()
 
 const filtroTipo = ref<string | undefined>(undefined)
 const filtroEstado = ref<string | undefined>(undefined)
@@ -37,7 +38,10 @@ onActivated(() => refresh())
       <h1 class="text-xl font-semibold text-gray-900 dark:text-white">
         Planillas
       </h1>
-      <div class="flex gap-2">
+      <div
+        v-if="puedeEscribir"
+        class="flex gap-2"
+      >
         <UButton
           color="neutral"
           variant="soft"

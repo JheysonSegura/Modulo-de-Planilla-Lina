@@ -7,6 +7,7 @@ const route = useRoute()
 const empleadoId = route.params.id as string
 
 const { listar, registrar, eliminar } = useHorasExtra()
+const { puedeEscribir } = useAuth()
 const toast = useToast()
 
 const { data: registros, refresh } = await useAsyncData(`horas-extra-${props.contratoId}`, () => listar(props.contratoId))
@@ -73,7 +74,10 @@ async function borrar(registroId: string) {
 
 <template>
   <div class="space-y-4">
-    <div class="flex justify-end">
+    <div
+      v-if="puedeEscribir"
+      class="flex justify-end"
+    >
       <UButton
         size="sm"
         icon="i-lucide-plus"
@@ -83,7 +87,7 @@ async function borrar(registroId: string) {
       </UButton>
     </div>
 
-    <UCard v-if="mostrarFormulario">
+    <UCard v-if="mostrarFormulario && puedeEscribir">
       <UForm
         :schema="schema"
         :state="state"
@@ -228,6 +232,7 @@ async function borrar(registroId: string) {
                 Ver desglose
               </UButton>
               <UButton
+                v-if="puedeEscribir"
                 size="xs"
                 color="error"
                 variant="ghost"

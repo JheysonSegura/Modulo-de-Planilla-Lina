@@ -10,6 +10,7 @@ const {
   subirDocumentoCertificadoMedico
 } = useEmpleados()
 const { listarDeEmpleado } = useContratos()
+const { puedeEscribir } = useAuth()
 const toast = useToast()
 
 const { data: empleado, refresh: refrescarEmpleado } = await useAsyncData(`empleado-${empleadoId}`, () => obtener(empleadoId))
@@ -98,6 +99,7 @@ async function onSeleccionarCertificadoMedico(event: Event) {
           {{ empleado.estado }}
         </UBadge>
         <UButton
+          v-if="puedeEscribir"
           size="sm"
           color="neutral"
           variant="subtle"
@@ -203,7 +205,7 @@ async function onSeleccionarCertificadoMedico(event: Event) {
               Sin documento cargado.
             </p>
           </div>
-          <div>
+          <div v-if="puedeEscribir">
             <input
               ref="inputIdentificacion"
               type="file"
@@ -243,7 +245,7 @@ async function onSeleccionarCertificadoMedico(event: Event) {
               Sin documento cargado.
             </p>
           </div>
-          <div>
+          <div v-if="puedeEscribir">
             <input
               ref="inputCertificadoMedico"
               type="file"
@@ -270,6 +272,7 @@ async function onSeleccionarCertificadoMedico(event: Event) {
         Contratos
       </h2>
       <UButton
+        v-if="puedeEscribir"
         size="sm"
         icon="i-lucide-plus"
         :to="`/empleados/${empleadoId}/contratos/nuevo`"

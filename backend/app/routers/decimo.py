@@ -4,7 +4,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.core.deps import get_db_rls, get_empresa_activa_id, get_usuario_actual
+from app.core.deps import get_db_rls, get_empresa_activa_id, get_usuario_actual, require_escritura
 from app.models import Planilla, ProvisionDecimo, Usuario
 from app.schemas.decimo import GenerarPagoDecimoRequest, ProvisionDecimoOut
 from app.schemas.planillas import PlanillaOut
@@ -19,6 +19,7 @@ def generar_pago_decimo(
     empresa_id: Annotated[uuid.UUID, Depends(get_empresa_activa_id)],
     usuario: Annotated[Usuario, Depends(get_usuario_actual)],
     db: Annotated[Session, Depends(get_db_rls)],
+    _rol: Annotated[str, Depends(require_escritura)],
 ) -> Planilla:
     return decimo_service.generar_pago_decimo(
         db, empresa_id, usuario.id, body.cuatrimestre, body.anio, body.fecha_pago

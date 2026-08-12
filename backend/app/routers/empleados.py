@@ -4,7 +4,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
-from app.core.deps import get_db_rls, get_empresa_activa_id
+from app.core.deps import get_db_rls, get_empresa_activa_id, require_escritura
 from app.models import Empleado
 from app.schemas.empleados import EmpleadoCreate, EmpleadoOut, EmpleadoUpdate
 from app.services import empleados_service
@@ -19,6 +19,7 @@ def crear_empleado(
     body: EmpleadoCreate,
     empresa_id: Annotated[uuid.UUID, Depends(get_empresa_activa_id)],
     db: Annotated[Session, Depends(get_db_rls)],
+    _rol: Annotated[str, Depends(require_escritura)],
 ) -> Empleado:
     return empleados_service.crear_empleado(db, empresa_id, body)
 
@@ -44,6 +45,7 @@ def actualizar_empleado(
     empleado_id: uuid.UUID,
     body: EmpleadoUpdate,
     db: Annotated[Session, Depends(get_db_rls)],
+    _rol: Annotated[str, Depends(require_escritura)],
 ) -> Empleado:
     empleado = empleados_service.obtener_empleado(db, empleado_id)
     return empleados_service.actualizar_empleado(db, empleado, body)
@@ -53,6 +55,7 @@ def actualizar_empleado(
 async def subir_documento_identificacion(
     empleado_id: uuid.UUID,
     db: Annotated[Session, Depends(get_db_rls)],
+    _rol: Annotated[str, Depends(require_escritura)],
     archivo: UploadFile,
 ) -> Empleado:
     if archivo.content_type not in _TIPOS_DOCUMENTO_PERMITIDOS:
@@ -86,6 +89,7 @@ def obtener_documento_identificacion(
 async def subir_documento_certificado_medico(
     empleado_id: uuid.UUID,
     db: Annotated[Session, Depends(get_db_rls)],
+    _rol: Annotated[str, Depends(require_escritura)],
     archivo: UploadFile,
 ) -> Empleado:
     if archivo.content_type not in _TIPOS_DOCUMENTO_PERMITIDOS:

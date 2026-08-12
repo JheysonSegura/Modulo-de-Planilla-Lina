@@ -5,7 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.orm import Session
 
-from app.core.deps import get_db_rls, get_empresa_activa_id
+from app.core.deps import get_db_rls, get_empresa_activa_id, require_escritura
 from app.core.responses import respuesta_archivo
 from app.models import ProvisionVacaciones, VacacionTomada
 from app.schemas.reportes import FormatoRecibo
@@ -41,6 +41,7 @@ def registrar_vacacion_tomada(
     body: VacacionTomadaCreate,
     empresa_id: Annotated[uuid.UUID, Depends(get_empresa_activa_id)],
     db: Annotated[Session, Depends(get_db_rls)],
+    _rol: Annotated[str, Depends(require_escritura)],
 ) -> ProvisionVacaciones:
     contrato = contratos_service.obtener_contrato(db, contrato_id)
     return vacaciones_service.registrar_vacacion_tomada(
@@ -88,6 +89,7 @@ def acumular_periodo_vacaciones(
     body: AcumularVacacionesRequest,
     empresa_id: Annotated[uuid.UUID, Depends(get_empresa_activa_id)],
     db: Annotated[Session, Depends(get_db_rls)],
+    _rol: Annotated[str, Depends(require_escritura)],
 ) -> ProvisionVacaciones:
     contrato = contratos_service.obtener_contrato(db, contrato_id)
     return vacaciones_service.acumular_periodo(

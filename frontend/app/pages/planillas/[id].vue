@@ -6,7 +6,7 @@ const { obtener, movimientos, aprobar, anular, pagar, reemplazarConstancia, obte
 const { obtener: obtenerContrato } = useContratos()
 const { obtener: obtenerEmpleado } = useEmpleados()
 const { descargar } = useReportes()
-const { rolActivo } = useAuth()
+const { puedeEscribir } = useAuth()
 const toast = useToast()
 
 const { data: planilla, refresh: refrescarPlanilla } = await useAsyncData(`planilla-${planillaId}`, () => obtener(planillaId))
@@ -188,7 +188,7 @@ async function exportarPlanilla(formato: 'excel' | 'csv' | 'pdf') {
         >
           PDF
         </UButton>
-        <template v-if="planilla.estado === 'borrador'">
+        <template v-if="planilla.estado === 'borrador' && puedeEscribir">
           <template v-if="confirmandoAnular">
             <span class="text-sm text-gray-500">¿Seguro?</span>
             <UButton
@@ -228,7 +228,7 @@ async function exportarPlanilla(formato: 'excel' | 'csv' | 'pdf') {
             </UButton>
           </template>
         </template>
-        <template v-if="planilla.estado === 'procesada'">
+        <template v-if="planilla.estado === 'procesada' && puedeEscribir">
           <UButton
             icon="i-lucide-banknote"
             @click="abrirModalPago"
@@ -245,7 +245,7 @@ async function exportarPlanilla(formato: 'excel' | 'csv' | 'pdf') {
           <UIcon name="i-lucide-file-check" /> Ver constancia de pago
         </a>
         <UButton
-          v-if="planilla.estado === 'pagada' && rolActivo === 'admin'"
+          v-if="planilla.estado === 'pagada' && puedeEscribir"
           size="xs"
           variant="ghost"
           color="neutral"

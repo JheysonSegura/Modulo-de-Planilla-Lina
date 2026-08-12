@@ -2,6 +2,7 @@
 import type { Empleado } from '~/composables/useEmpleados'
 
 const { listar } = useEmpleados()
+const { puedeEscribir } = useAuth()
 const { data: empleados, pending, refresh } = await useAsyncData<Empleado[]>('empleados', () => listar())
 
 const busqueda = ref('')
@@ -23,6 +24,7 @@ onActivated(() => refresh())
         Empleados
       </h1>
       <UButton
+        v-if="puedeEscribir"
         icon="i-lucide-plus"
         to="/empleados/nuevo"
       >
