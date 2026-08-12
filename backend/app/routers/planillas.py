@@ -1,10 +1,10 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, UploadFile, status
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
-from app.core.deps import get_db_rls, get_empresa_activa_id, get_usuario_actual
+from app.core.deps import get_db_rls, get_empresa_activa_id, get_usuario_actual, require_roles
 from app.core.responses import respuesta_archivo
 from app.models import MovimientoPlanilla, Planilla, Usuario
 from app.schemas.planillas import GenerarPlanillaRequest, MovimientoPlanillaOut, PlanillaOut
@@ -85,6 +85,35 @@ async def pagar_planilla(
         contenido,
         archivo.content_type,
         archivo.filename or "constancia",
+    )
+
+
+@router.put("/planillas/{planilla_id}/constancia-pago", response_model=PlanillaOut)
+async def reemplazar_constancia_pago(
+    planilla_id: uuid.UUID,
+    empresa_id: Annotated[uuid.UUID, Depends(get_empresa_activa_id)],
+    usuario: Annotated[Usuario, Depends(get_usuario_actual)],
+    db: Annotated[Session, Depends(get_db_rls)],
+    _rol: Annotated[str, Depends(require_roles("admin"))],
+    archivo: UploadFile,
+    motivo: Annotated[str, Form(min_length=1)],
+) -> Planilla:
+    if archivo.content_type not in _TIPOS_CONSTANCIA_PAGO_PERMITIDOS:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"Formato de archivo no soportado: {archivo.content_type}",
+        )
+    planilla = planilla_service.obtener_planilla(db, planilla_id)
+    contenido = await archivo.read()
+    return planilla_service.reemplazar_constancia_pago(
+        db,
+        empresa_id,
+        usuario.id,
+        planilla,
+        contenido,
+        archivo.content_type,
+        archivo.filename or "constancia",
+        motivo,
     )
 
 

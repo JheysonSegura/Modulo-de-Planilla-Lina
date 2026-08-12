@@ -80,6 +80,32 @@ export function usePlanillas() {
     }
   }
 
+  async function reemplazarConstancia(id: string, archivo: File, motivo: string): Promise<Planilla> {
+    const formData = new FormData()
+    formData.append('archivo', archivo)
+    formData.append('motivo', motivo)
+
+    const intentar = () =>
+      $fetch<Planilla>(`/planillas/${id}/constancia-pago`, {
+        baseURL: config.public.apiBase,
+        method: 'PUT',
+        body: formData,
+        headers: { Authorization: `Bearer ${accessToken.value}` }
+      })
+
+    try {
+      return await intentar()
+    } catch (error) {
+      const status = (error as { response?: { status?: number } })?.response?.status
+      if (status === 401) {
+        const refrescado = await refrescarSesion()
+        if (refrescado) return await intentar()
+        await navigateTo('/login')
+      }
+      throw error
+    }
+  }
+
   return {
     listar: (tipo?: string, estado?: string) => api.get<Planilla[]>('/planillas', { tipo, estado }),
     obtener: (id: string) => api.get<Planilla>(`/planillas/${id}`),
@@ -87,6 +113,7 @@ export function usePlanillas() {
     aprobar: (id: string) => api.post<Planilla>(`/planillas/${id}/aprobar`),
     anular: (id: string) => api.post<Planilla>(`/planillas/${id}/anular`),
     pagar: (id: string, archivo: File) => subirArchivo(`/planillas/${id}/pagar`, archivo),
+    reemplazarConstancia,
     obtenerConstanciaPagoUrl: async (id: string): Promise<string | null> => {
       try {
         const blob = await pedirBlob(`/planillas/${id}/constancia-pago`)

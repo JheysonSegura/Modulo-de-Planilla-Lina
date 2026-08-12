@@ -2,10 +2,11 @@
 const route = useRoute()
 const planillaId = route.params.id as string
 
-const { obtener, movimientos, aprobar, anular, pagar, obtenerConstanciaPagoUrl } = usePlanillas()
+const { obtener, movimientos, aprobar, anular, pagar, reemplazarConstancia, obtenerConstanciaPagoUrl } = usePlanillas()
 const { obtener: obtenerContrato } = useContratos()
 const { obtener: obtenerEmpleado } = useEmpleados()
 const { descargar } = useReportes()
+const { rolActivo } = useAuth()
 const toast = useToast()
 
 const { data: planilla, refresh: refrescarPlanilla } = await useAsyncData(`planilla-${planillaId}`, () => obtener(planillaId))
@@ -43,7 +44,8 @@ async function aprobarPlanilla() {
 }
 
 const pagando = ref(false)
-const inputConstancia = ref<HTMLInputElement>()
+const modalPagoAbierto = ref(false)
+const modoModalPago = ref<'confirmar' | 'reemplazar'>('confirmar')
 const constanciaUrl = ref<string | null>(null)
 
 async function cargarConstancia() {
@@ -51,20 +53,34 @@ async function cargarConstancia() {
 }
 await cargarConstancia()
 
-async function onSeleccionarConstancia(event: Event) {
-  const archivo = (event.target as HTMLInputElement).files?.[0]
-  if (!archivo) return
+function abrirModalPago() {
+  modoModalPago.value = 'confirmar'
+  modalPagoAbierto.value = true
+}
+
+function abrirModalReemplazo() {
+  modoModalPago.value = 'reemplazar'
+  modalPagoAbierto.value = true
+}
+
+async function onConfirmarModalPago({ archivo, motivo }: { archivo: File, motivo?: string }) {
   pagando.value = true
   try {
-    await pagar(planillaId, archivo)
-    toast.add({ title: 'Pago confirmado', color: 'success' })
+    if (modoModalPago.value === 'confirmar') {
+      await pagar(planillaId, archivo)
+      toast.add({ title: 'Pago confirmado', color: 'success' })
+    } else {
+      await reemplazarConstancia(planillaId, archivo, motivo ?? '')
+      toast.add({ title: 'Constancia reemplazada', color: 'success' })
+    }
     await refrescarPlanilla()
     await cargarConstancia()
+    modalPagoAbierto.value = false
   } catch (error) {
-    toast.add({ title: 'No se pudo confirmar el pago', description: extraerMensajeError(error), color: 'error' })
+    const titulo = modoModalPago.value === 'confirmar' ? 'No se pudo confirmar el pago' : 'No se pudo reemplazar la constancia'
+    toast.add({ title: titulo, description: extraerMensajeError(error), color: 'error' })
   } finally {
     pagando.value = false
-    if (inputConstancia.value) inputConstancia.value.value = ''
   }
 }
 
@@ -214,19 +230,11 @@ async function exportarPlanilla(formato: 'excel' | 'csv' | 'pdf') {
         </template>
         <template v-if="planilla.estado === 'procesada'">
           <UButton
-            :loading="pagando"
             icon="i-lucide-banknote"
-            @click="inputConstancia?.click()"
+            @click="abrirModalPago"
           >
             Confirmar pago
           </UButton>
-          <input
-            ref="inputConstancia"
-            type="file"
-            accept="application/pdf,image/png,image/jpeg"
-            class="hidden"
-            @change="onSeleccionarConstancia"
-          >
         </template>
         <a
           v-if="planilla.estado === 'pagada' && constanciaUrl"
@@ -236,8 +244,25 @@ async function exportarPlanilla(formato: 'excel' | 'csv' | 'pdf') {
         >
           <UIcon name="i-lucide-file-check" /> Ver constancia de pago
         </a>
+        <UButton
+          v-if="planilla.estado === 'pagada' && rolActivo === 'admin'"
+          size="xs"
+          variant="ghost"
+          color="neutral"
+          icon="i-lucide-file-cog"
+          @click="abrirModalReemplazo"
+        >
+          Reemplazar constancia
+        </UButton>
       </div>
     </div>
+
+    <PlanillaConstanciaPagoModal
+      v-model:open="modalPagoAbierto"
+      :modo="modoModalPago"
+      :cargando="pagando"
+      @confirmar="onConfirmarModalPago"
+    />
 
     <UCard>
       <table class="w-full text-sm">

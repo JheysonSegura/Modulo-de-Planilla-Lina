@@ -220,6 +220,50 @@ def pagar_planilla(
     return planilla
 
 
+def reemplazar_constancia_pago(
+    db: Session,
+    empresa_id: uuid.UUID,
+    usuario_id: uuid.UUID,
+    planilla: Planilla,
+    contenido: bytes,
+    content_type: str,
+    nombre_archivo: str,
+    motivo: str,
+) -> Planilla:
+    """Reemplaza la constancia de una planilla ya pagada (ej. se subió el
+    archivo equivocado por error). No toca `estado` -- la planilla se
+    queda en 'pagada', solo cambia el documento. Restringido a admin
+    desde el router; exige `motivo` para dejar rastro auditado de POR
+    QUÉ se corrigió un comprobante de pago, no solo que se corrigió."""
+    if planilla.estado != "pagada":
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"La planilla está en estado '{planilla.estado}'; solo se puede reemplazar la "
+            "constancia de una planilla ya pagada. Para pagarla por primera vez usá "
+            "'Confirmar pago'.",
+        )
+
+    nombre_anterior = planilla.documento_constancia_pago_nombre_archivo
+    planilla.documento_constancia_pago = contenido
+    planilla.documento_constancia_pago_content_type = content_type
+    planilla.documento_constancia_pago_nombre_archivo = nombre_archivo
+
+    auditoria_service.registrar(
+        db,
+        empresa_id,
+        usuario_id,
+        "planillas",
+        planilla.id,
+        "constancia_repuesta",
+        datos_anteriores={"archivo": nombre_anterior},
+        datos_nuevos={"archivo": nombre_archivo, "motivo": motivo},
+    )
+
+    db.commit()
+    # Sin db.refresh(): rompería RLS igual que en el resto del proyecto.
+    return planilla
+
+
 def anular_planilla(
     db: Session, empresa_id: uuid.UUID, usuario_id: uuid.UUID, planilla: Planilla
 ) -> Planilla:
