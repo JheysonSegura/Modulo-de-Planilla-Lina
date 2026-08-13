@@ -62,18 +62,38 @@ async function salir() {
           </span>
         </div>
         <div class="flex items-center gap-4">
+          <UButton
+            v-if="usuario?.es_superadmin || usuario?.puede_crear_empresas"
+            to="/seleccionar-empresa"
+            size="sm"
+            icon="i-lucide-repeat"
+            color="neutral"
+            variant="soft"
+          >
+            Cambiar de empresa
+          </UButton>
           <UColorModeButton />
           <div class="text-right text-sm">
             <div class="text-gray-900 dark:text-white font-medium">
               {{ usuario?.nombre_completo }}
             </div>
-            <UBadge
-              color="secondary"
-              variant="subtle"
-              size="sm"
-            >
-              {{ rolActivo }}
-            </UBadge>
+            <div class="flex items-center gap-1 justify-end">
+              <UBadge
+                v-if="usuario?.es_superadmin"
+                color="warning"
+                variant="subtle"
+                size="sm"
+              >
+                Superadmin
+              </UBadge>
+              <UBadge
+                color="secondary"
+                variant="subtle"
+                size="sm"
+              >
+                {{ rolActivo }}
+              </UBadge>
+            </div>
           </div>
           <UButton
             icon="i-lucide-log-out"

@@ -43,6 +43,11 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
   }
 }
 
+function cancelar() {
+  mostrarFormulario.value = false
+  Object.assign(state, { email: '', rol: 'consulta', nombre_completo: '', password: '' })
+}
+
 async function cambiarRol(id: string, rol: string) {
   await actualizar(id, { rol })
   await refresh()
@@ -122,13 +127,25 @@ async function alternarActivo(id: string, activo: boolean) {
             class="w-full"
           />
         </UFormField>
-        <UButton
-          type="submit"
-          class="w-fit col-span-2"
-          :loading="guardando"
-        >
-          Agregar
-        </UButton>
+        <div class="flex gap-2 col-span-2">
+          <UButton
+            type="submit"
+            class="w-fit"
+            :loading="guardando"
+          >
+            Agregar
+          </UButton>
+          <UButton
+            type="button"
+            class="w-fit"
+            color="neutral"
+            variant="soft"
+            :disabled="guardando"
+            @click="cancelar"
+          >
+            Cancelar
+          </UButton>
+        </div>
       </UForm>
     </UCard>
 

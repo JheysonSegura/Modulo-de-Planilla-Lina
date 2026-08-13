@@ -43,7 +43,7 @@ def listar_empresas(
     usuario: Annotated[Usuario, Depends(get_usuario_actual)],
     db: Annotated[Session, Depends(get_db)],
 ) -> list[dict]:
-    return auth_service.listar_empresas(db, usuario.id)
+    return auth_service.listar_empresas(db, usuario)
 
 
 @router.post("/seleccionar-empresa", response_model=TokenResponse)
@@ -53,7 +53,7 @@ def seleccionar_empresa(
     db: Annotated[Session, Depends(get_db)],
 ) -> TokenResponse:
     access_token, refresh_token = auth_service.seleccionar_empresa(
-        db, usuario.id, body.empresa_id
+        db, usuario, body.empresa_id
     )
     return TokenResponse(access_token=access_token, refresh_token=refresh_token)
 

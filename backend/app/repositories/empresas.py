@@ -10,6 +10,19 @@ def get(db: Session, empresa_id: uuid.UUID) -> Empresa | None:
     return db.get(Empresa, empresa_id)
 
 
+def crear(db: Session, empresa: Empresa) -> Empresa:
+    db.add(empresa)
+    db.flush()
+    return empresa
+
+
+def listar_todas_activas(db: Session) -> list[Empresa]:
+    """Solo para superadmin (ver auth_service.listar_empresas) -- a
+    diferencia de listar_empresas_de_usuario, no filtra por membresía."""
+    stmt = select(Empresa).where(Empresa.activo.is_(True)).order_by(Empresa.razon_social)
+    return list(db.scalars(stmt).all())
+
+
 def get_membresia_activa(
     db: Session, usuario_id: uuid.UUID, empresa_id: uuid.UUID
 ) -> UsuarioEmpresa | None:

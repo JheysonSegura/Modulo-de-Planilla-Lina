@@ -96,11 +96,19 @@ def crear_empresa(db, sufijo: str) -> Empresa:
     return empresa
 
 
-def crear_usuario(db, email: str, password: str = "Secreta123!") -> Usuario:
+def crear_usuario(
+    db,
+    email: str,
+    password: str = "Secreta123!",
+    es_superadmin: bool = False,
+    puede_crear_empresas: bool = False,
+) -> Usuario:
     usuario = Usuario(
         email=email,
         password_hash=hash_password(password),
         nombre_completo="Usuario de prueba",
+        es_superadmin=es_superadmin,
+        puede_crear_empresas=puede_crear_empresas,
     )
     db.add(usuario)
     db.commit()

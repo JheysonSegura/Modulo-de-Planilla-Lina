@@ -103,3 +103,28 @@ def require_roles(*roles_permitidos: str):
 # consulta es el único rol sin ningún permiso de escritura. Ver
 # CLAUDE.md sección de roles para el razonamiento completo.
 require_escritura = require_roles("admin", "contador")
+
+
+def require_superadmin(usuario: Annotated[Usuario, Depends(get_usuario_actual)]) -> Usuario:
+    """Bandera GLOBAL (usuarios.es_superadmin), separada de los roles por
+    empresa de require_roles -- ver CLAUDE.md. Protege GET/PATCH /usuarios
+    (gestionar el permiso puede_crear_empresas de otros usuarios) -- eso
+    NUNCA es delegable, a diferencia de crear empresas."""
+    if not usuario.es_superadmin:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "Requiere privilegios de superadmin"
+        )
+    return usuario
+
+
+def require_puede_crear_empresas(
+    usuario: Annotated[Usuario, Depends(get_usuario_actual)],
+) -> Usuario:
+    """Protege POST /empresas: superadmin siempre puede, o un usuario con
+    el permiso delegado usuarios.puede_crear_empresas (togglable solo por
+    un superadmin vía PATCH /usuarios/{id}) -- ver CLAUDE.md."""
+    if not (usuario.es_superadmin or usuario.puede_crear_empresas):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "No tienes permiso para crear empresas"
+        )
+    return usuario

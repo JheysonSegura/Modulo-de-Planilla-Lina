@@ -4,7 +4,7 @@ import type { FormSubmitEvent } from '@nuxt/ui'
 
 definePageMeta({ layout: 'publico' })
 
-const { login, listarEmpresas, seleccionarEmpresa } = useAuth()
+const { login, listarEmpresas, seleccionarEmpresa, usuario, hidratarSesion } = useAuth()
 
 const schema = z.object({
   email: z.string().email('Email inválido'),
@@ -22,7 +22,15 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
   try {
     await login(event.data.email, event.data.password)
     const empresas = await listarEmpresas()
-    if (empresas.length === 1) {
+    // hidratarSesion puebla usuario.value (login() por sí solo solo fija
+    // los tokens) -- se necesita para saber si el usuario puede crear
+    // empresas (es_superadmin o el permiso delegado puede_crear_empresas,
+    // ver CLAUDE.md), y en ese caso nunca saltar la pantalla de
+    // selección aunque el sistema solo tenga una empresa, porque ahí
+    // vive el botón de "Crear empresa nueva".
+    await hidratarSesion()
+    const puedeCrearEmpresas = usuario.value?.es_superadmin || usuario.value?.puede_crear_empresas
+    if (empresas.length === 1 && !puedeCrearEmpresas) {
       await seleccionarEmpresa(empresas[0]!.empresa_id)
       await navigateTo('/')
     } else {

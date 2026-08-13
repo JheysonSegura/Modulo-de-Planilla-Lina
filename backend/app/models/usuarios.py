@@ -22,6 +22,16 @@ class Usuario(Base):
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     nombre_completo: Mapped[str] = mapped_column(String(200), nullable=False)
     activo: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    # Bandera GLOBAL (no un rol por empresa) -- ver CLAUDE.md. Solo se
+    # otorga con scripts/otorgar_superadmin.py, nunca desde la app.
+    es_superadmin: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    # Permiso delegado, también GLOBAL -- a diferencia de es_superadmin,
+    # SÍ se togglea desde la app, pero solo por un superadmin (GET/PATCH
+    # /usuarios). Deja crear empresas (POST /empresas) sin el resto de
+    # los poderes de superadmin.
+    puede_crear_empresas: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
     ultimo_login: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

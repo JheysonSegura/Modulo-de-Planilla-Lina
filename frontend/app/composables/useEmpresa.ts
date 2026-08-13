@@ -18,6 +18,9 @@ export function useEmpresa() {
 
   return {
     obtenerActual: () => api.get<Empresa>('/empresas/actual'),
-    actualizarActual: (body: Record<string, unknown>) => api.patch<Empresa>('/empresas/actual', body)
+    actualizarActual: (body: Record<string, unknown>) => api.patch<Empresa>('/empresas/actual', body),
+    // Solo superadmin (ver CLAUDE.md) -- crea una empresa nueva sin
+    // ningún usuario vinculado todavía.
+    crear: (body: Record<string, unknown>) => api.post<Empresa>('/empresas', body)
   }
 }

@@ -16,6 +16,7 @@ from app.routers import (
     liquidaciones,
     planillas,
     tasas,
+    usuarios,
     usuarios_empresas,
     vacaciones,
 )
@@ -44,4 +45,5 @@ app.include_router(liquidaciones.router)
 app.include_router(ausencias.router)
 app.include_router(auditoria.router)
 app.include_router(usuarios_empresas.router)
+app.include_router(usuarios.router)
 app.include_router(tasas.router)

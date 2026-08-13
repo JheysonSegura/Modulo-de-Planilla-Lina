@@ -46,3 +46,15 @@ class EmpresaUpdate(BaseModel):
     dv: str | None = Field(default=None, max_length=5)
     direccion: str | None = Field(default=None)
     telefono: str | None = Field(default=None, max_length=30)
+
+
+class EmpresaCreateRequest(BaseModel):
+    """Solo los datos mínimos de la empresa -- crear un usuario admin
+    para ella es un paso aparte (pantalla "Agregar usuario", que un
+    superadmin ya puede usar en cuanto entra a la empresa recién
+    creada). Ver CLAUDE.md sección de superadmin."""
+
+    razon_social: str = Field(min_length=1, max_length=200)
+    nombre_comercial: str | None = Field(default=None, max_length=200)
+    ruc: str = Field(min_length=1, max_length=30)
+    dv: str | None = Field(default=None, max_length=5)

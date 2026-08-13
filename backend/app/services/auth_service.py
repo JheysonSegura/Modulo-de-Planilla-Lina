@@ -36,8 +36,21 @@ def emitir_tokens(
     return access_token, refresh_token
 
 
-def listar_empresas(db: Session, usuario_id: uuid.UUID) -> list[dict]:
-    filas = empresas_repo.listar_empresas_de_usuario(db, usuario_id)
+def listar_empresas(db: Session, usuario: Usuario) -> list[dict]:
+    if usuario.es_superadmin:
+        # Ve TODAS las empresas activas del sistema, no solo las
+        # vinculadas en usuarios_empresas -- "rol": "superadmin" es una
+        # etiqueta cosmética para la UI, no un rol real de la tabla roles.
+        return [
+            {
+                "empresa_id": empresa.id,
+                "razon_social": empresa.razon_social,
+                "nombre_comercial": empresa.nombre_comercial,
+                "rol": "superadmin",
+            }
+            for empresa in empresas_repo.listar_todas_activas(db)
+        ]
+    filas = empresas_repo.listar_empresas_de_usuario(db, usuario.id)
     return [
         {
             "empresa_id": empresa.id,
@@ -49,14 +62,25 @@ def listar_empresas(db: Session, usuario_id: uuid.UUID) -> list[dict]:
     ]
 
 
-def seleccionar_empresa(
-    db: Session, usuario_id: uuid.UUID, empresa_id: uuid.UUID
-) -> tuple[str, str]:
-    membresia = empresas_repo.get_membresia_activa(db, usuario_id, empresa_id)
+def seleccionar_empresa(db: Session, usuario: Usuario, empresa_id: uuid.UUID) -> tuple[str, str]:
+    membresia = empresas_repo.get_membresia_activa(db, usuario.id, empresa_id)
     if membresia is None:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "No tienes acceso a esa empresa")
-    rol = empresas_repo.get_rol(db, membresia.rol_id)
-    return emitir_tokens(db, usuario_id, empresa_id, rol.nombre if rol else None)
+        if not usuario.es_superadmin:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "No tienes acceso a esa empresa")
+        empresa = empresas_repo.get(db, empresa_id)
+        if empresa is None or not empresa.activo:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Empresa no encontrada")
+
+    # El superadmin opera SIEMPRE como admin, incluso si por alguna
+    # razón tuviera una membresía explícita con otro rol -- ver
+    # CLAUDE.md sección de superadmin.
+    if usuario.es_superadmin:
+        rol_nombre = "admin"
+    else:
+        rol = empresas_repo.get_rol(db, membresia.rol_id)
+        rol_nombre = rol.nombre if rol else None
+
+    return emitir_tokens(db, usuario.id, empresa_id, rol_nombre)
 
 
 def _decodificar_refresh(refresh_token: str) -> dict:
@@ -91,8 +115,10 @@ def refrescar(db: Session, refresh_token: str) -> tuple[str, str]:
     empresa_id = uuid.UUID(empresa_id_claim) if empresa_id_claim else None
     if empresa_id is not None:
         membresia = empresas_repo.get_membresia_activa(db, usuario_id, empresa_id)
-        if membresia is None:
+        if membresia is None and not usuario.es_superadmin:
             empresa_id = None
+        elif usuario.es_superadmin:
+            rol_nombre = "admin"
         else:
             rol = empresas_repo.get_rol(db, membresia.rol_id)
             rol_nombre = rol.nombre if rol else None

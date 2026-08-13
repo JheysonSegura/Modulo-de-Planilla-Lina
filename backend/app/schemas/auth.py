@@ -39,6 +39,8 @@ class UsuarioOut(BaseModel):
     id: uuid.UUID
     email: str
     nombre_completo: str
+    es_superadmin: bool
+    puede_crear_empresas: bool
 
 
 class MeOut(BaseModel):

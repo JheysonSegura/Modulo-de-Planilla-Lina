@@ -4,14 +4,23 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
-from app.core.deps import get_db, get_empresa_activa_id, require_roles
-from app.models import Empresa
-from app.schemas.empresas import EmpresaOut, EmpresaUpdate
+from app.core.deps import get_db, get_empresa_activa_id, require_puede_crear_empresas, require_roles
+from app.models import Empresa, Usuario
+from app.schemas.empresas import EmpresaCreateRequest, EmpresaOut, EmpresaUpdate
 from app.services import empresas_service
 
 _TIPOS_LOGO_PERMITIDOS = {"image/png", "image/jpeg", "image/svg+xml", "image/webp"}
 
 router = APIRouter(prefix="/empresas", tags=["empresas"])
+
+
+@router.post("", response_model=EmpresaOut, status_code=status.HTTP_201_CREATED)
+def crear_empresa(
+    body: EmpresaCreateRequest,
+    db: Annotated[Session, Depends(get_db)],
+    usuario: Annotated[Usuario, Depends(require_puede_crear_empresas)],
+) -> Empresa:
+    return empresas_service.crear_empresa(db, body, usuario.id)
 
 
 @router.get("/actual", response_model=EmpresaOut)

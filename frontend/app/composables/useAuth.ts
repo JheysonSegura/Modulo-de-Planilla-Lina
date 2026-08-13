@@ -2,6 +2,8 @@ export interface Usuario {
   id: string
   email: string
   nombre_completo: string
+  es_superadmin: boolean
+  puede_crear_empresas: boolean
 }
 
 export interface EmpresaAcceso {
