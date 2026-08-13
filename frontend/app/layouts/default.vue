@@ -16,6 +16,9 @@ const navegacion = computed(() => {
       { to: '/auditoria', label: 'Auditoría', icon: 'i-lucide-history' }
     )
   }
+  if (usuario.value?.es_superadmin || usuario.value?.puede_crear_empresas) {
+    items.push({ to: '/empresa/accesos', label: 'Accesos entre empresas', icon: 'i-lucide-users-round' })
+  }
   return items
 })
 

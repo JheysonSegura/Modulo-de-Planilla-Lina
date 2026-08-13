@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.core.db import SessionLocal
 from app.core.security import decodificar_token
 from app.models import Usuario
+from app.repositories import empresas as empresas_repo
 from app.repositories import usuarios as usuarios_repo
 
 bearer_scheme = HTTPBearer(auto_error=True)
@@ -128,3 +129,42 @@ def require_puede_crear_empresas(
             status.HTTP_403_FORBIDDEN, "No tienes permiso para crear empresas"
         )
     return usuario
+
+
+def require_admin_de_empresa(
+    empresa_id: uuid.UUID,
+    usuario: Annotated[Usuario, Depends(get_usuario_actual)],
+    db: Annotated[Session, Depends(get_db)],
+) -> Usuario:
+    """Protege /mis-empresas/{empresa_id}/usuarios/*: primero exige el
+    permiso de plataforma (es_superadmin o puede_crear_empresas, igual que
+    require_puede_crear_empresas), y además que sea admin real de ESA
+    empresa puntual -- consultado directo a la BD (no del JWT, que solo
+    conoce la empresa activa), ya que acá `empresa_id` llega por la URL."""
+    if not (usuario.es_superadmin or usuario.puede_crear_empresas):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "No tienes permiso para gestionar accesos entre empresas"
+        )
+    if usuario.es_superadmin:
+        return usuario
+    membresia = empresas_repo.get_membresia_activa(db, usuario.id, empresa_id)
+    rol = empresas_repo.get_rol(db, membresia.rol_id) if membresia else None
+    if rol is None or rol.nombre != "admin":
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "No eres admin de esa empresa")
+    return usuario
+
+
+def get_db_rls_empresa(
+    empresa_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+) -> Session:
+    """Variante de get_db_rls para rutas donde `empresa_id` viene de la URL
+    en vez de la empresa activa del JWT (ver require_admin_de_empresa) --
+    necesaria porque auditoria_cambios tiene RLS forzado por empresa_id, y
+    aquí nunca pasa por /auth/seleccionar-empresa."""
+    db.execute(
+        text("SELECT set_config('app.empresa_actual', :empresa_id, true)"),
+        {"empresa_id": str(empresa_id)},
+    )
+    db.execute(text("SELECT set_config('app.rol_activo', 'admin', true)"))
+    return db

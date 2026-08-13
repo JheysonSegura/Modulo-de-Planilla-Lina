@@ -5,7 +5,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models import Empresa, UsuarioEmpresa
+from app.models import Empresa, Usuario, UsuarioEmpresa
 from app.repositories import empresas as empresas_repo
 from app.repositories import usuarios_empresas as usuarios_empresas_repo
 from app.schemas.empresas import EmpresaCreateRequest, EmpresaUpdate
@@ -17,6 +17,16 @@ def obtener_empresa_activa(db: Session, empresa_id: uuid.UUID) -> Empresa:
     if empresa is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Empresa no encontrada")
     return empresa
+
+
+def listar_mis_empresas_admin(db: Session, usuario: Usuario) -> list[Empresa]:
+    """Para la vista "mis empresas" (require_puede_crear_empresas): empresas
+    donde el usuario actual es admin -- todas las activas si es superadmin
+    (mismo criterio que auth_service.listar_empresas para el bypass)."""
+    if usuario.es_superadmin:
+        return empresas_repo.listar_todas_activas(db)
+    filas = empresas_repo.listar_empresas_de_usuario(db, usuario.id)
+    return [empresa for _membresia, empresa, rol in filas if rol.nombre == "admin"]
 
 
 def crear_empresa(db: Session, data: EmpresaCreateRequest, creador_id: uuid.UUID) -> Empresa:

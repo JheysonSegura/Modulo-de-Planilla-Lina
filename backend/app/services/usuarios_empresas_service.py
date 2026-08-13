@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.security import hash_password
 from app.models import Usuario, UsuarioEmpresa
+from app.repositories import empresas as empresas_repo
 from app.repositories import usuarios as usuarios_repo
 from app.repositories import usuarios_empresas as usuarios_empresas_repo
 from app.schemas.usuarios_empresas import UsuarioEmpresaCreate, UsuarioEmpresaOut, UsuarioEmpresaUpdate
@@ -13,6 +14,20 @@ from app.services import auditoria_service
 
 def _a_out(row) -> UsuarioEmpresaOut:
     return UsuarioEmpresaOut.model_validate(row, from_attributes=True)
+
+
+def _quedaria_sin_admin(db: Session, empresa_id: uuid.UUID, vinculo: UsuarioEmpresa) -> bool:
+    """True si `vinculo` es HOY el único admin activo de la empresa -- se
+    llama con los valores todavía sin modificar (antes de
+    usuarios_empresas_repo.actualizar, que muta `vinculo` en sitio)."""
+    if not vinculo.activo:
+        return False
+    rol_vigente = empresas_repo.get_rol(db, vinculo.rol_id)
+    if rol_vigente is None or rol_vigente.nombre != "admin":
+        return False
+    filas = usuarios_empresas_repo.listar_de_empresa(db, empresa_id)
+    otros_admins_activos = [f for f in filas if f.rol == "admin" and f.activo and f.id != vinculo.id]
+    return len(otros_admins_activos) == 0
 
 
 def listar(db: Session, empresa_id: uuid.UUID) -> list[UsuarioEmpresaOut]:
@@ -97,6 +112,19 @@ def actualizar_acceso(
         if rol is None:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"Rol inválido: '{data.rol}'.")
         rol_id = rol.id
+
+    # Una empresa nunca puede quedarse sin ningún admin activo -- ver
+    # CLAUDE.md. El autobloqueo (arriba) ya cubre que alguien se quite su
+    # propio acceso; esto cubre que un TERCERO (típicamente un superadmin,
+    # que puede entrar a cualquier empresa) desactive o degrade al último
+    # admin que le queda a la empresa.
+    quitaria_admin = data.activo is False or (data.rol is not None and data.rol != "admin")
+    if quitaria_admin and _quedaria_sin_admin(db, empresa_id, vinculo):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Esta persona es la única admin activa de la empresa -- asigna otro admin "
+            "antes de desactivarla o cambiarle el rol.",
+        )
 
     estado_anterior = {"rol_id": vinculo.rol_id, "activo": vinculo.activo}
     usuarios_empresas_repo.actualizar(db, vinculo, rol_id, data.activo)
