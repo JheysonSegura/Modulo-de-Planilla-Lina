@@ -8,7 +8,7 @@ async function salir() {
 </script>
 
 <template>
-  <div class="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-950 px-4">
+  <div class="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-950 px-4 py-10">
     <div class="absolute top-4 right-4 flex items-center gap-2">
       <UColorModeButton />
       <UButton
