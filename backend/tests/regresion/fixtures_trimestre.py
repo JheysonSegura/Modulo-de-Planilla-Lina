@@ -1,0 +1,238 @@
+"""Datos del escenario de regresión "trimestre completo" (Fase 17 -- testing
+integral, ver FASE17-plan-testing-integral.txt en la raíz del repo).
+
+Este archivo NO calcula nada: solo define el escenario (fechas, salarios,
+eventos) y el diccionario ESPERADOS con los montos que un contador debe
+verificar a mano y pegar aquí. Mientras un valor de ESPERADOS sea None, el
+test correspondiente en test_trimestre_completo.py se salta (pytest.skip)
+en vez de comparar contra un placeholder inventado.
+
+Cómo llenar ESPERADOS: cada entrada indica, en su comentario, el endpoint
+exacto de la API que produce ese número (ver también backend/tests/
+regresion/README.md para instrucciones paso a paso). Reemplazar None por
+un string con el monto exacto, por ejemplo:
+
+    "salario_bruto": "1500.00",
+
+nunca un float (los tests comparan con decimal.Decimal(str(valor)), y un
+float como 1500.00 puede perder precisión binaria antes de llegar a
+Decimal -- por eso el placeholder también debe ser string).
+"""
+
+import datetime
+
+# --- Cronología del trimestre --------------------------------------------
+# Elegido para que termine exactamente el 15-abr-2026, fecha real de pago
+# de la partida de décimo del cuatrimestre "dic-abr" (16-dic-2025 a
+# 15-abr-2026). Los contratos arrancan el 16-ene-2026: DENTRO de ese
+# cuatrimestre pero después de su inicio, para ejercitar a propósito el
+# caso de "entrada tardía al cuatrimestre" (numerador reducido, divisor
+# ÷12 fijo -- ver CLAUDE.md sección 4 "Décimo Tercer Mes").
+
+FECHA_INICIO_CONTRATOS = datetime.date(2026, 1, 16)
+FECHA_FIN_TRIMESTRE = datetime.date(2026, 4, 15)
+
+QUINCENAS = [
+    # (periodo_inicio, periodo_fin, fecha_pago)
+    (datetime.date(2026, 1, 16), datetime.date(2026, 1, 31), datetime.date(2026, 2, 5)),
+    (datetime.date(2026, 2, 1), datetime.date(2026, 2, 15), datetime.date(2026, 2, 20)),
+    (datetime.date(2026, 2, 16), datetime.date(2026, 2, 28), datetime.date(2026, 3, 5)),
+    (datetime.date(2026, 3, 1), datetime.date(2026, 3, 15), datetime.date(2026, 3, 20)),
+    (datetime.date(2026, 3, 16), datetime.date(2026, 3, 31), datetime.date(2026, 4, 5)),
+    (datetime.date(2026, 4, 1), datetime.date(2026, 4, 15), datetime.date(2026, 4, 20)),
+]
+
+DECIMO_REQUEST = {
+    "cuatrimestre": "dic-abr",
+    "anio": 2026,
+    "fecha_pago": "2026-04-15",
+}
+
+# --- Empleados -------------------------------------------------------------
+# Cada uno aísla un concepto de la Fase 17 para que un solo número mal
+# calculado apunte a un solo sospechoso, en vez de mezclar varias
+# novedades sobre la misma persona.
+
+ANA = {
+    "nombre": "Ana",
+    "salario_base": "1500.00",  # por encima del umbral mensual de ISR ($846.15)
+    "tipo_contrato": "indefinido",
+}
+
+BRUNO = {
+    "nombre": "Bruno",
+    "salario_base": "900.00",  # por debajo del umbral de ISR en su quincena base
+    "tipo_contrato": "indefinido",
+    # Horas extra en Q2/Q4/Q6 (índice 1, 3, 5 de QUINCENAS); Q1/Q3/Q5 son
+    # su quincena base sin novedades.
+    "horas_extra": [
+        {  # Q2
+            "fecha": datetime.date(2026, 2, 10),
+            "tipo_hora": "diurna",
+            "tipo_dia": "ordinario",
+            "horas": "2.00",
+        },
+        {  # Q4
+            "fecha": datetime.date(2026, 3, 10),
+            "tipo_hora": "nocturna",
+            "tipo_dia": "ordinario",
+            "horas": "1.50",
+        },
+        {  # Q6
+            "fecha": datetime.date(2026, 4, 5),
+            "tipo_hora": "diurna",
+            "tipo_dia": "domingo_descanso",
+            "horas": "1.00",
+        },
+    ],
+}
+
+CARLA = {
+    "nombre": "Carla",
+    "salario_base": "800.00",
+    "tipo_contrato": "indefinido",
+    # Ausencia con justificación médica -- Art. 208 CT, exenta SIEMPRE de
+    # descuento de vacaciones.
+    "ausencia": {
+        "tipo": "enfermedad_dentro_fondo",
+        "fecha_desde": datetime.date(2026, 2, 5),
+        "fecha_hasta": datetime.date(2026, 2, 9),
+    },
+}
+
+DIEGO = {
+    "nombre": "Diego",
+    "salario_base": "800.00",
+    "tipo_contrato": "indefinido",
+    # Mismo rango de fechas que la ausencia de Carla a propósito, para que
+    # el contraste médica-vs-injustificada sea directamente comparable.
+    "ausencia": {
+        "tipo": "injustificada",
+        "fecha_desde": datetime.date(2026, 2, 5),
+        "fecha_hasta": datetime.date(2026, 2, 9),
+    },
+}
+
+ELENA = {
+    "nombre": "Elena",
+    "salario_base": "1200.00",
+    "tipo_contrato": "indefinido",
+    # Trabaja Q1+Q2 y se liquida a mitad del trimestre -- no llega al pago
+    # de décimo del final (su décimo proporcional se salda en la
+    # liquidación misma).
+    "liquidacion": {
+        "motivo": "despido_injustificado",
+        "fecha_terminacion": datetime.date(2026, 2, 20),
+    },
+}
+
+# --- Montos esperados -------------------------------------------------------
+# TODOS en None hasta que el usuario los llene con cifras validadas por su
+# contador. Un test cuyo bloque siga en None se SALTA (no falla, no asume).
+
+ESPERADOS = {
+    # Ana, quincena sin novedades -- se reusa para Q1..Q6 (las 6 deben dar
+    # el mismo resultado). Fuente: GET /planillas/{id}/movimientos, el
+    # elemento cuyo contrato_id es el de Ana.
+    "ana_quincena_base": {
+        "salario_bruto": None,
+        "css_empleado": None,
+        "seguro_educativo_empleado": None,
+        "isr_retenido": None,
+        "salario_neto": None,
+    },
+    # Bruno, quincena sin horas extra (Q1/Q3/Q5). Mismo endpoint que arriba.
+    "bruno_quincena_base": {
+        "salario_bruto": None,
+        "css_empleado": None,
+        "seguro_educativo_empleado": None,
+        "isr_retenido": None,
+        "salario_neto": None,
+    },
+    # Bruno, cada quincena CON horas extra: 2 fuentes por índice --
+    # (a) POST /contratos/{id}/horas-extra, el monto_calculado devuelto
+    #     directo por ese registro (formula de cascada, Art. 33/36/48-50 CT);
+    # (b) GET /planillas/{id}/movimientos de la quincena que las incluye,
+    #     para confirmar que el motor de planilla las integró bien al bruto.
+    "bruno_horas_extra": {
+        "q2_diurna_ordinario": {
+            "monto_calculado_registro": None,
+            "salario_bruto_quincena": None,
+            "isr_retenido_quincena": None,
+            "salario_neto_quincena": None,
+        },
+        "q4_nocturna_ordinario": {
+            "monto_calculado_registro": None,
+            "salario_bruto_quincena": None,
+            "isr_retenido_quincena": None,
+            "salario_neto_quincena": None,
+        },
+        "q6_diurna_domingo_descanso": {
+            "monto_calculado_registro": None,
+            "salario_bruto_quincena": None,
+            "isr_retenido_quincena": None,
+            "salario_neto_quincena": None,
+        },
+    },
+    # Carla y Diego comparten la misma quincena base ($800, sin novedades)
+    # porque una ausencia -- con o sin goce -- NO descuenta el salario del
+    # movimiento de planilla en el código actual (solo afecta la provisión
+    # de vacaciones, ver abajo). Mismo endpoint que ana_quincena_base.
+    "quincena_base_800": {
+        "salario_bruto": None,
+        "css_empleado": None,
+        "seguro_educativo_empleado": None,
+        "isr_retenido": None,
+        "salario_neto": None,
+    },
+    # Snapshot final (tras la planilla de Q6) de
+    # GET /contratos/{id}/provisiones-vacaciones -- fila con estado="abierto".
+    # Carla (enfermedad_dentro_fondo) no debe perder ningún día; Diego
+    # (injustificada) sí, sobre el mismo rango de fechas.
+    "carla_provision_vacaciones_final": {
+        "dias_acumulados": None,
+        "monto_provisionado": None,
+    },
+    "diego_provision_vacaciones_final": {
+        "dias_acumulados": None,
+        "monto_provisionado": None,
+    },
+    # Décimo (POST /planillas/generar-decimo con DECIMO_REQUEST, luego
+    # GET /planillas/{id}/movimientos de esa planilla). Un bloque por
+    # empleado porque el numerador de cada uno es distinto (salario base
+    # distinto, y el de Bruno además incluye sus horas extra del
+    # cuatrimestre).
+    "decimo": {
+        "ana": {
+            "salario_bruto": None,
+            "css_empleado": None,
+            "salario_neto": None,
+        },
+        "bruno": {
+            "salario_bruto": None,
+            "css_empleado": None,
+            "salario_neto": None,
+        },
+        "carla": {
+            "salario_bruto": None,
+            "css_empleado": None,
+            "salario_neto": None,
+        },
+        "diego": {
+            "salario_bruto": None,
+            "css_empleado": None,
+            "salario_neto": None,
+        },
+    },
+    # Liquidación de Elena -- POST /contratos/{id}/liquidacion, respuesta
+    # directa (LiquidacionOut).
+    "liquidacion_elena": {
+        "salario_pendiente": None,
+        "decimo_proporcional": None,
+        "vacaciones_pendientes": None,
+        "prima_antiguedad": None,
+        "indemnizacion": None,
+        "preaviso": None,
+        "monto_total": None,
+    },
+}

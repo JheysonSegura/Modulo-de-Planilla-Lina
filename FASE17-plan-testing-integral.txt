@@ -1,0 +1,121 @@
+FASE 17 (TESTING) - SUITE DE REGRESION DE UN TRIMESTRE COMPLETO
+=================================================================
+Nomina Panama - plan aprobado el 2026-08-17
+
+NOTA DE NOMENCLATURA
+---------------------
+Ya existe una "Fase 17" distinta en el historial del proyecto (datos
+personales de empleados, ver memoria project_fase17_empleados_datos_
+personales.md) -- misma colision de numero que ya paso con "Fase 12"
+(roadmap de deuda tecnica vs. frontend, ver FASE12-plan-frontend.txt vs
+FASE12-plan-acumulacion-vacaciones.txt). Esta fase nueva es de testing,
+sin relacion con la anterior.
+
+OBJETIVO
+--------
+El usuario pidio, antes de considerar el sistema apto para produccion,
+una suite de tests de integracion que corra un trimestre real de nomina
+quincenal para una empresa de prueba, cubriendo: salario fijo, salario
+con horas extra, un pago de decimo, ausencias (con justificacion medica
+y sin justificacion), y una liquidacion -- comparando los resultados
+contra montos calculados a mano por su contador. Aclaro explicitamente
+que queria el trimestre literal (3 meses), no un cuatrimestre completo.
+
+DISENO DEL ESCENARIO
+---------------------
+Trimestre 2026-01-16 -> 2026-04-15 (6 quincenas), elegido para que
+termine exactamente el 15-abr-2026, fecha real de pago de la partida de
+decimo del cuatrimestre "dic-abr" (16-dic-2025 a 15-abr-2026, ver
+decimo_service._rango_cuatrimestre). Los contratos arrancan el
+16-ene-2026 -- DENTRO del cuatrimestre de decimo pero despues de su
+inicio, para ejercitar a proposito el caso de "entrada tardia al
+cuatrimestre" (numerador reducido, divisor /12 fijo, CLAUDE.md seccion
+4 "Decimo Tercer Mes").
+
+5 empleados, cada uno aislando un concepto:
+- Ana ($1,500/mes, indefinido, sin novedades): control con ISR real
+  (por encima del umbral mensual de $846.15).
+- Bruno ($900/mes, indefinido, horas extra en Q2/Q4/Q6: diurna
+  ordinario, nocturna ordinario, diurna domingo/descanso).
+- Carla ($800/mes, ausencia enfermedad_dentro_fondo 05-09 feb 2026):
+  justificacion medica, exenta SIEMPRE de descuento de vacaciones
+  (Art. 208 CT).
+- Diego ($800/mes, ausencia injustificada, mismo rango de fechas que
+  Carla a proposito): siempre descuenta vacaciones.
+- Elena ($1,200/mes, indefinido, liquidada 2026-02-20 por
+  despido_injustificado): trabaja Q1+Q2, no llega al pago de decimo del
+  final.
+
+Hallazgo real durante el diseno: una ausencia (con o sin goce) NO
+descuenta el salario del movimiento de planilla en el codigo actual --
+solo afecta la provision de vacaciones (planilla_service.py no
+referencia ausencias_service en absoluto). Por eso Carla y Diego
+comparten el mismo bloque de "quincena base" esperada; lo que realmente
+distingue su ausencia es solo la provision de vacaciones final.
+
+ESTRUCTURA DE ARCHIVOS
+------------------------
+backend/tests/regresion/
+  __init__.py
+  fixtures_trimestre.py      -- datos puros: fechas, salarios, eventos,
+                                 y ESPERADOS (diccionario de montos a
+                                 verificar, TODOS en None por ahora)
+  test_trimestre_completo.py -- arma el escenario completo UNA vez por
+                                 modulo (fixture _escenario, scope=
+                                 "module") y 14 tests que comparan
+                                 porciones contra ESPERADOS
+  README.md                  -- como correr, como llenar el fixture
+                                 (tabla campo -> endpoint), como agregar
+                                 un caso de regresion nuevo cuando
+                                 cambie una tasa legal
+
+Mecanica clave: mientras un valor de ESPERADOS este en None, el test
+correspondiente hace pytest.skip() con el nombre exacto del campo
+faltante -- nunca compara contra un placeholder inventado. Pero la
+construccion del escenario (5 contratos, 6 planillas, decimo,
+liquidacion) SI corre siempre, asi que un pytest en verde con skips ya
+confirma que el flujo end-to-end no rompe con ningun 4xx/5xx.
+
+Un test (test_diego_pierde_mas_dias_que_carla_en_el_mismo_rango) es
+puramente comparativo (Art. 208 CT) y no depende de ESPERADOS -- corre
+y pasa siempre, incluso sin fixture validado.
+
+VALIDACION REALIZADA
+----------------------
+- docker compose exec backend pytest tests/regresion -v -rs: 14 tests,
+  1 passed (el comparativo) + 13 skipped, cada uno con el mensaje
+  exacto de que campo falta. Cero errores HTTP en la construccion del
+  escenario completo (5 contratos, 6 quincenas, 3 registros de horas
+  extra, 2 ausencias, 1 liquidacion, 1 pago de decimo).
+- docker compose exec backend pytest -q (suite completa): 169 passed,
+  13 skipped (los de esta fase), sin regresiones.
+- Inspeccion manual (dump temporal, luego removido del codigo) de los
+  montos calculados para chequeo de cordura contra las formulas de
+  CLAUDE.md -- todos consistentes:
+  - Ana: salario_bruto=750.00/quincena (1500/2), css_empleado=73.12
+    (9.75%), seguro_educativo_empleado=9.38 (1.25%), isr coherente con
+    renta_anual_proyectada=19500 (1500*13), impuesto_anual=1275.00
+    (15% de 8500 de excedente sobre 11000).
+  - Bruno Q2: 2h diurna a partir de valor_hora=3.75 (900/30/8) con
+    recargo +25% = 9.38 -- coincide con el concepto_variable
+    "hora_extra" agregado al bruto de esa quincena.
+  - Decimo Ana: 375.00 = 1500 * 3 meses trabajados (16-ene a 15-abr) /
+    12 -- confirma la regla "numerador reducido por entrada tardia,
+    divisor /12 fijo, nunca prorrateado".
+  - Decimo Bruto de Bruno incluye sus horas extra devengadas en el
+    cuatrimestre (numerador mayor que el de un salario base equivalente
+    sin novedades).
+  - Liquidacion Elena: preaviso=1200.00 (30 dias * 40/dia), salario_
+    pendiente=200.00 (5 dias desde el ultimo periodo pagado), resto de
+    conceptos (decimo_proporcional, vacaciones_pendientes, prima_
+    antiguedad, indemnizacion) con magnitudes plausibles, no cero, no
+    negativos.
+
+PENDIENTE, BLOQUEANTE PARA CERRAR ESTA FASE
+----------------------------------------------
+Ningun valor de ESPERADOS ha sido validado contra un contador todavia.
+El sistema NO debe considerarse verificado en produccion solo por esta
+suite -- ver seccion "Estado de validacion" en backend/tests/regresion/
+README.md (marcada con advertencia explicita). Falta que el usuario
+llene fixtures_trimestre.py con las cifras que le de su contador; recien
+ahi se puede cerrar esta fase en CLAUDE.md.
