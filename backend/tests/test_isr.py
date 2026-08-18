@@ -186,6 +186,53 @@ def test_cambio_de_salario_a_mitad_de_anio_reconcilia_contra_lo_ya_retenido(clie
     assert decimal.Decimal(str(mov_febrero["isr_retenido"])) == decimal.Decimal("840.91")
 
 
+def test_contrato_que_arranca_a_mitad_de_anio_no_sobre_retiene(client, db):
+    """Corrección 2026-08-18, confirmada por el contador: el período de
+    retención de un contrato debe contarse desde su propio primer pago
+    dentro del año fiscal, no desde la posición absoluta en el
+    calendario. Antes de esta corrección, un contrato que arranca el
+    16-ene (calendario-período 2 de 24 quincenas) heredaba
+    periodos_restantes=23 en su primera quincena -- como si el período
+    1 ya se le hubiera consumido sin haber trabajado ahí -- y
+    sobre-retenía ($55.43/$55.44 en vez de $53.12/$53.13).
+
+    Caso: $1,500/mes, contrato arranca 2025-01-16 (quincena 16-31 ene =
+    calendario-período 2). Bruto anual con décimo: 1500*13=19500 ->
+    impuesto=(19500-11000)*0.15=1275.00/año. Con el fix, la primera
+    quincena del contrato debe valer período relativo 1 de 24 (24
+    cuotas completas por delante), no período 2 de 24."""
+    headers = _preparar_empresa(db, client)
+    _crear_empleado_con_contrato(
+        client, headers, "1500.00", fecha_inicio=datetime.date(2025, 1, 16)
+    )
+
+    resp_q1 = _generar_planilla(
+        client, headers, "quincenal", datetime.date(2025, 1, 16), datetime.date(2025, 1, 31)
+    )
+    assert resp_q1.status_code == 201, resp_q1.text
+    mov_q1 = _unico_movimiento(client, headers, resp_q1.json()["id"])
+
+    assert decimal.Decimal(str(mov_q1["isr_impuesto_anual_proyectado"])) == decimal.Decimal(
+        "1275.00"
+    )
+    assert mov_q1["isr_numero_periodo_anio"] == 1
+    assert mov_q1["isr_periodos_restantes_anio"] == 24
+    # 1275.00 / 24 = 53.125 -> redondeo half-even -> 53.12 (no 55.43,
+    # que es lo que daba antes de la corrección)
+    assert decimal.Decimal(str(mov_q1["isr_retenido"])) == decimal.Decimal("53.12")
+
+    resp_q2 = _generar_planilla(
+        client, headers, "quincenal", datetime.date(2025, 2, 1), datetime.date(2025, 2, 15)
+    )
+    assert resp_q2.status_code == 201, resp_q2.text
+    mov_q2 = _unico_movimiento(client, headers, resp_q2.json()["id"])
+
+    assert mov_q2["isr_numero_periodo_anio"] == 2
+    assert mov_q2["isr_periodos_restantes_anio"] == 23
+    # (1275.00 - 53.12 ya retenido) / 23 = 53.1252... -> 53.13
+    assert decimal.Decimal(str(mov_q2["isr_retenido"])) == decimal.Decimal("53.13")
+
+
 def test_periodo_no_alineado_a_mes_o_quincena_estandar_es_rechazado(client, db):
     headers = _preparar_empresa(db, client)
     _crear_empleado_con_contrato(client, headers, "2000.00")

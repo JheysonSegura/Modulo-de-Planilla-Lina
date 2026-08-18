@@ -173,9 +173,16 @@ def test_planilla_mensual_con_tres_empleados_distintos(client, db):
     assert decimal.Decimal(str(mov_c["seguro_educativo_empleado"])) == decimal.Decimal("4.50")
     # El ISR se anualiza sobre el salario_mensual_vigente completo
     # (900.00), no sobre el salario_base_periodo ya prorrateado
-    # (360.00) -- mismo cálculo que el empleado A: isr=10.50.
-    assert decimal.Decimal(str(mov_c["isr_retenido"])) == decimal.Decimal("10.50")
-    assert decimal.Decimal(str(mov_c["salario_neto"])) == decimal.Decimal("309.90")
+    # (360.00). A diferencia del empleado A (contrato vigente desde
+    # antes del período), el contrato de C arranca a mitad del propio
+    # período fiscal (2025-03-20) -- corrección 2026-08-18, confirmada
+    # por el contador: el conteo de períodos para prorratear el ISR
+    # parte de su propia fecha de inicio, no de la posición absoluta en
+    # el calendario. Por eso su primer mes ya vale período 1 de 12 (12
+    # cuotas completas por delante), no período 3 de 12 como A:
+    # isr=105.00/12=8.75, no 10.50.
+    assert decimal.Decimal(str(mov_c["isr_retenido"])) == decimal.Decimal("8.75")
+    assert decimal.Decimal(str(mov_c["salario_neto"])) == decimal.Decimal("311.65")
 
 
 def test_riesgo_profesional_patronal_segun_clase_riesgo_de_la_empresa(client, db):

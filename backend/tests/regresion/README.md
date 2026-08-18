@@ -57,7 +57,7 @@ un comentario justo arriba, el endpoint exacto que produce ese número:
 
 | Bloque | Empleado / evento | De dónde sale el número |
 |---|---|---|
-| `ana_quincena_base` | Ana, $1,500/mes, sin novedades (se reusa para las 6 quincenas) | `GET /planillas/{id}/movimientos` |
+| `ana_quincena_impar` / `ana_quincena_par` | Ana, $1,500/mes, sin novedades. `salario_bruto`/`css`/`seguro_educativo` son iguales en las 6 quincenas, pero `isr_retenido`/`salario_neto` alternan por paridad del período relativo del contrato (Q1/Q3/Q5 = impar, Q2/Q4/Q6 = par) -- ver CLAUDE.md sección 5, corrección 2026-08-18 | `GET /planillas/{id}/movimientos` |
 | `bruno_quincena_base` | Bruno, $900/mes, quincenas Q1/Q3/Q5 (sin horas extra) | `GET /planillas/{id}/movimientos` |
 | `bruno_horas_extra` | Bruno, quincenas Q2/Q4/Q6 (con horas extra) | `POST /contratos/{id}/horas-extra` (el registro) + `GET /planillas/{id}/movimientos` (el efecto en la quincena) |
 | `quincena_base_800` | Carla y Diego, $800/mes (ninguna ausencia descuenta el salario, ver abajo) | `GET /planillas/{id}/movimientos` |

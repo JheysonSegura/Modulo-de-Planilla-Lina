@@ -131,15 +131,30 @@ ELENA = {
 # contador. Un test cuyo bloque siga en None se SALTA (no falla, no asume).
 
 ESPERADOS = {
-    # Ana, quincena sin novedades -- se reusa para Q1..Q6 (las 6 deben dar
-    # el mismo resultado). Fuente: GET /planillas/{id}/movimientos, el
-    # elemento cuyo contrato_id es el de Ana.
-    "ana_quincena_base": {
-        "salario_bruto": None,
-        "css_empleado": None,
-        "seguro_educativo_empleado": None,
-        "isr_retenido": None,
-        "salario_neto": None,
+    # Ana, quincena sin novedades. salario_bruto/css/seguro_educativo son
+    # idénticos en las 6 quincenas, pero isr_retenido (y por lo tanto
+    # salario_neto) ALTERNA por paridad -- corrección 2026-08-18,
+    # confirmada por el contador: el ISR se prorratea contando los
+    # períodos desde la fecha de inicio del contrato (16-ene, mitad del
+    # año), no desde la posición absoluta del calendario. Q1/Q3/Q5 son
+    # período relativo impar (1/3/5) del contrato, Q2/Q4/Q6 son par
+    # (2/4/6) -- ver CLAUDE.md sección 5 y
+    # test_contrato_que_arranca_a_mitad_de_anio_no_sobre_retiene en
+    # backend/tests/test_isr.py. Fuente: GET /planillas/{id}/movimientos,
+    # el elemento cuyo contrato_id es el de Ana.
+    "ana_quincena_impar": {  # Q1, Q3, Q5 (período relativo 1, 3, 5)
+        "salario_bruto": "750.00",
+        "css_empleado": "73.12",
+        "seguro_educativo_empleado": "9.38",
+        "isr_retenido": "53.12",
+        "salario_neto": "614.38",
+    },
+    "ana_quincena_par": {  # Q2, Q4, Q6 (período relativo 2, 4, 6)
+        "salario_bruto": "750.00",
+        "css_empleado": "73.12",
+        "seguro_educativo_empleado": "9.38",
+        "isr_retenido": "53.13",
+        "salario_neto": "614.37",
     },
     # Bruno, quincena sin horas extra (Q1/Q3/Q5). Mismo endpoint que arriba.
     "bruno_quincena_base": {
@@ -204,9 +219,12 @@ ESPERADOS = {
     # cuatrimestre).
     "decimo": {
         "ana": {
-            "salario_bruto": None,
-            "css_empleado": None,
-            "salario_neto": None,
+            # $1,500 x 3 meses realmente trabajados (entró 16-ene, dentro
+            # del cuatrimestre dic-abr) / 12 = $375.00. CSS especial
+            # 7.25%: 375.00 x 0.0725 = 27.1875 -> 27.19.
+            "salario_bruto": "375.00",
+            "css_empleado": "27.19",
+            "salario_neto": "347.81",
         },
         "bruno": {
             "salario_bruto": None,

@@ -464,8 +464,33 @@ def _calcular_isr_retenido(
     salario fijo recurrente -- horas extra y conceptos variables del
     período no se proyectan a 12 meses, no hay garantía de que se
     repitan.
+
+    Corrección 2026-08-18 (confirmada por el contador, encontrada por
+    la suite de regresión de la Fase 17): el "período actual" para
+    prorratear NO es la posición absoluta en el calendario (ene 1-15 =
+    período 1 aunque el contrato no exista todavía) -- es la posición
+    RELATIVA al propio contrato dentro del año fiscal, contando desde
+    la fecha de inicio del contrato (o desde el 1-ene si el contrato ya
+    venía de un año anterior). Un contrato que arranca el 16-ene ya
+    vale período 1 de 24 en su primera quincena (24 cuotas completas
+    por delante), no período 2 de 24 (23 cuotas, como si el período 1
+    ya se le hubiera consumido sin haber trabajado ahí). Se ancla a
+    `contrato.fecha_inicio`, no al historial de planillas ya generadas
+    en el sistema -- un contrato antiguo sin enero/febrero cargados
+    todavía en el sistema sigue siendo período 3 en marzo, no período 1
+    (ver test_contrato_que_arranca_a_mitad_de_anio_no_sobre_retiene y
+    test_planilla_mensual_con_tres_empleados_distintos). El mecanismo
+    de reconciliación contra lo ya retenido (para cambios de salario a
+    mitad de año) no cambia -- solo cambia de dónde arranca a contar.
     """
-    numero_periodo, periodos_por_anio = _numero_periodo_fiscal(tipo, periodo_inicio, periodo_fin)
+    _numero_periodo_fiscal(tipo, periodo_inicio, periodo_fin)  # valida que el período calce
+    periodos_por_anio = PERIODOS_POR_ANIO[tipo]
+    inicio_fiscal_efectivo = max(
+        contrato.fecha_inicio, datetime.date(periodo_inicio.year, 1, 1)
+    )
+    numero_periodo_inicio = _numero_periodo_de_fecha(tipo, inicio_fiscal_efectivo)
+    numero_periodo_actual = _numero_periodo_de_fecha(tipo, periodo_inicio)
+    numero_periodo = numero_periodo_actual - numero_periodo_inicio + 1
     periodos_restantes = periodos_por_anio - numero_periodo + 1
 
     renta_bruta_anual = salario_mensual_vigente * decimal.Decimal("12")
@@ -519,6 +544,18 @@ def _calcular_isr_retenido(
         "isr_periodos_restantes_anio": periodos_restantes,
     }
     return isr_periodo, auditoria
+
+
+def _numero_periodo_de_fecha(tipo: str, fecha: datetime.date) -> int:
+    """En qué período del año (1-12 mensual, 1-24 quincenal) cae una
+    fecha cualquiera -- a diferencia de _numero_periodo_fiscal, no exige
+    que la fecha sea exactamente el borde de inicio del período (una
+    fecha de inicio de contrato puede caer cualquier día del mes).
+    Usado solo para anclar el conteo relativo del ISR (ver corrección
+    2026-08-18 en _calcular_isr_retenido)."""
+    if tipo == "mensual":
+        return fecha.month
+    return (fecha.month - 1) * 2 + (1 if fecha.day <= 15 else 2)
 
 
 def _numero_periodo_fiscal(

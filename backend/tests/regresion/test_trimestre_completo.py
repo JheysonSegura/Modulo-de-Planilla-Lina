@@ -41,6 +41,13 @@ from .fixtures_trimestre import (
     QUINCENAS,
 )
 
+# Ana entra el 16-ene, a mitad del año fiscal -- su ISR se prorratea
+# contando períodos desde su propia fecha de inicio (corrección
+# 2026-08-18, ver CLAUDE.md sección 5), así que alterna por paridad de
+# quincena: Q1/Q3/Q5 son su período relativo impar (1/3/5), Q2/Q4/Q6 el
+# par (2/4/6).
+_ANA_BLOQUE_POR_QUINCENA = ["ana_quincena_impar", "ana_quincena_par"] * 3
+
 
 def _sufijo() -> str:
     return uuid.uuid4().hex[:8]
@@ -263,7 +270,8 @@ def test_ana_quincena_fija(_escenario):
     movimientos = _escenario["movimientos_por_empleado"]["ana"]
     assert len(movimientos) == 6
     for idx, mov in enumerate(movimientos):
-        _verificar(f"ana_quincena_base (Q{idx + 1})", ESPERADOS["ana_quincena_base"], _campos_salario(mov))
+        bloque = _ANA_BLOQUE_POR_QUINCENA[idx]
+        _verificar(f"{bloque} (Q{idx + 1})", ESPERADOS[bloque], _campos_salario(mov))
 
 
 def test_bruno_quincenas_sin_horas_extra(_escenario):
