@@ -157,12 +157,23 @@ ESPERADOS = {
         "salario_neto": "614.37",
     },
     # Bruno, quincena sin horas extra (Q1/Q3/Q5). Mismo endpoint que arriba.
+    # seguro_educativo_empleado: el contador calculó $5.63 (450 x 1.25% =
+    # 5.625, redondeo comercial "mitad hacia arriba"), pero el sistema da
+    # $5.62 porque .quantize(_CENTAVO) en planilla_service.py no fija modo
+    # de redondeo y Python usa ROUND_HALF_EVEN (bancario) por defecto --
+    # 5.625 redondea al par más cercano (2), no hacia arriba. Mismo patrón
+    # en 29 usos de .quantize() en 6 servicios (planilla, liquidaciones,
+    # vacaciones, horas extra, salario mínimo, décimo). Decisión 2026-08-19:
+    # por ahora se deja el comportamiento actual del sistema tal cual (no
+    # se toca código); el fixture usa lo que el sistema realmente calcula
+    # ($5.62 / neto $396.12), no lo que dio el contador a mano. Pendiente
+    # de revisar el redondeo bancario como tema aparte si vuelve a aparecer.
     "bruno_quincena_base": {
-        "salario_bruto": None,
-        "css_empleado": None,
-        "seguro_educativo_empleado": None,
-        "isr_retenido": None,
-        "salario_neto": None,
+        "salario_bruto": "450.00",
+        "css_empleado": "43.88",
+        "seguro_educativo_empleado": "5.62",
+        "isr_retenido": "4.38",
+        "salario_neto": "396.12",
     },
     # Bruno, cada quincena CON horas extra: 2 fuentes por índice --
     # (a) POST /contratos/{id}/horas-extra, el monto_calculado devuelto
@@ -171,22 +182,22 @@ ESPERADOS = {
     #     para confirmar que el motor de planilla las integró bien al bruto.
     "bruno_horas_extra": {
         "q2_diurna_ordinario": {
-            "monto_calculado_registro": None,
-            "salario_bruto_quincena": None,
-            "isr_retenido_quincena": None,
-            "salario_neto_quincena": None,
+            "monto_calculado_registro": "9.38",
+            "salario_bruto_quincena": "459.38",
+            "isr_retenido_quincena": "4.37",
+            "salario_neto_quincena": "404.48",
         },
         "q4_nocturna_ordinario": {
-            "monto_calculado_registro": None,
-            "salario_bruto_quincena": None,
-            "isr_retenido_quincena": None,
-            "salario_neto_quincena": None,
+            "monto_calculado_registro": "8.44",
+            "salario_bruto_quincena": "458.44",
+            "isr_retenido_quincena": "4.37",
+            "salario_neto_quincena": "403.64",
         },
         "q6_diurna_domingo_descanso": {
-            "monto_calculado_registro": None,
-            "salario_bruto_quincena": None,
-            "isr_retenido_quincena": None,
-            "salario_neto_quincena": None,
+            "monto_calculado_registro": "7.03",
+            "salario_bruto_quincena": "457.03",
+            "isr_retenido_quincena": "4.37",
+            "salario_neto_quincena": "402.39",
         },
     },
     # Carla y Diego comparten la misma quincena base ($800, sin novedades)
