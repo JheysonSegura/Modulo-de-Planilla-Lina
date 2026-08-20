@@ -205,23 +205,30 @@ ESPERADOS = {
     # movimiento de planilla en el código actual (solo afecta la provisión
     # de vacaciones, ver abajo). Mismo endpoint que ana_quincena_base.
     "quincena_base_800": {
-        "salario_bruto": None,
-        "css_empleado": None,
-        "seguro_educativo_empleado": None,
-        "isr_retenido": None,
-        "salario_neto": None,
+        "salario_bruto": "400.00",
+        "css_empleado": "39.00",
+        "seguro_educativo_empleado": "5.00",
+        "isr_retenido": "0.00",
+        "salario_neto": "356.00",
     },
     # Snapshot final (tras la planilla de Q6) de
     # GET /contratos/{id}/provisiones-vacaciones -- fila con estado="abierto".
     # Carla (enfermedad_dentro_fondo) no debe perder ningún día; Diego
-    # (injustificada) sí, sobre el mismo rango de fechas.
+    # (injustificada) sí, sobre el mismo rango de fechas. 90 días
+    # comerciales trabajados (16-ene a 15-abr, 3 meses x 30) / 11 = 8.1818
+    # para Carla (sin descuento, Art. 208 exime siempre la ausencia
+    # médica); Diego pierde los 5 días completos de su ausencia
+    # injustificada -- (90 - 5) / 11 = 7.7273 -- el "colchón" de 15 días
+    # del Art. 208 es para suspensiones del Art. 199, no aplica a este
+    # tipo del catálogo de ausencias_service (Fase 11). Confirmado por el
+    # contador 2026-08-20.
     "carla_provision_vacaciones_final": {
-        "dias_acumulados": None,
-        "monto_provisionado": None,
+        "dias_acumulados": "8.18",
+        "monto_provisionado": "218.18",
     },
     "diego_provision_vacaciones_final": {
-        "dias_acumulados": None,
-        "monto_provisionado": None,
+        "dias_acumulados": "7.73",
+        "monto_provisionado": "206.06",
     },
     # Décimo (POST /planillas/generar-decimo con DECIMO_REQUEST, luego
     # GET /planillas/{id}/movimientos de esa planilla). Un bloque por
