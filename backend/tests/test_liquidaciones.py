@@ -5,8 +5,13 @@ import uuid
 
 from tests.conftest import crear_empresa, crear_salario_minimo, crear_usuario, login_y_seleccionar, vincular
 
-# Salario 1200.00/mes -> salario_diario=40.00, salario_semanal=280.00,
-# igual criterio de números redondos que test_decimo.py/test_vacaciones.py.
+# Salario 1200.00/mes -> salario_diario=40.00, igual criterio de números
+# redondos que test_decimo.py/test_vacaciones.py. Dos conversiones a
+# "semanal" distintas conviven en este archivo (corrección 2026-08-20):
+# prima de antigüedad y penalidad Art. 222 usan 1200/30*7=280.00
+# (52.14 semanas/año); indemnización Art. 225-C usa 1200*12/52=276.9231
+# (52 semanas/año exactas) -- ver el comentario en
+# _calcular_indemnizacion de liquidaciones_service.py.
 SALARIO = "1200.00"
 
 
@@ -165,11 +170,15 @@ def test_despido_injustificado_trae_indemnizacion_y_preaviso(client, db):
     # -> (46/365) * (1200/30*7) = 23.0136... -> 23.01
     assert decimal.Decimal(str(liq["prima_antiguedad"])) == decimal.Decimal("23.01")
     # indemnizacion Art.225-C: anios=46/365 (<=10) -> semanas=anios*3.4;
-    # salario base Art.149 = max(1200/6, 1200) = 1200 -> semanal=280.00
-    assert decimal.Decimal(str(liq["indemnizacion"])) == decimal.Decimal("119.98")
+    # salario base Art.149 = max(1200/6, 1200) = 1200 -> semanal =
+    # 1200*12/52=276.9231 (52 semanas/año exactas, corrección
+    # 2026-08-20 confirmada por el contador -- NO el 1200/30*7=280.00
+    # que usa la prima de antigüedad, artículo distinto).
+    # 0.428493*276.9231=118.6597 -> 118.66
+    assert decimal.Decimal(str(liq["indemnizacion"])) == decimal.Decimal("118.66")
     # preaviso: 30 * 40.00
     assert decimal.Decimal(str(liq["preaviso"])) == decimal.Decimal("1200.00")
-    assert decimal.Decimal(str(liq["monto_total"])) == decimal.Decimal("2260.26")
+    assert decimal.Decimal(str(liq["monto_total"])) == decimal.Decimal("2258.94")
 
     resp = client.get(f"/contratos/{contrato_id}/liquidaciones", headers=headers)
     assert resp.status_code == 200, resp.text
@@ -418,7 +427,7 @@ def test_despido_injustificado_no_aplica_penalidad_aunque_no_haya_aviso(client, 
     liq = resp.json()
 
     assert decimal.Decimal(str(liq["penalidad_renuncia_sin_aviso"])) == decimal.Decimal("0.00")
-    assert decimal.Decimal(str(liq["monto_total"])) == decimal.Decimal("2260.26")
+    assert decimal.Decimal(str(liq["monto_total"])) == decimal.Decimal("2258.94")
 
 
 def test_salarios_caidos_se_suman_al_total_y_quedan_trazados(client, db):
@@ -440,8 +449,8 @@ def test_salarios_caidos_se_suman_al_total_y_quedan_trazados(client, db):
 
     assert decimal.Decimal(str(liq["salarios_caidos"])) == decimal.Decimal("500.00")
     assert liq["referencia_sentencia"] == "Junta de Conciliación, expediente 123-2025"
-    # Base 2260.26 (ver test_despido_injustificado_trae_indemnizacion_y_preaviso) + 500.00
-    assert decimal.Decimal(str(liq["monto_total"])) == decimal.Decimal("2760.26")
+    # Base 2258.94 (ver test_despido_injustificado_trae_indemnizacion_y_preaviso) + 500.00
+    assert decimal.Decimal(str(liq["monto_total"])) == decimal.Decimal("2758.94")
 
 
 def _pdf_minimo() -> bytes:

@@ -291,14 +291,28 @@ ESPERADOS = {
         },
     },
     # Liquidación de Elena -- POST /contratos/{id}/liquidacion, respuesta
-    # directa (LiquidacionOut).
+    # directa (LiquidacionOut). CONFIRMADO por el contador 2026-08-20,
+    # concepto por concepto:
+    # - salario_pendiente: 5 días (16-20 feb) x $40.00/día = $200.00.
+    # - decimo_proporcional: 3 quincenas completas ($600+$600) + 5 días
+    #   parciales (16-20 feb, $200.00) = $1,400.00 / 12 = $116.67.
+    # - vacaciones_pendientes: 36 días calendario (16-ene a 20-feb) / 11
+    #   x $40.00 = $130.9090... -> $130.91.
+    # - prima_antiguedad (Art. 224/226): 36/365=0.098630 años x
+    #   ($1,000.00 promedio real / 30 x 7 = $233.33 semanal) = $23.01.
+    # - indemnizacion (Art. 225-C): 0.098630 x 3.4 = 0.335342 semanas x
+    #   ($1,200.00 base Art.149 x 12 / 52 = $276.9231 semanal -- 52
+    #   semanas/año exactas, corrección 2026-08-20, NO la conversión
+    #   /30x7 de la prima) = $92.86.
+    # - preaviso (Art. 214): 30 x $40.00 = $1,200.00.
+    # - monto_total: 200.00+116.67+130.91+23.01+92.86+1200.00=1763.45.
     "liquidacion_elena": {
-        "salario_pendiente": None,
-        "decimo_proporcional": None,
-        "vacaciones_pendientes": None,
-        "prima_antiguedad": None,
-        "indemnizacion": None,
-        "preaviso": None,
-        "monto_total": None,
+        "salario_pendiente": "200.00",
+        "decimo_proporcional": "116.67",
+        "vacaciones_pendientes": "130.91",
+        "prima_antiguedad": "23.01",
+        "indemnizacion": "92.86",
+        "preaviso": "1200.00",
+        "monto_total": "1763.45",
     },
 }

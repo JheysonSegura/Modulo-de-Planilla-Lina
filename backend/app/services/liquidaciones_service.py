@@ -22,6 +22,8 @@ DIAS_SEIS_MESES = 182
 DIAS_TREINTA = 30
 DIAS_CINCO_ANIOS = 1825
 SEMANA = decimal.Decimal("7")
+MESES_POR_ANIO = decimal.Decimal("12")
+SEMANAS_POR_ANIO = decimal.Decimal("52")
 # Art. 222 CT: aviso previo de renuncia de 15 días, o 2 meses si es
 # "trabajador técnico" -- se aproxima a 60 días (no hay tipo "meses" en
 # el modelo de fechas de este proyecto, mismo criterio de aproximación
@@ -174,8 +176,17 @@ def _calcular_indemnizacion(
     if contrato.tipo_contrato == "indefinido":
         dias_totales = max((fecha_terminacion - contrato.fecha_inicio).days + 1, 0)
         anios = decimal.Decimal(dias_totales) / DIAS_ANIO
+        # Corrección 2026-08-20, confirmada por el contador con caso
+        # numérico: la "semana de salario" del Art. 225-C usa 52
+        # semanas/año exactas (mensual × 12 ÷ 52), NO la conversión
+        # mensual/30×7 (52.14 semanas/año) que sí es correcta para la
+        # prima de antigüedad (Art. 226, ver _calcular_prima_antiguedad)
+        # y la penalidad del Art. 222 -- son artículos distintos con su
+        # propia convención, no un error uniforme en todo el archivo.
         salario_semanal = (
-            _salario_base_indemnizacion(db, contrato, fecha_terminacion) / DIAS_MES_COMERCIAL * SEMANA
+            _salario_base_indemnizacion(db, contrato, fecha_terminacion)
+            * MESES_POR_ANIO
+            / SEMANAS_POR_ANIO
         )
         return _indemnizacion_escala_c(anios, salario_semanal)
 
