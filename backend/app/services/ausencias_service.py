@@ -9,12 +9,13 @@ from app.models import Ausencia, Contrato
 from app.repositories import ausencias as ausencias_repo
 
 # Catálogo verificado contra código-detrabajo.pdf (Art. 199/200/208) --
-# ver FASE11-plan-ausencias.txt para el detalle de cada artículo. Solo
-# afecta a VACACIONES (Art. 208 CT) -- el décimo NO usa este catálogo:
-# el contador confirmó el 2026-08-06 que su base es lo realmente
-# devengado (decimo_service.py), así que una ausencia sin goce de
-# salario se excluye sola (no generó ingreso) y una con goce se
-# incluye sola, sin necesitar ninguna regla especial aquí.
+# ver FASE11-plan-ausencias.txt para el detalle de cada artículo. Este
+# catálogo de _EXENTAS_SIEMPRE_VACACIONES/_SIEMPRE_DESCUENTA_VACACIONES/
+# _SUJETA_UMBRAL_VACACIONES solo rige el descuento de VACACIONES
+# (Art. 208 CT). El décimo NO usa este catálogo -- usa en cambio
+# dias_sin_goce_de_salario() más abajo, un eje legal distinto ("¿se le
+# paga el salario de esos días?" vs. "¿cuenta como antigüedad para
+# ganar vacaciones?"). Ver CLAUDE.md sección 4.
 TIPOS_AUSENCIA = frozenset(
     {
         "enfermedad_dentro_fondo",
@@ -48,6 +49,18 @@ _SUJETA_UMBRAL_VACACIONES = {
     "arresto_o_prision_preventiva",
 }
 _UMBRAL_DIAS_VACACIONES = 15
+
+# Goce de salario (¿se le paga esos días?), eje legal distinto del de
+# vacaciones arriba -- confirmado por el usuario 2026-08-20: una
+# ausencia injustificada (sin autorización) no genera derecho a
+# salario ("a trabajo no realizado, no hay obligación de pago"). Los
+# demás 8 tipos del catálogo quedan con goce de salario (sin
+# descuento) hasta que el contador confirme su tratamiento individual
+# -- Art. 199 los declara "suspensión sin responsabilidad para
+# ninguna parte", que no necesariamente implica que el empleador deja
+# de pagar, y enfermedad_dentro_fondo en particular SÍ tiene salario
+# completo por texto expreso del Art. 200 CT.
+_SIN_GOCE_SALARIO = {"injustificada"}
 
 _CERO = decimal.Decimal("0")
 
@@ -163,4 +176,27 @@ def dias_no_contables(
     total = _CERO
     for ausencia in ausencias_repo.listar_de_contrato(db, contrato_id):
         total += _dias_no_contables_de_ausencia(ausencia, fecha_inicio, fecha_fin)
+    return total
+
+
+def dias_sin_goce_de_salario(
+    db: Session,
+    contrato_id: uuid.UUID,
+    fecha_inicio: datetime.date,
+    fecha_fin: datetime.date,
+) -> decimal.Decimal:
+    """Días dentro de [fecha_inicio, fecha_fin] en que el trabajador NO
+    tiene derecho a salario por ausentarse sin autorización. Concepto
+    distinto de dias_no_contables (esa rige solo el descuento de
+    VACACIONES, Art. 208 CT, con su propio umbral y excepciones) -- no
+    reutilizar, mezclaría dos reglas legales distintas. Se resta
+    directamente del salario del período en planilla_service y de los
+    días devengados en decimo_service."""
+    if fecha_fin < fecha_inicio:
+        return _CERO
+
+    total = _CERO
+    for ausencia in ausencias_repo.listar_de_contrato(db, contrato_id):
+        if ausencia.tipo in _SIN_GOCE_SALARIO:
+            total += _overlap_dias(ausencia.fecha_desde, ausencia.fecha_hasta, fecha_inicio, fecha_fin)
     return total

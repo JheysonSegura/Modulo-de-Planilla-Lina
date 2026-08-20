@@ -200,16 +200,31 @@ ESPERADOS = {
             "salario_neto_quincena": "402.39",
         },
     },
-    # Carla y Diego comparten la misma quincena base ($800, sin novedades)
-    # porque una ausencia -- con o sin goce -- NO descuenta el salario del
-    # movimiento de planilla en el código actual (solo afecta la provisión
-    # de vacaciones, ver abajo). Mismo endpoint que ana_quincena_base.
+    # Carla (siempre) y Diego (sus quincenas SIN la ausencia -- Q1,
+    # Q3-Q6) comparten esta misma quincena base ($800, sin novedades).
+    # Mismo endpoint que ana_quincena_base.
     "quincena_base_800": {
         "salario_bruto": "400.00",
         "css_empleado": "39.00",
         "seguro_educativo_empleado": "5.00",
         "isr_retenido": "0.00",
         "salario_neto": "356.00",
+    },
+    # Q2 de Diego (1-15 feb), la única que se solapa con su ausencia
+    # injustificada (5-9 feb, 5 días) -- corrección 2026-08-20: una
+    # ausencia injustificada es "sin goce de salario" (ver CLAUDE.md
+    # sección 4), así que esa quincena SÍ se reduce, a diferencia de
+    # Carla (enfermedad_dentro_fondo, con goce completo por Art. 200
+    # CT, nunca se reduce). CONFIRMADO por el contador 2026-08-20 con
+    # el desglose completo: bruto $400.00 - ausencia $133.33 = $266.67
+    # devengado; CSS 266.67×9.75%=$26.00; SE 266.67×1.25%=$3.33; ISR
+    # $0.00; neto $266.67-$26.00-$3.33=$237.34.
+    "diego_quincena_ausencia": {
+        "salario_bruto": "266.67",
+        "css_empleado": "26.00",
+        "seguro_educativo_empleado": "3.33",
+        "isr_retenido": "0.00",
+        "salario_neto": "237.34",
     },
     # Snapshot final (tras la planilla de Q6) de
     # GET /contratos/{id}/provisiones-vacaciones -- fila con estado="abierto".
@@ -245,19 +260,34 @@ ESPERADOS = {
             "salario_neto": "347.81",
         },
         "bruno": {
-            "salario_bruto": None,
-            "css_empleado": None,
-            "salario_neto": None,
+            # CONFIRMADO por el contador 2026-08-20. Sus 6 quincenas
+            # del trimestre (que coinciden con lo trabajado dentro del
+            # cuatrimestre, entró 16-ene) suman $2,724.85 en bruto --
+            # 3 quincenas base ($450 c/u) + 3 con horas extra
+            # ($459.38+$458.44+$457.03). /12 = $227.07. CSS especial
+            # 7.25%: 227.07×0.0725=16.4626->16.46.
+            "salario_bruto": "227.07",
+            "css_empleado": "16.46",
+            "salario_neto": "210.61",
         },
         "carla": {
-            "salario_bruto": None,
-            "css_empleado": None,
-            "salario_neto": None,
+            # CONFIRMADO por el contador 2026-08-20. $800 × 3 meses
+            # trabajados dentro del cuatrimestre / 12 = $200.00 (sin
+            # ausencias con efecto en décimo: la médica tiene goce
+            # completo). CSS 7.25%: 200.00×0.0725=14.50.
+            "salario_bruto": "200.00",
+            "css_empleado": "14.50",
+            "salario_neto": "185.50",
         },
         "diego": {
-            "salario_bruto": None,
-            "css_empleado": None,
-            "salario_neto": None,
+            # CONFIRMADO por el contador 2026-08-20. 90 días
+            # comerciales trabajados menos los 5 días de su
+            # ausencia injustificada (sin goce de salario, corrección
+            # 2026-08-20) = 85 días × $800/30 = $2,266.67 / 12 =
+            # $188.89. CSS 7.25%: 188.89×0.0725=13.694525->13.69.
+            "salario_bruto": "188.89",
+            "css_empleado": "13.69",
+            "salario_neto": "175.20",
         },
     },
     # Liquidación de Elena -- POST /contratos/{id}/liquidacion, respuesta

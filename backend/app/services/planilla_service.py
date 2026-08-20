@@ -25,7 +25,7 @@ from app.repositories import parametros_isr as parametros_isr_repo
 from app.repositories import planillas as planillas_repo
 from app.repositories import tasas as tasas_repo
 from app.repositories import tramos_isr as tramos_isr_repo
-from app.services import auditoria_service, decimo_service, vacaciones_service
+from app.services import ausencias_service, auditoria_service, decimo_service, vacaciones_service
 
 # Períodos de pago por año según el tipo de planilla (no
 # contratos.periodicidad_pago -- el motor de Fase 6 es genérico por
@@ -324,17 +324,37 @@ def _calcular_movimiento_de_contrato(
         contrato.fecha_fin_real is None or contrato.fecha_fin_real >= periodo_fin
     )
     if cubre_periodo_completo:
+        efectivo_inicio = periodo_inicio
+        efectivo_fin = periodo_fin
         if tipo == "mensual":
             salario_base_periodo = salario_mensual
         else:
             salario_base_periodo = (salario_mensual / decimal.Decimal("2")).quantize(_CENTAVO)
     else:
-        dias_inicio_efectivo = max(contrato.fecha_inicio, periodo_inicio)
-        dias_fin_efectivo = min(contrato.fecha_fin_real or periodo_fin, periodo_fin)
-        dias_trabajados = (dias_fin_efectivo - dias_inicio_efectivo).days + 1
+        efectivo_inicio = max(contrato.fecha_inicio, periodo_inicio)
+        efectivo_fin = min(contrato.fecha_fin_real or periodo_fin, periodo_fin)
+        dias_trabajados = (efectivo_fin - efectivo_inicio).days + 1
         salario_base_periodo = (salario_diario * decimal.Decimal(dias_trabajados)).quantize(_CENTAVO)
 
     conceptos: list[ConceptoVariable] = []
+
+    dias_sin_goce = ausencias_service.dias_sin_goce_de_salario(
+        db, contrato.id, efectivo_inicio, efectivo_fin
+    )
+    monto_descuento_ausencia = (dias_sin_goce * salario_diario).quantize(_CENTAVO)
+    if monto_descuento_ausencia > _CERO:
+        salario_base_periodo -= monto_descuento_ausencia
+        conceptos.append(
+            ConceptoVariable(
+                tipo="informativo",
+                codigo="ausencia_sin_goce",
+                descripcion=(
+                    f"{dias_sin_goce} día(s) de ausencia injustificada sin goce de salario "
+                    f"({periodo_inicio.isoformat()} a {periodo_fin.isoformat()})"
+                ),
+                monto=-monto_descuento_ausencia,
+            )
+        )
 
     registros_horas_extra = horas_extra_repo.listar_de_contrato(
         db, contrato.id, periodo_inicio, periodo_fin

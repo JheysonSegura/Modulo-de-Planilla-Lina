@@ -300,16 +300,37 @@ def test_bruno_horas_extra(_escenario, idx_quincena, clave_esperado):
     _verificar(f"bruno_horas_extra.{clave_esperado}", ESPERADOS["bruno_horas_extra"][clave_esperado], actual)
 
 
-def test_carla_y_diego_quincena_no_se_ve_afectada_por_la_ausencia(_escenario):
-    for clave in ("carla", "diego"):
-        movimientos = _escenario["movimientos_por_empleado"][clave]
-        assert len(movimientos) == 6
-        for idx, mov in enumerate(movimientos):
-            _verificar(
-                f"quincena_base_800 ({clave}, Q{idx + 1})",
-                ESPERADOS["quincena_base_800"],
-                _campos_salario(mov),
-            )
+def test_carla_quincena_no_se_ve_afectada_por_la_ausencia(_escenario):
+    movimientos = _escenario["movimientos_por_empleado"]["carla"]
+    assert len(movimientos) == 6
+    for idx, mov in enumerate(movimientos):
+        _verificar(
+            f"quincena_base_800 (carla, Q{idx + 1})",
+            ESPERADOS["quincena_base_800"],
+            _campos_salario(mov),
+        )
+
+
+def test_diego_quincenas_sin_ausencia_no_se_ven_afectadas(_escenario):
+    # Q2 (idx=1) es la que contiene la ausencia injustificada de Diego
+    # (5-9 feb) -- se verifica aparte en el test siguiente, con goce de
+    # salario reducido (ver CLAUDE.md sección 4, "Goce de salario
+    # durante una ausencia").
+    movimientos = _escenario["movimientos_por_empleado"]["diego"]
+    assert len(movimientos) == 6
+    for idx, mov in enumerate(movimientos):
+        if idx == 1:
+            continue
+        _verificar(
+            f"quincena_base_800 (diego, Q{idx + 1})",
+            ESPERADOS["quincena_base_800"],
+            _campos_salario(mov),
+        )
+
+
+def test_diego_quincena_con_ausencia_injustificada_descuenta_salario(_escenario):
+    mov = _escenario["movimientos_por_empleado"]["diego"][1]
+    _verificar("diego_quincena_ausencia (Q2)", ESPERADOS["diego_quincena_ausencia"], _campos_salario(mov))
 
 
 def test_carla_ausencia_medica_no_descuenta_vacaciones(_escenario):

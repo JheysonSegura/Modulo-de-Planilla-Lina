@@ -81,6 +81,74 @@ def _provision_vacaciones_abierta(client, headers, contrato_id):
     return next(p for p in resp.json() if p["estado"] == "abierto")
 
 
+def _movimiento_de(client, headers, planilla_id, contrato_id):
+    resp = client.get(f"/planillas/{planilla_id}/movimientos", headers=headers)
+    assert resp.status_code == 200, resp.text
+    return next(m for m in resp.json() if m["contrato_id"] == contrato_id)
+
+
+def test_ausencia_injustificada_reduce_el_salario_del_periodo(client, db):
+    headers = _preparar_empresa(db, client)
+    # Salario 800/mes -> salario_diario=26.666...7. Ausencia
+    # injustificada de 4 días dentro del mes -> descuento
+    # 4*26.666...7=106.666...8 -> 106.67. salario_base_periodo =
+    # 800.00-106.67=693.33. css=693.33*9.75%=67.599675->67.60.
+    # se=693.33*1.25%=8.666625->8.67. Salario bajo el umbral de ISR
+    # (800*13=10400<11000) -> isr=0.00.
+    # neto=693.33-67.60-8.67=617.06.
+    contrato_id = _crear_empleado_con_contrato(client, headers, datetime.date(2025, 1, 1), salario_base="800.00")
+    _registrar_ausencia(
+        client, headers, contrato_id, "injustificada", datetime.date(2025, 1, 10), datetime.date(2025, 1, 13)
+    )
+
+    planilla = _generar_planilla(client, headers, "mensual", datetime.date(2025, 1, 1), datetime.date(2025, 1, 31))
+    mov = _movimiento_de(client, headers, planilla["id"], contrato_id)
+    assert decimal.Decimal(str(mov["salario_base_periodo"])) == decimal.Decimal("693.33")
+    assert decimal.Decimal(str(mov["salario_bruto"])) == decimal.Decimal("693.33")
+    assert decimal.Decimal(str(mov["css_empleado"])) == decimal.Decimal("67.60")
+    assert decimal.Decimal(str(mov["seguro_educativo_empleado"])) == decimal.Decimal("8.67")
+    assert decimal.Decimal(str(mov["salario_neto"])) == decimal.Decimal("617.06")
+
+    concepto = next(c for c in mov["conceptos_variables"] if c["codigo"] == "ausencia_sin_goce")
+    assert concepto["tipo"] == "informativo"
+    assert decimal.Decimal(str(concepto["monto"])) == decimal.Decimal("-106.67")
+
+
+def test_ausencia_injustificada_no_afecta_un_periodo_fuera_de_su_rango(client, db):
+    headers = _preparar_empresa(db, client)
+    contrato_id = _crear_empleado_con_contrato(client, headers, datetime.date(2025, 1, 1), salario_base="800.00")
+    _registrar_ausencia(
+        client, headers, contrato_id, "injustificada", datetime.date(2025, 1, 10), datetime.date(2025, 1, 13)
+    )
+
+    # Febrero no se solapa con la ausencia de enero -> salario completo,
+    # sin ningún concepto informativo de ausencia.
+    planilla = _generar_planilla(client, headers, "mensual", datetime.date(2025, 2, 1), datetime.date(2025, 2, 28))
+    mov = _movimiento_de(client, headers, planilla["id"], contrato_id)
+    assert decimal.Decimal(str(mov["salario_base_periodo"])) == decimal.Decimal("800.00")
+    assert not any(c["codigo"] == "ausencia_sin_goce" for c in mov["conceptos_variables"])
+
+
+def test_ausencia_con_goce_de_salario_no_descuenta_el_periodo(client, db):
+    headers = _preparar_empresa(db, client)
+    # Mismo rango que el primer test, pero enfermedad_dentro_fondo tiene
+    # salario completo por Art. 200 CT -- no debe descontar nada.
+    contrato_id = _crear_empleado_con_contrato(client, headers, datetime.date(2025, 1, 1), salario_base="800.00")
+    _registrar_ausencia(
+        client,
+        headers,
+        contrato_id,
+        "enfermedad_dentro_fondo",
+        datetime.date(2025, 1, 10),
+        datetime.date(2025, 1, 13),
+    )
+
+    planilla = _generar_planilla(client, headers, "mensual", datetime.date(2025, 1, 1), datetime.date(2025, 1, 31))
+    mov = _movimiento_de(client, headers, planilla["id"], contrato_id)
+    assert decimal.Decimal(str(mov["salario_base_periodo"])) == decimal.Decimal("800.00")
+    assert not any(c["codigo"] == "ausencia_sin_goce" for c in mov["conceptos_variables"])
+
+
 def test_ausencia_embarazo_no_reduce_vacaciones_sin_importar_duracion(client, db):
     headers = _preparar_empresa(db, client)
     # 2024-12-15 a 2025-04-30 = 137 días -> 12.45 días / 373.64 sin

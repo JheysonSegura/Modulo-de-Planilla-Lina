@@ -15,6 +15,7 @@ from app.repositories import movimientos_planilla as movimientos_repo
 from app.repositories import planillas as planillas_repo
 from app.repositories import provisiones_decimo as provisiones_decimo_repo
 from app.repositories import tasas as tasas_repo
+from app.services import ausencias_service
 
 # Fórmula CONFIRMADA por el contador el 2026-08-06 con caso numérico
 # completo (corrige el método de la Fase 8, que interpretaba el
@@ -43,10 +44,12 @@ from app.repositories import tasas as tasas_repo
 # el caso del contador. Ver FASE8-plan-decimo.txt para la corrección.
 #
 # Como la base ahora es lo REALMENTE devengado, una ausencia sin goce
-# de salario simplemente no generó ingreso ese día (se excluye sola) y
-# una ausencia con goce sigue devengando normal (se incluye sola) --
-# el décimo ya NO necesita ninguna lógica de ausencias (a diferencia
-# de vacaciones, que sí la usa vía ausencias_service, Art. 208 CT).
+# de salario (hoy solo 'injustificada', ver ausencias_service.
+# _SIN_GOCE_SALARIO) no genera ingreso esos días y una ausencia con
+# goce sigue devengando normal -- a diferencia de vacaciones (Art. 208
+# CT, catálogo de 9 tipos con umbral de 15 días), acá el eje legal es
+# distinto ("¿se le paga el salario de esos días?"), así que se usa
+# ausencias_service.dias_sin_goce_de_salario(), no dias_no_contables().
 DIAS_MES_COMERCIAL = decimal.Decimal("30")
 DIVISOR_DECIMO = decimal.Decimal("12")
 _CERO = decimal.Decimal("0")
@@ -139,6 +142,8 @@ def calcular_decimo_de_contrato(
         if efectivo_fin < efectivo_inicio:
             continue
         dias = _dias_comerciales_entre(efectivo_inicio, efectivo_fin)
+        dias -= ausencias_service.dias_sin_goce_de_salario(db, contrato.id, efectivo_inicio, efectivo_fin)
+        dias = max(dias, _CERO)
         salario_diario = segmento.salario_base / DIAS_MES_COMERCIAL
         total += dias * salario_diario
 

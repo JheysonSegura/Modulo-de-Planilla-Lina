@@ -82,6 +82,20 @@ def _movimiento_de(movimientos, contrato_id):
     return next(m for m in movimientos if m["contrato_id"] == contrato_id)
 
 
+def _registrar_ausencia(client, headers, contrato_id, tipo, fecha_desde, fecha_hasta):
+    resp = client.post(
+        f"/contratos/{contrato_id}/ausencias",
+        json={
+            "tipo": tipo,
+            "fecha_desde": fecha_desde.isoformat(),
+            "fecha_hasta": fecha_hasta.isoformat(),
+        },
+        headers=headers,
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()
+
+
 def test_partidas_de_un_anio_completo_trabajado(client, db):
     headers = _preparar_empresa(db, client)
     contrato_id = _crear_empleado_con_contrato(client, headers, datetime.date(2024, 1, 1))
@@ -217,6 +231,53 @@ def test_provision_acumulada_coincide_con_lo_pagado(client, db):
     assert prov["pagado"] is True
     assert prov["fecha_pago_real"] == "2025-08-15"
     assert prov["movimiento_planilla_id"] == mov["id"]
+
+
+def test_ausencia_injustificada_reduce_el_decimo(client, db):
+    headers = _preparar_empresa(db, client)
+    # Mismo cuatrimestre completo del primer test (120 días comerciales
+    # a 900/mes -> 3600.00/12=300.00 sin novedades). Ausencia
+    # injustificada de 10 días (1 al 10 de mayo, sin cruzar fin de mes)
+    # -- "sin goce de salario" (confirmado por el usuario 2026-08-20,
+    # ver ausencias_service._SIN_GOCE_SALARIO): 120-10=110 días
+    # comerciales -> 110*30.00=3300.00/12=275.00.
+    contrato_id = _crear_empleado_con_contrato(client, headers, datetime.date(2024, 1, 1))
+    _registrar_ausencia(
+        client, headers, contrato_id, "injustificada", datetime.date(2025, 5, 1), datetime.date(2025, 5, 10)
+    )
+
+    resp = _generar_pago_decimo(client, headers, "abr-ago", 2025, datetime.date(2025, 8, 15))
+    assert resp.status_code == 201, resp.text
+    mov = _movimiento_de(
+        client.get(f"/planillas/{resp.json()['id']}/movimientos", headers=headers).json(),
+        contrato_id,
+    )
+    assert decimal.Decimal(str(mov["salario_bruto"])) == decimal.Decimal("275.00")
+
+
+def test_ausencia_con_goce_de_salario_no_reduce_el_decimo(client, db):
+    headers = _preparar_empresa(db, client)
+    # Mismo cuatrimestre y mismo rango de fechas que el test anterior,
+    # pero enfermedad_dentro_fondo tiene salario completo por texto
+    # expreso del Art. 200 CT -- no debe reducir el décimo. Sigue en
+    # 300.00, igual que sin ninguna ausencia registrada.
+    contrato_id = _crear_empleado_con_contrato(client, headers, datetime.date(2024, 1, 1))
+    _registrar_ausencia(
+        client,
+        headers,
+        contrato_id,
+        "enfermedad_dentro_fondo",
+        datetime.date(2025, 5, 1),
+        datetime.date(2025, 5, 10),
+    )
+
+    resp = _generar_pago_decimo(client, headers, "abr-ago", 2025, datetime.date(2025, 8, 15))
+    assert resp.status_code == 201, resp.text
+    mov = _movimiento_de(
+        client.get(f"/planillas/{resp.json()['id']}/movimientos", headers=headers).json(),
+        contrato_id,
+    )
+    assert decimal.Decimal(str(mov["salario_bruto"])) == decimal.Decimal("300.00")
 
 
 def test_generar_pago_decimo_duplicado_es_rechazado(client, db):
