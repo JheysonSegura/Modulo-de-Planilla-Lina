@@ -1,4 +1,5 @@
 import datetime
+import secrets
 import uuid
 from typing import Literal
 
@@ -9,6 +10,11 @@ from app.core.config import settings
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
+# Sin 0/O/1/l/I -- se le puede dictar al usuario por teléfono/chat sin
+# ambigüedad. Usado solo para contraseñas temporales de reset (ver
+# usuarios_service.resetear_password), nunca para tokens/secrets.
+_ALFABETO_PASSWORD_TEMPORAL = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789"
+
 
 def hash_password(password: str) -> str:
     return pwd_context.hash(password)
@@ -16,6 +22,10 @@ def hash_password(password: str) -> str:
 
 def verify_password(password: str, password_hash: str) -> bool:
     return pwd_context.verify(password, password_hash)
+
+
+def generar_password_temporal(longitud: int = 12) -> str:
+    return "".join(secrets.choice(_ALFABETO_PASSWORD_TEMPORAL) for _ in range(longitud))
 
 
 def _crear_token(

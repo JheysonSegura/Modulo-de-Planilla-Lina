@@ -2,7 +2,7 @@ import uuid
 from typing import Annotated, Generator
 
 import jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -14,6 +14,16 @@ from app.repositories import empresas as empresas_repo
 from app.repositories import usuarios as usuarios_repo
 
 bearer_scheme = HTTPBearer(auto_error=True)
+
+# Únicas rutas alcanzables mientras usuarios.debe_cambiar_password es
+# true (ver get_usuario_actual) -- /auth/me para que el frontend sepa
+# que debe redirigir, /auth/logout para poder salir, y el propio
+# endpoint que define la contraseña permanente.
+_RUTAS_PERMITIDAS_CON_PASSWORD_TEMPORAL = {
+    "/auth/me",
+    "/auth/logout",
+    "/auth/cambiar-password-temporal",
+}
 
 
 def get_db() -> Generator[Session, None, None]:
@@ -39,12 +49,22 @@ def get_claims_actuales(
 
 
 def get_usuario_actual(
+    request: Request,
     claims: Annotated[dict, Depends(get_claims_actuales)],
     db: Annotated[Session, Depends(get_db)],
 ) -> Usuario:
     usuario = usuarios_repo.get_by_id(db, uuid.UUID(claims["sub"]))
     if usuario is None or not usuario.activo:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Usuario inválido o inactivo")
+    if (
+        usuario.debe_cambiar_password
+        and request.url.path not in _RUTAS_PERMITIDAS_CON_PASSWORD_TEMPORAL
+    ):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "Debés definir una nueva contraseña antes de continuar "
+            "(POST /auth/cambiar-password-temporal).",
+        )
     return usuario
 
 

@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.deps import get_claims_actuales, get_db, get_usuario_actual
 from app.models import Usuario
 from app.schemas.auth import (
+    CambiarPasswordTemporalRequest,
     EmpresaAccesoOut,
     LoginRequest,
     LogoutRequest,
@@ -36,6 +37,18 @@ def refresh(body: RefreshRequest, db: Annotated[Session, Depends(get_db)]) -> To
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 def logout(body: LogoutRequest, db: Annotated[Session, Depends(get_db)]) -> None:
     auth_service.cerrar_sesion(db, body.refresh_token)
+
+
+@router.post("/cambiar-password-temporal", response_model=TokenResponse)
+def cambiar_password_temporal(
+    body: CambiarPasswordTemporalRequest,
+    usuario: Annotated[Usuario, Depends(get_usuario_actual)],
+    db: Annotated[Session, Depends(get_db)],
+) -> TokenResponse:
+    access_token, refresh_token = auth_service.cambiar_password_temporal(
+        db, usuario, body.password_actual, body.password_nueva
+    )
+    return TokenResponse(access_token=access_token, refresh_token=refresh_token)
 
 
 @router.get("/empresas", response_model=list[EmpresaAccesoOut])

@@ -32,6 +32,19 @@ class Usuario(Base):
     puede_crear_empresas: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="false"
     )
+    # Se activa al resetear la contraseña de un usuario (admin de empresa
+    # o superadmin, ver usuarios_service.resetear_password) -- mientras
+    # esté en true, deps.py::get_usuario_actual bloquea cualquier endpoint
+    # que no sea /auth/me, /auth/logout o /auth/cambiar-password-temporal.
+    debe_cambiar_password: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
+    # Vencimiento de la contraseña temporal (24h desde el reset) -- pasado
+    # ese momento, autenticar() rechaza el login aunque la contraseña sea
+    # correcta. NULL cuando debe_cambiar_password es false.
+    password_temporal_expira: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
     ultimo_login: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

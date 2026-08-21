@@ -6,8 +6,10 @@ const PREFIJOS_ADMIN = ['/auditoria', '/empresa/usuarios']
 // por URL, aunque el botón que las enlaza ya esté oculto (puedeEscribir).
 const SUFIJOS_ESCRITURA = ['/nuevo', '/nueva', '/editar', '/generar-decimo']
 
+const RUTA_CAMBIO_PASSWORD = '/cambiar-password-temporal'
+
 export default defineNuxtRouteMiddleware((to) => {
-  const { accessToken, empresaActiva, rolActivo } = useAuth()
+  const { accessToken, usuario, empresaActiva, rolActivo } = useAuth()
 
   if (RUTAS_PUBLICAS.has(to.path)) {
     // Ya logueado y con empresa activa -- no tiene sentido volver a /login.
@@ -18,6 +20,16 @@ export default defineNuxtRouteMiddleware((to) => {
   if (!accessToken.value) {
     return navigateTo('/login')
   }
+
+  // Contraseña temporal pendiente (reset hecho por un admin/superadmin,
+  // ver useAuth.cambiarPasswordTemporal): se fuerza esta pantalla antes
+  // que cualquier otra cosa, incluso antes de elegir empresa -- el
+  // backend ya bloquea todo lo demás (deps.py::get_usuario_actual).
+  if (usuario.value?.debe_cambiar_password) {
+    if (to.path !== RUTA_CAMBIO_PASSWORD) return navigateTo(RUTA_CAMBIO_PASSWORD)
+    return
+  }
+  if (to.path === RUTA_CAMBIO_PASSWORD) return navigateTo('/')
 
   if (!empresaActiva.value && to.path !== '/seleccionar-empresa') {
     return navigateTo('/seleccionar-empresa')

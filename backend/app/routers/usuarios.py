@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.deps import get_db, require_superadmin
 from app.models import Usuario
-from app.schemas.usuarios import UsuarioAdminOut, UsuarioPermisoUpdate
+from app.schemas.usuarios import PasswordResetOut, UsuarioAdminOut, UsuarioPermisoUpdate
 from app.services import usuarios_service
 
 router = APIRouter(prefix="/usuarios", tags=["usuarios"])
@@ -28,3 +28,15 @@ def actualizar_permiso(
     _usuario: Annotated[Usuario, Depends(require_superadmin)],
 ) -> UsuarioAdminOut:
     return usuarios_service.actualizar_permiso_crear_empresas(db, usuario_id, body.puede_crear_empresas)
+
+
+@router.post("/{usuario_id}/resetear-password", response_model=PasswordResetOut)
+def resetear_password(
+    usuario_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    usuario: Annotated[Usuario, Depends(require_superadmin)],
+) -> PasswordResetOut:
+    password_temporal, expira_en = usuarios_service.resetear_password_superadmin(
+        db, usuario_id, usuario.id
+    )
+    return PasswordResetOut(password_temporal=password_temporal, expira_en=expira_en)

@@ -1,3 +1,4 @@
+import datetime
 import uuid
 
 from fastapi import HTTPException, status
@@ -9,7 +10,7 @@ from app.repositories import empresas as empresas_repo
 from app.repositories import usuarios as usuarios_repo
 from app.repositories import usuarios_empresas as usuarios_empresas_repo
 from app.schemas.usuarios_empresas import UsuarioEmpresaCreate, UsuarioEmpresaOut, UsuarioEmpresaUpdate
-from app.services import auditoria_service
+from app.services import auditoria_service, usuarios_service
 
 
 def _a_out(row) -> UsuarioEmpresaOut:
@@ -87,6 +88,24 @@ def agregar_usuario(
     db.commit()
     fila = usuarios_empresas_repo.get_out(db, vinculo.id)
     return _a_out(fila)
+
+
+def resetear_password(
+    db: Session,
+    empresa_id: uuid.UUID,
+    usuario_empresa_id: uuid.UUID,
+    usuario_actual_id: uuid.UUID,
+) -> tuple[str, datetime.datetime]:
+    vinculo = usuarios_empresas_repo.get(db, usuario_empresa_id)
+    if vinculo is None or vinculo.empresa_id != empresa_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Acceso de usuario no encontrado.")
+    if vinculo.usuario_id == usuario_actual_id:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "No podés resetear tu propia contraseña -- pídele a otro administrador que lo haga.",
+        )
+    usuario = usuarios_repo.get_by_id(db, vinculo.usuario_id)
+    return usuarios_service.resetear_password(db, usuario, usuario_actual_id, empresa_id)
 
 
 def actualizar_acceso(

@@ -2,7 +2,7 @@
 import { z } from 'zod'
 import type { FormSubmitEvent } from '@nuxt/ui'
 
-const { listar, agregar, actualizar } = useUsuariosEmpresa()
+const { listar, agregar, actualizar, resetearPassword } = useUsuariosEmpresa()
 const { usuario: usuarioActual } = useAuth()
 const toast = useToast()
 
@@ -56,6 +56,23 @@ async function cambiarRol(id: string, rol: string) {
 async function alternarActivo(id: string, activo: boolean) {
   await actualizar(id, { activo: !activo })
   await refresh()
+}
+
+const modalPasswordAbierto = ref(false)
+const passwordTemporalGenerada = ref('')
+const reseteando = ref<string | null>(null)
+
+async function onResetearPassword(id: string) {
+  reseteando.value = id
+  try {
+    const resultado = await resetearPassword(id)
+    passwordTemporalGenerada.value = resultado.password_temporal
+    modalPasswordAbierto.value = true
+  } catch (error) {
+    toast.add({ title: 'No se pudo resetear la contraseña', description: extraerMensajeError(error), color: 'error' })
+  } finally {
+    reseteando.value = null
+  }
 }
 </script>
 
@@ -199,15 +216,25 @@ async function alternarActivo(id: string, activo: boolean) {
               </UBadge>
             </td>
             <td class="py-2 text-right">
-              <UButton
-                v-if="u.usuario_id !== usuarioActual?.id"
-                size="xs"
-                color="neutral"
-                variant="ghost"
-                @click="alternarActivo(u.id, u.activo)"
-              >
-                {{ u.activo ? 'Desactivar' : 'Reactivar' }}
-              </UButton>
+              <template v-if="u.usuario_id !== usuarioActual?.id">
+                <UButton
+                  size="xs"
+                  color="neutral"
+                  variant="ghost"
+                  :loading="reseteando === u.id"
+                  @click="onResetearPassword(u.id)"
+                >
+                  Resetear password
+                </UButton>
+                <UButton
+                  size="xs"
+                  color="neutral"
+                  variant="ghost"
+                  @click="alternarActivo(u.id, u.activo)"
+                >
+                  {{ u.activo ? 'Desactivar' : 'Reactivar' }}
+                </UButton>
+              </template>
               <span
                 v-else
                 class="text-xs text-gray-400"
@@ -225,5 +252,10 @@ async function alternarActivo(id: string, activo: boolean) {
         </tbody>
       </table>
     </UCard>
+
+    <PasswordTemporalModal
+      v-model:open="modalPasswordAbierto"
+      :password-temporal="passwordTemporalGenerada"
+    />
   </div>
 </template>

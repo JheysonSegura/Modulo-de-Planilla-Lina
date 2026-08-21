@@ -1,3 +1,4 @@
+import datetime
 import uuid
 
 import jwt
@@ -20,7 +21,38 @@ def autenticar(db: Session, email: str, password: str) -> Usuario:
         raise credenciales_invalidas
     if not security.verify_password(password, usuario.password_hash):
         raise credenciales_invalidas
+    if (
+        usuario.debe_cambiar_password
+        and usuario.password_temporal_expira is not None
+        and usuario.password_temporal_expira < datetime.datetime.now(datetime.timezone.utc)
+    ):
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED,
+            "La contraseña temporal expiró. Pedile a un administrador que la restablezca de nuevo.",
+        )
     return usuario
+
+
+def cambiar_password_temporal(
+    db: Session, usuario: Usuario, password_actual: str, password_nueva: str
+) -> tuple[str, str]:
+    if not usuario.debe_cambiar_password:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, "Tu contraseña no requiere cambio obligatorio."
+        )
+    if not security.verify_password(password_actual, usuario.password_hash):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "La contraseña actual no es correcta.")
+    if password_actual == password_nueva:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "La nueva contraseña debe ser distinta de la temporal.",
+        )
+    usuario.password_hash = security.hash_password(password_nueva)
+    usuario.debe_cambiar_password = False
+    usuario.password_temporal_expira = None
+    refresh_tokens_repo.revocar_todos_de_usuario(db, usuario.id)
+    db.commit()
+    return emitir_tokens(db, usuario.id)
 
 
 def emitir_tokens(

@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.deps import get_db, get_db_rls_empresa, require_admin_de_empresa, require_puede_crear_empresas
 from app.models import Empresa, Usuario
 from app.schemas.empresas import EmpresaOut
+from app.schemas.usuarios import PasswordResetOut
 from app.schemas.usuarios_empresas import UsuarioEmpresaCreate, UsuarioEmpresaOut, UsuarioEmpresaUpdate
 from app.services import empresas_service, usuarios_empresas_service
 
@@ -51,3 +52,16 @@ def actualizar_acceso(
     return usuarios_empresas_service.actualizar_acceso(
         db, empresa_id, usuario_empresa_id, usuario.id, body
     )
+
+
+@router.post("/{empresa_id}/usuarios/{usuario_empresa_id}/resetear-password", response_model=PasswordResetOut)
+def resetear_password(
+    empresa_id: uuid.UUID,
+    usuario_empresa_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db_rls_empresa)],
+    usuario: Annotated[Usuario, Depends(require_admin_de_empresa)],
+) -> PasswordResetOut:
+    password_temporal, expira_en = usuarios_empresas_service.resetear_password(
+        db, empresa_id, usuario_empresa_id, usuario.id
+    )
+    return PasswordResetOut(password_temporal=password_temporal, expira_en=expira_en)

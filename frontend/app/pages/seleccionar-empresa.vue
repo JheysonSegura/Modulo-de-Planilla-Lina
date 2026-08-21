@@ -7,7 +7,7 @@ definePageMeta({ layout: 'publico' })
 
 const { listarEmpresas, seleccionarEmpresa, accessToken, usuario, hidratarSesion } = useAuth()
 const { crear } = useEmpresa()
-const { listarAdmins, actualizarPermiso } = useUsuariosPlataforma()
+const { listarAdmins, actualizarPermiso, resetearPassword } = useUsuariosPlataforma()
 const toast = useToast()
 
 if (!accessToken.value) {
@@ -93,6 +93,23 @@ async function togglePermiso(id: string, valorActual: boolean) {
     toast.add({ title: 'No se pudo actualizar el permiso', description: extraerMensajeError(error), color: 'error' })
   } finally {
     actualizandoPermiso.value = null
+  }
+}
+
+const modalPasswordAbierto = ref(false)
+const passwordTemporalGenerada = ref('')
+const reseteandoPassword = ref<string | null>(null)
+
+async function onResetearPassword(id: string) {
+  reseteandoPassword.value = id
+  try {
+    const resultado = await resetearPassword(id)
+    passwordTemporalGenerada.value = resultado.password_temporal
+    modalPasswordAbierto.value = true
+  } catch (error) {
+    toast.add({ title: 'No se pudo resetear la contraseña', description: extraerMensajeError(error), color: 'error' })
+  } finally {
+    reseteandoPassword.value = null
   }
 }
 </script>
@@ -288,6 +305,16 @@ async function togglePermiso(id: string, valorActual: boolean) {
                 {{ a.puede_crear_empresas ? 'Desactivar' : 'Activar' }}
               </UButton>
             </template>
+            <UButton
+              v-if="a.id !== usuario?.id"
+              size="xs"
+              color="neutral"
+              variant="ghost"
+              :loading="reseteandoPassword === a.id"
+              @click="onResetearPassword(a.id)"
+            >
+              Resetear password
+            </UButton>
           </div>
         </div>
         <p
@@ -298,5 +325,10 @@ async function togglePermiso(id: string, valorActual: boolean) {
         </p>
       </UCard>
     </template>
+
+    <PasswordTemporalModal
+      v-model:open="modalPasswordAbierto"
+      :password-temporal="passwordTemporalGenerada"
+    />
   </div>
 </template>

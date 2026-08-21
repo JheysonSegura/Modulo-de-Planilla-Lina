@@ -1,6 +1,6 @@
 import uuid
 
-from pydantic import BaseModel, EmailStr, ConfigDict
+from pydantic import BaseModel, EmailStr, ConfigDict, Field
 
 
 class LoginRequest(BaseModel):
@@ -22,6 +22,11 @@ class LogoutRequest(BaseModel):
     refresh_token: str
 
 
+class CambiarPasswordTemporalRequest(BaseModel):
+    password_actual: str
+    password_nueva: str = Field(min_length=8)
+
+
 class SeleccionarEmpresaRequest(BaseModel):
     empresa_id: uuid.UUID
 
@@ -41,6 +46,7 @@ class UsuarioOut(BaseModel):
     nombre_completo: str
     es_superadmin: bool
     puede_crear_empresas: bool
+    debe_cambiar_password: bool
 
 
 class MeOut(BaseModel):

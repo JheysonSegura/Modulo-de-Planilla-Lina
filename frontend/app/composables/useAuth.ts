@@ -4,6 +4,7 @@ export interface Usuario {
   nombre_completo: string
   es_superadmin: boolean
   puede_crear_empresas: boolean
+  debe_cambiar_password: boolean
 }
 
 export interface EmpresaAcceso {
@@ -130,6 +131,22 @@ export function useAuth() {
     }
   }
 
+  /** Define la contraseña permanente cuando debe_cambiar_password está
+   * activo (reset hecho por un admin/superadmin, ver empresa/usuarios.vue).
+   * El backend emite un par de tokens nuevo (sin empresa) -- se recarga
+   * usuario/empresa/rol con hidratarSesion() antes de volver. */
+  async function cambiarPasswordTemporal(passwordActual: string, passwordNueva: string) {
+    const data = await $fetch<TokenResponse>('/auth/cambiar-password-temporal', {
+      baseURL,
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken.value}` },
+      body: { password_actual: passwordActual, password_nueva: passwordNueva }
+    })
+    accessToken.value = data.access_token
+    refreshTokenCookie.value = data.refresh_token
+    await hidratarSesion()
+  }
+
   async function logout() {
     if (refreshTokenCookie.value) {
       try {
@@ -156,6 +173,7 @@ export function useAuth() {
     seleccionarEmpresa,
     hidratarSesion,
     refrescarSesion,
+    cambiarPasswordTemporal,
     logout,
     limpiarSesion
   }
