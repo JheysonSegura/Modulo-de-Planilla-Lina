@@ -13,7 +13,8 @@ const navegacion = computed(() => {
   if (rolActivo.value === 'admin') {
     items.push(
       { to: '/empresa/usuarios', label: 'Usuarios', icon: 'i-lucide-shield-user' },
-      { to: '/auditoria', label: 'Auditoría', icon: 'i-lucide-history' }
+      { to: '/auditoria', label: 'Auditoría', icon: 'i-lucide-history' },
+      { to: '/empresa/migracion', label: 'Importar datos', icon: 'i-lucide-upload' }
     )
   }
   if (usuario.value?.es_superadmin || usuario.value?.puede_crear_empresas) {

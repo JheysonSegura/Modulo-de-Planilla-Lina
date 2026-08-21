@@ -1,0 +1,147 @@
+MIGRACIÓN DE DATOS HISTÓRICOS (empresa que viene de otro sistema)
+==========================================================================
+Implementado: 2026-08-21
+
+CONTEXTO
+--------
+Para cerrar la primera etapa del proyecto y pasar a pruebas con usuarios
+reales, se necesitaba una forma de que una empresa que lleva años
+operando con otro sistema (Excel, otro software, papel) pueda cargar su
+información al entrar, de modo que los cálculos futuros (planillas,
+décimo, vacaciones, liquidaciones, ISR) salgan correctos desde el primer
+período nuevo.
+
+Se investigó a fondo el motor de cálculo real (no solo CLAUDE.md, sino
+decimo_service.py, vacaciones_service.py, liquidaciones_service.py,
+movimientos_planilla repo) antes de diseñar, y se confirmó: casi ningún
+cálculo necesita historia infinita -- todos tienen ventanas acotadas
+(5 años prima de antigüedad, 6 meses indemnización, 4 meses décimo del
+cuatrimestre en curso, año calendario ISR), y el código ya tiene
+resguardos si falta un dato. Se decidió con el usuario:
+  - NO replicar 17 años de transacciones -- se migra estructural exacto +
+    saldos a una fecha de corte + ventana acotada de bruto histórico
+    (opcional, hasta 5 años).
+  - Asistente DENTRO de la app (no un script técnico), con plantilla
+    Excel descargable que le dice al usuario exactamente qué pasar.
+  - Solo para empresas NUEVAS sin datos operativos todavía.
+  - Las 5 categorías completas desde esta primera fase (no un núcleo
+    reducido).
+  - Fecha de corte = inicio de un período de planilla (día 1 o 16).
+
+DISEÑO -- 5 HOJAS DEL EXCEL (+ 1 de instrucciones)
+---------------------------------------------------
+1. Empleados y contratos (OBLIGATORIA): identificación, datos personales,
+   cargo, tipo_contrato, fecha_inicio REAL, salario_base VIGENTE HOY,
+   jornada, periodicidad, es_tecnico, exento_salario_minimo. Crea
+   Empleado + Contrato + HistorialSalarial abierto (fecha_vigencia_desde
+   = fecha_inicio real). La antigüedad legal sale correcta sola, sin
+   datos adicionales, porque el segmento cubre desde el inicio real.
+
+2. Cambios de salario recientes (opcional): solo si el salario actual no
+   rigió todo el cuatrimestre de décimo en curso. Inserta tramos
+   adicionales de HistorialSalarial directo (no vía cambiar_salario,
+   porque es un hecho histórico, no una acción nueva).
+
+3. Saldo de vacaciones (opcional pero muy recomendada): días_acumulados,
+   días_gozados. Crea ProvisionVacaciones estado='acumulado' (el único
+   estado del modelo que nunca se recalcula desde historial_salarial) +
+   una fila 'abierto' en fecha_corte para que siga acumulando.
+
+4. ISR retenido este año (opcional): 1 MovimientoPlanilla sintético con
+   isr_retenido=monto, salario_bruto=0. sumar_isr_retenido_del_anio lo
+   recoge automático sin cambios de código.
+
+5. Bruto histórico mensual (opcional, hasta 5 años): 1 Planilla+
+   MovimientoPlanilla por mes con salario_bruto poblado, isr_retenido=0.
+   Alimenta directo los promedios de liquidaciones_service. Si se deja
+   vacía, el motor cae a _salario_mensual_vigente (fallback ya existente,
+   nunca calcula cero ni falla).
+
+Nota de diseño (no-doble-conteo): cada hoja sintética solo puebla LA
+columna que le corresponde (bruto O isr_retenido, nunca ambas), así que
+un mismo mes cargado en dos hojas distintas no se duplica en ningún
+promedio ni retención.
+
+DOS "ANCLAS DE SEGURIDAD" -- el hallazgo más importante de esta fase
+----------------------------------------------------------------------
+Encontradas leyendo el motor real ANTES de escribir código, ambas
+verificadas con test dedicado que comprueba el valor exacto esperado
+(no solo "no revienta"):
+
+1. liquidaciones_service._calcular_salario_pendiente cae a
+   contrato.fecha_inicio si no hay ninguna Planilla previa -- sin ancla,
+   liquidar a alguien migrado ANTES de correr una sola planilla real
+   contaría "salario pendiente" desde hace años (catastrófico
+   financieramente). Se resuelve creando SIEMPRE una Planilla "ancla"
+   (periodo_fin = fecha_corte - 1 día), tenga o no la empresa datos de
+   ISR/bruto histórico.
+   Test: salario_pendiente = $300.00 exacto (10 días desde el corte),
+   no ~$175,000 (16 años).
+
+2. vacaciones_service._obtener_o_crear_provision_abierta crea el período
+   'abierto' en contrato.fecha_inicio si no existe ninguno -- sin ancla,
+   el primer cálculo de vacaciones recorrería TODO el historial_salarial
+   ya cargado (17 años a la salario actual), acumulando de más aunque la
+   empresa no haya dado datos de vacaciones. Se resuelve creando SIEMPRE
+   la ProvisionVacaciones 'abierto' con fecha_inicio_periodo=fecha_corte.
+
+Bug real encontrado y corregido durante la verificación manual en
+navegador (no lo agarraban los tests automatizados, que no comprobaban
+el orden de fechas): la Planilla ancla se armó primero con periodo_inicio
+del mes de fecha_corte en vez del mes anterior a fecha_corte-1, dando un
+rango invertido (periodo_inicio > periodo_fin). No rompía ningún cálculo
+(todo lo que lee estas anclas usa solo periodo_fin), pero se veía mal en
+la UI de Planillas -- corregido antes de cerrar la fase.
+
+BACKEND
+-------
+- migracion_service.py: genera la plantilla (openpyxl, 6 hojas), valida
+  en modo dry-run reusando EmpleadoCreate/ContratoCreate/
+  salario_minimo_service.validar_salario_minimo (nunca reimplementa esas
+  reglas a mano -- fuente única de verdad), ejecuta todo en una sola
+  transacción con un solo db.commit() al final (mismo patrón que
+  planilla_service.generar_planilla).
+- 4 endpoints bajo /empresas/actual/migracion/*: disponible, plantilla,
+  validar, confirmar. Todos require_roles("admin"). Sin migración de
+  Alembic -- todo usa el esquema existente.
+- Guard de alcance: rechaza (422) si la empresa ya tiene algún Empleado
+  o Planilla.
+
+FRONTEND
+--------
+- empresa/migracion.vue: página única con 3 estados (preparar/revisar/
+  confirmado) -- no un wizard con librería, no hay precedente de eso en
+  el repo.
+- useMigracionDatos.ts: reusa el patrón de useReportes.ts (blob para la
+  plantilla) y usePlanillas.subirArchivo (multipart con $fetch directo,
+  porque useApi.ts no soporta binarios).
+- Componente inline de tabla de errores {hoja, fila, campo, mensaje} --
+  no existía ningún patrón de lista de errores estructurada en el repo.
+- Link "Importar datos" en el sidebar, solo rol admin.
+- Gotcha ya documentado que volvió a aparecer: página/composable nuevos
+  no los recogió el server de dev ya corriendo -- mismo fix,
+  docker compose restart frontend.
+
+VALIDACIÓN
+----------
+- 10 tests nuevos en backend/tests/test_migracion.py: camino feliz
+  completo (con las 5 hojas), rechazo si empresa ya tiene datos, rechazo
+  de salario bajo el mínimo histórico, identificación duplicada en el
+  archivo, identificación inexistente en hoja opcional, cambio de salario
+  reciente, Y LOS 2 TESTS DE LAS ANCLAS DE SEGURIDAD con valores exactos
+  (décimo=$300.00, salario_pendiente=$300.00). Suite completa backend:
+  211/211 (201 previos + 10 nuevos).
+- Frontend: npm run lint y npm run typecheck en verde.
+- Verificación manual completa en navegador (Docker): 2 empresas de
+  prueba creadas desde cero, asistente corrido de punta a punta con un
+  Excel real (4 hojas llenas), incluida la corrección del bug del rango
+  de fechas de la ancla detectado en esta misma verificación. Empresas de
+  prueba limpiadas de la BD de dev al cerrar.
+
+FUERA DE ALCANCE, DECISIÓN EXPLÍCITA
+--------------------------------------
+- Reportes/recibos históricos desde la app nueva (el usuario confirmó
+  que solo hace falta que el cálculo futuro sea correcto).
+- Botón de importación en empresa/accesos.vue para el camino
+  /mis-empresas/.../migracion -- no existe ese endpoint, y esa pantalla
+  no tiene un listado por cuenta donde encajarlo.

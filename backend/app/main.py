@@ -14,6 +14,7 @@ from app.routers import (
     health,
     horas_extra,
     liquidaciones,
+    migracion,
     mis_empresas,
     planillas,
     tasas,
@@ -49,3 +50,4 @@ app.include_router(usuarios_empresas.router)
 app.include_router(usuarios.router)
 app.include_router(mis_empresas.router)
 app.include_router(tasas.router)
+app.include_router(migracion.router)
