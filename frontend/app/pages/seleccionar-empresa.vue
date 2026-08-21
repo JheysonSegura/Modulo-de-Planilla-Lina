@@ -270,17 +270,17 @@ async function onResetearPassword(id: string) {
         <div
           v-for="a in admins"
           :key="a.id"
-          class="flex items-center justify-between gap-3 py-3 border-b border-gray-100 dark:border-gray-800 last:border-0 first:pt-0 last:pb-0"
+          class="py-3 border-b border-gray-100 dark:border-gray-800 last:border-0 first:pt-0 last:pb-0"
         >
-          <div class="min-w-0">
-            <div class="font-medium text-gray-900 dark:text-white truncate">
+          <div class="min-w-0 mb-2">
+            <div class="font-medium text-gray-900 dark:text-white break-words">
               {{ a.nombre_completo }}
             </div>
-            <div class="text-sm text-gray-500 truncate">
+            <div class="text-sm text-gray-500 break-words">
               {{ a.email }}
             </div>
           </div>
-          <div class="flex items-center gap-2 shrink-0">
+          <div class="flex flex-wrap items-center gap-2">
             <UBadge
               v-if="a.es_superadmin"
               color="warning"
