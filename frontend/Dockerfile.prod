@@ -1,0 +1,33 @@
+# Build multi-stage: la etapa "build" instala devDependencies y compila
+# el SPA (ssr:false); la imagen final solo lleva el resultado de
+# `nuxt build` (.output) y las dependencias de producción del server
+# Nitro que lo sirve -- no lleva node_modules completo ni código fuente.
+FROM node:22-alpine AS build
+
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci
+
+COPY . .
+RUN npm run build
+
+FROM node:22-alpine
+
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+COPY --from=build /app/.output ./.output
+
+# Auditoría de seguridad 2026-08-25 (hallazgo A4): a diferencia del
+# Dockerfile de desarrollo (bind-mount ./frontend:/app sobre una carpeta
+# sincronizada con OneDrive, que no tolera un usuario no privilegiado),
+# esta imagen de producción no monta el código como volumen -- "node" (ya
+# viene en node:alpine) puede ser dueño de /app sin conflicto.
+RUN chown -R node:node /app
+USER node
+
+EXPOSE 3000
+
+CMD ["node", ".output/server/index.mjs"]

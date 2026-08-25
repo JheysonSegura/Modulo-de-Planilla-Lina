@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile, sta
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_db_rls, get_empresa_activa_id, require_escritura
+from app.core.uploads import LIMITE_DOCUMENTO, leer_archivo_limitado
 from app.models import Empleado
 from app.schemas.empleados import EmpleadoCreate, EmpleadoOut, EmpleadoUpdate
 from app.services import empleados_service
@@ -64,7 +65,7 @@ async def subir_documento_identificacion(
             f"Formato de archivo no soportado: {archivo.content_type}",
         )
     empleado = empleados_service.obtener_empleado(db, empleado_id)
-    contenido = await archivo.read()
+    contenido = await leer_archivo_limitado(archivo, LIMITE_DOCUMENTO)
     return empleados_service.actualizar_documento_identificacion(
         db, empleado, contenido, archivo.content_type, archivo.filename or "documento"
     )
@@ -98,7 +99,7 @@ async def subir_documento_certificado_medico(
             f"Formato de archivo no soportado: {archivo.content_type}",
         )
     empleado = empleados_service.obtener_empleado(db, empleado_id)
-    contenido = await archivo.read()
+    contenido = await leer_archivo_limitado(archivo, LIMITE_DOCUMENTO)
     return empleados_service.actualizar_documento_certificado_medico(
         db, empleado, contenido, archivo.content_type, archivo.filename or "documento"
     )

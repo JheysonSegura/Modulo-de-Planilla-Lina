@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.deps import get_db_rls, get_empresa_activa_id, get_usuario_actual, require_escritura
 from app.core.responses import respuesta_archivo
+from app.core.uploads import LIMITE_DOCUMENTO, leer_archivo_limitado
 from app.models import Liquidacion, Usuario
 from app.schemas.liquidaciones import GenerarLiquidacionRequest, LiquidacionOut
 from app.schemas.reportes import FormatoRecibo
@@ -94,7 +95,7 @@ async def pagar_liquidacion(
             f"Formato de archivo no soportado: {archivo.content_type}",
         )
     liquidacion = liquidaciones_service.obtener_liquidacion(db, liquidacion_id)
-    contenido = await archivo.read()
+    contenido = await leer_archivo_limitado(archivo, LIMITE_DOCUMENTO)
     return liquidaciones_service.pagar_liquidacion(
         db,
         empresa_id,

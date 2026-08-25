@@ -10,6 +10,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.core import deps as deps_module
 from app.core.config import settings
+from app.core.rate_limit import limiter
 from app.core.security import hash_password
 from app.main import app
 from app.models import Empleado, Empresa, Rol, SalarioMinimoVigente, Usuario, UsuarioEmpresa
@@ -79,6 +80,10 @@ def client(SessionTest):
             session.close()
 
     app.dependency_overrides[deps_module.get_db] = override_get_db
+    # Todos los tests comparten la misma IP falsa del TestClient -- sin
+    # resetear, el rate limit de /auth/login (ver routers/auth.py) se
+    # acumularía entre tests hasta bloquear logins legítimos.
+    limiter.reset()
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()

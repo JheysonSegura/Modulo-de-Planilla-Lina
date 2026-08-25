@@ -1,0 +1,84 @@
+# Compose de producción -- genérico y pensado para ajustarse al servidor
+# real cuando se elija (auditoría de seguridad 2026-08-25, hallazgo A4).
+# Diferencias clave contra docker-compose.yml (desarrollo):
+#   - Imágenes de Dockerfile.prod: sin --reload, con varios workers,
+#     usuario no privilegiado (seguro acá porque NO hay bind-mount de
+#     código -- ver Dockerfile.prod para el porqué de esa distinción).
+#   - Sin bind-mounts de código: el código vive horneado en la imagen.
+#   - Sin publicar el puerto de Postgres: solo el backend lo alcanza,
+#     por la red interna de Compose (antes quedaba en 0.0.0.0).
+#   - restart: unless-stopped y healthchecks en los 3 servicios.
+#   - ENVIRONMENT fijo en "production": activa el chequeo de arranque de
+#     backend/app/core/config.py que rechaza los secretos de desarrollo.
+#
+# Uso: requiere un .env.production propio (ver .env.production.example)
+# con secretos reales generados para este despliegue -- nunca reutilizar
+# los valores de desarrollo.
+#   docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+#
+# Pendiente de decidir cuando se elija el servidor real: terminación TLS
+# y reverse proxy (nginx/Caddy/Traefik) delante de estos dos puertos,
+# backups automáticos de "db_data" (ver AUDITORIA-SEGURIDAD-2026-08-25.md,
+# hallazgo M6 -- fuera del alcance de este compose).
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_APP_USER}:${POSTGRES_APP_PASSWORD}@db:5432/${POSTGRES_DB}
+      DATABASE_URL_ADMIN: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      POSTGRES_APP_USER: ${POSTGRES_APP_USER}
+      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      ENVIRONMENT: production
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
+    ports:
+      - "${BACKEND_PORT}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+    environment:
+      NUXT_PUBLIC_API_BASE: ${NUXT_PUBLIC_API_BASE}
+    ports:
+      - "${FRONTEND_PORT}:3000"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  db_data:

@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile, sta
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_db_rls, get_empresa_activa_id, require_escritura
+from app.core.uploads import LIMITE_DOCUMENTO, leer_archivo_limitado
 from app.models import Ausencia
 from app.schemas.ausencias import AusenciaCreate, AusenciaOut
 from app.services import ausencias_service, contratos_service
@@ -62,7 +63,7 @@ async def subir_documento_ausencia(
             f"Formato de archivo no soportado: {archivo.content_type}",
         )
     ausencia = ausencias_service.obtener_ausencia(db, ausencia_id)
-    contenido = await archivo.read()
+    contenido = await leer_archivo_limitado(archivo, LIMITE_DOCUMENTO)
     return ausencias_service.actualizar_documento_constancia(
         db, ausencia, contenido, archivo.content_type, archivo.filename or "documento"
     )

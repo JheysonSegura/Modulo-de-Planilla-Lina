@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile, sta
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_db, get_empresa_activa_id, require_puede_crear_empresas, require_roles
+from app.core.uploads import LIMITE_LOGO, leer_archivo_limitado
 from app.models import Empresa, Usuario
 from app.schemas.empresas import EmpresaCreateRequest, EmpresaOut, EmpresaUpdate
 from app.services import empresas_service
@@ -55,7 +56,7 @@ async def subir_logo_empresa(
             f"Formato de imagen no soportado: {archivo.content_type}",
         )
     empresa = empresas_service.obtener_empresa_activa(db, empresa_id)
-    contenido = await archivo.read()
+    contenido = await leer_archivo_limitado(archivo, LIMITE_LOGO)
     return empresas_service.actualizar_logo(db, empresa, contenido, archivo.content_type)
 
 

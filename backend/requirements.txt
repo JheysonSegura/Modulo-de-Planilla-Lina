@@ -1,22 +1,24 @@
-fastapi==0.116.1
+fastapi==0.135.0
+# Fijado explícito: fastapi>=0.135 ya no le pone techo a starlette (antes
+# exigía <0.48.0), pero seguimos pineando la versión real para
+# reproducibilidad. 0.47.3 (la que traía fastapi==0.116.1) tenía CVEs
+# reales sin parchear en esa rama -- el fix llegó recién en la serie 1.x.
+starlette==1.6.0
 uvicorn[standard]==0.35.0
 sqlalchemy==2.0.36
 alembic==1.14.0
 psycopg[binary]==3.2.3
 pydantic-settings==2.7.0
-python-dotenv==1.0.1
+python-dotenv==1.2.2
 passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
-PyJWT==2.9.0
+PyJWT==2.13.0
 email-validator==2.2.0
 pytest==8.3.4
 httpx==0.28.1
-weasyprint==62.3
-# Fijado: pydyf>=0.12 rompe weasyprint 62.3 en runtime (AttributeError:
-# 'super' object has no attribute 'transform', Stream.transform de
-# pydyf 0.12 no es compatible con lo que weasyprint 62.3 espera, aunque
-# su constraint declarado sea solo ">=0.10.0").
-pydyf==0.11.0
-jinja2==3.1.5
+weasyprint==68.0
+pydyf==0.12.1
+jinja2==3.1.6
 openpyxl==3.1.5
-python-multipart==0.0.20
+python-multipart==0.0.31
+slowapi==0.1.9

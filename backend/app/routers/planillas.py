@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.deps import get_db_rls, get_empresa_activa_id, get_usuario_actual, require_escritura
 from app.core.responses import respuesta_archivo
+from app.core.uploads import LIMITE_DOCUMENTO, leer_archivo_limitado
 from app.models import MovimientoPlanilla, Planilla, Usuario
 from app.schemas.planillas import GenerarPlanillaRequest, MovimientoPlanillaOut, PlanillaOut
 from app.schemas.reportes import FormatoExportacion, FormatoRecibo
@@ -79,7 +80,7 @@ async def pagar_planilla(
             f"Formato de archivo no soportado: {archivo.content_type}",
         )
     planilla = planilla_service.obtener_planilla(db, planilla_id)
-    contenido = await archivo.read()
+    contenido = await leer_archivo_limitado(archivo, LIMITE_DOCUMENTO)
     return planilla_service.pagar_planilla(
         db,
         empresa_id,
@@ -107,7 +108,7 @@ async def reemplazar_constancia_pago(
             f"Formato de archivo no soportado: {archivo.content_type}",
         )
     planilla = planilla_service.obtener_planilla(db, planilla_id)
-    contenido = await archivo.read()
+    contenido = await leer_archivo_limitado(archivo, LIMITE_DOCUMENTO)
     return planilla_service.reemplazar_constancia_pago(
         db,
         empresa_id,

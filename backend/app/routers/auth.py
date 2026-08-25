@@ -1,9 +1,10 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_claims_actuales, get_db, get_usuario_actual
+from app.core.rate_limit import limiter
 from app.models import Usuario
 from app.schemas.auth import (
     CambiarPasswordTemporalRequest,
@@ -22,14 +23,20 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.post("/login", response_model=TokenResponse)
-def login(body: LoginRequest, db: Annotated[Session, Depends(get_db)]) -> TokenResponse:
+@limiter.limit("5/minute")
+def login(
+    request: Request, body: LoginRequest, db: Annotated[Session, Depends(get_db)]
+) -> TokenResponse:
     usuario = auth_service.autenticar(db, body.email, body.password)
     access_token, refresh_token = auth_service.emitir_tokens(db, usuario.id)
     return TokenResponse(access_token=access_token, refresh_token=refresh_token)
 
 
 @router.post("/refresh", response_model=TokenResponse)
-def refresh(body: RefreshRequest, db: Annotated[Session, Depends(get_db)]) -> TokenResponse:
+@limiter.limit("20/minute")
+def refresh(
+    request: Request, body: RefreshRequest, db: Annotated[Session, Depends(get_db)]
+) -> TokenResponse:
     access_token, refresh_token = auth_service.refrescar(db, body.refresh_token)
     return TokenResponse(access_token=access_token, refresh_token=refresh_token)
 
@@ -40,7 +47,9 @@ def logout(body: LogoutRequest, db: Annotated[Session, Depends(get_db)]) -> None
 
 
 @router.post("/cambiar-password-temporal", response_model=TokenResponse)
+@limiter.limit("5/minute")
 def cambiar_password_temporal(
+    request: Request,
     body: CambiarPasswordTemporalRequest,
     usuario: Annotated[Usuario, Depends(get_usuario_actual)],
     db: Annotated[Session, Depends(get_db)],
