@@ -16,10 +16,15 @@
 # los valores de desarrollo.
 #   docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
 #
+# Backups automáticos: servicio "backup" (auditoría de seguridad
+# 2026-08-25, hallazgo M6) -- pg_dump periódico a un volumen "db_backups"
+# separado, que backend/frontend NUNCA montan (aislado de la app a
+# propósito). Ver scripts/backup/backup_loop.sh (generación + retención)
+# y scripts/backup/restaurar.sh (prueba periódica de restauración, para
+# confirmar que un dump realmente sirve, no solo que el archivo existe).
+#
 # Pendiente de decidir cuando se elija el servidor real: terminación TLS
-# y reverse proxy (nginx/Caddy/Traefik) delante de estos dos puertos,
-# backups automáticos de "db_data" (ver AUDITORIA-SEGURIDAD-2026-08-25.md,
-# hallazgo M6 -- fuera del alcance de este compose).
+# y reverse proxy (nginx/Caddy/Traefik) delante de estos dos puertos.
 
 services:
   db:
@@ -80,5 +85,26 @@ services:
       - backend
     restart: unless-stopped
 
+  backup:
+    build:
+      context: ./scripts/backup
+    environment:
+      PGHOST: db
+      PGUSER: ${POSTGRES_USER}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB}
+      BACKUP_RETENCION_DIAS: ${BACKUP_RETENCION_DIAS:-14}
+      BACKUP_INTERVALO_SEGUNDOS: ${BACKUP_INTERVALO_SEGUNDOS:-86400}
+    volumes:
+      # Volumen propio, distinto de db_data -- ni backend ni frontend lo
+      # montan, para que un atacante con acceso solo a la app no pueda
+      # llegar a los backups (ver hallazgo M6).
+      - db_backups:/backups
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   db_data:
+  db_backups:

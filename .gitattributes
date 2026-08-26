@@ -1,0 +1,6 @@
+# Los scripts de shell corren dentro de contenedores Linux (scripts/backup/) --
+# con core.autocrlf=true (default recomendado en Windows), git los
+# convertiría a CRLF al hacer checkout, rompiendo el shebang "#!/bin/sh"
+# dentro de la imagen Docker. Forzar LF siempre, sin importar el OS del
+# checkout.
+*.sh text eol=lf

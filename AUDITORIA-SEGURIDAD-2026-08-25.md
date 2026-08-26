@@ -24,7 +24,7 @@ Los 6 hallazgos Críticos y Altos que admitían un fix acotado quedaron **arregl
 | M3 | `/docs`/`/redoc`/`/openapi.json` expuestos sin restricción | ✅ Arreglado — deshabilitados cuando `ENVIRONMENT=production` |
 | M4 | Validación de archivos solo por `Content-Type` declarado | ✅ Arreglado — `core/uploads.py::validar_firma_imagen`/`validar_firma_excel` verifican magic bytes reales (PNG/JPEG/WEBP) y escanean SVG por `<script>`/`on*=`/`javascript:`; aplicado en logo de empresa y Excel de migración |
 | M5 | Sin logging de eventos de seguridad | ✅ Arreglado — logger `nomina.seguridad`: intentos de login fallidos (email+IP, nunca password) en `auth_service.autenticar`, resets de contraseña en `usuarios_service.resetear_password` (los 3 endpoints) |
-| M6 | Sin estrategia de backups de BD | Sin tocar — operacional, fuera del alcance de código de esta sesión |
+| M6 | Sin estrategia de backups de BD | ✅ Arreglado — servicio `backup` en `docker-compose.prod.yml` (imagen propia en `scripts/backup/`): `pg_dump` periódico comprimido a un volumen `db_backups` que backend/frontend NUNCA montan (aislado de la app), con purga por retención (`BACKUP_RETENCION_DIAS`, default 14 días) y `scripts/backup/restaurar.sh` para probar la restauración periódicamente contra una BD descartable. Verificado end-to-end con un stack de producción real levantado en paralelo: se generaron backups reales, se corrieron las migraciones, y se restauró un dump con esquema + datos semilla en una base nueva sin errores |
 | B1 | Password mínimo de 8 sin complejidad | ✅ Arreglado — mínimo subido a 10 (backend + validación espejo en frontend) |
 | B2 | CORS con `allow_methods`/`allow_headers` wildcard | ✅ Arreglado — acotado a los métodos/headers que el frontend realmente usa |
 | B3 | Cookies del frontend sin `secure` explícito | ✅ Arreglado — `secure: !import.meta.dev` en `useAuth.ts` |
@@ -32,7 +32,7 @@ Los 6 hallazgos Críticos y Altos que admitían un fix acotado quedaron **arregl
 | B5 | Imágenes Docker sin digest | Sin tocar — fuera de alcance de esta sesión |
 | B6 | HTTPS/HSTS depende de infraestructura externa | Sin tocar — no es código, confirmar en el plan de despliegue |
 
-Pendiente explícito: A2 (JWT en cookies httpOnly, diferido) y M6/B5/B6 (operacionales/infraestructura).
+Pendiente explícito: A2 (JWT en cookies httpOnly, diferido) y B5/B6 (infraestructura sin código que tocar).
 
 ---
 
@@ -254,6 +254,8 @@ No verificable en el código — normal para un repo de aplicación (el TLS lo t
 ---
 
 ## Qué arreglar ANTES de exponer a internet (bloqueante) vs qué puede esperar
+
+**Actualización 2026-08-26: los 8 puntos bloqueantes de la lista original ya están arreglados y verificados** (ver las tablas de estado de remediación arriba). Se deja la lista tal cual quedó redactada el día de la auditoría, como registro de lo que se pidió priorizar.
 
 **Bloqueante (hacer antes de producción, todo de bajo costo):**
 1. C1 — eliminar defaults inseguros de secretos/credenciales, forzar fallo de arranque si faltan.
