@@ -15,7 +15,24 @@ Los 6 hallazgos Críticos y Altos que admitían un fix acotado quedaron **arregl
 | A5 | Sin límite de tamaño en uploads | ✅ Arreglado — helper `core/uploads.py`, aplicado en los 6 endpoints de subida (logo 5MB, documentos 10MB, Excel migración 20MB) |
 | A2 | Tokens JWT en cookies sin `httpOnly` | ⏸ **Diferido a pedido explícito del usuario** — requiere rediseño completo del mecanismo de sesión (backend `deps.py`/`auth_service.py`/CORS + frontend `useAuth.ts`/`useApi.ts` completos), alto riesgo de regresión. Mitigado en buena parte por A3 (CSP reduce la probabilidad de XSS, que es el vector real de robo de token en el diseño actual). Recomendación: abordarlo en una sesión dedicada con testing exhaustivo en navegador real. |
 
-Los hallazgos Medios y Bajos del reporte original (más abajo) siguen sin tocar.
+## Estado de remediación — Medios y Bajos (actualizado 2026-08-26)
+
+| # | Hallazgo | Estado |
+|---|---|---|
+| M1 | Recibo de pago: falta validar la planilla padre antes del movimiento | ✅ Arreglado — `recibo_pago` llama `obtener_planilla` antes de `obtener_movimiento`, igual que `recibos_pago_zip` |
+| M2 | `movimientos_planilla`/`historial_salarial` sin RLS propio | ✅ Arreglado — migración `0036_rls_movimientos_historial`: `empresa_id` denormalizado + backfill + `ENABLE/FORCE ROW LEVEL SECURITY` + política de aislamiento, mismo patrón que `provisiones_decimo`/`provisiones_vacaciones`. Los 6 sitios que crean estos registros (`contratos_service`, `planilla_service`, `decimo_service`, `migracion_service`) ahora pasan `empresa_id` explícito |
+| M3 | `/docs`/`/redoc`/`/openapi.json` expuestos sin restricción | ✅ Arreglado — deshabilitados cuando `ENVIRONMENT=production` |
+| M4 | Validación de archivos solo por `Content-Type` declarado | ✅ Arreglado — `core/uploads.py::validar_firma_imagen`/`validar_firma_excel` verifican magic bytes reales (PNG/JPEG/WEBP) y escanean SVG por `<script>`/`on*=`/`javascript:`; aplicado en logo de empresa y Excel de migración |
+| M5 | Sin logging de eventos de seguridad | ✅ Arreglado — logger `nomina.seguridad`: intentos de login fallidos (email+IP, nunca password) en `auth_service.autenticar`, resets de contraseña en `usuarios_service.resetear_password` (los 3 endpoints) |
+| M6 | Sin estrategia de backups de BD | Sin tocar — operacional, fuera del alcance de código de esta sesión |
+| B1 | Password mínimo de 8 sin complejidad | ✅ Arreglado — mínimo subido a 10 (backend + validación espejo en frontend) |
+| B2 | CORS con `allow_methods`/`allow_headers` wildcard | ✅ Arreglado — acotado a los métodos/headers que el frontend realmente usa |
+| B3 | Cookies del frontend sin `secure` explícito | ✅ Arreglado — `secure: !import.meta.dev` en `useAuth.ts` |
+| B4 | Campos de texto libre sin `max_length` | ✅ Arreglado — `direccion`, `detalle_enfermedad`, `certificado_ref` ahora tienen tope |
+| B5 | Imágenes Docker sin digest | Sin tocar — fuera de alcance de esta sesión |
+| B6 | HTTPS/HSTS depende de infraestructura externa | Sin tocar — no es código, confirmar en el plan de despliegue |
+
+Pendiente explícito: A2 (JWT en cookies httpOnly, diferido) y M6/B5/B6 (operacionales/infraestructura).
 
 ---
 

@@ -37,8 +37,13 @@ export function useAuth() {
   const config = useRuntimeConfig()
   const baseURL = config.public.apiBase
 
-  const accessToken = useCookie<string | null>('access_token', { sameSite: 'lax', default: () => null })
-  const refreshTokenCookie = useCookie<string | null>('refresh_token', { sameSite: 'lax', default: () => null })
+  // Auditoría de seguridad 2026-08-25 (hallazgo B3): antes dependía de que
+  // Nuxt infiriera 'secure' del entorno (no confirmado); fijarlo explícito
+  // según si es build de dev (import.meta.dev) evita que la cookie viaje
+  // en claro por error, sin romper el login en http://localhost.
+  const cookieOptions = { sameSite: 'lax' as const, secure: !import.meta.dev, default: () => null }
+  const accessToken = useCookie<string | null>('access_token', cookieOptions)
+  const refreshTokenCookie = useCookie<string | null>('refresh_token', cookieOptions)
 
   const usuario = useState<Usuario | null>('auth_usuario', () => null)
   const empresaActiva = useState<{ id: string, razon_social: string, nombre_comercial: string | null } | null>(

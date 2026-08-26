@@ -13,7 +13,7 @@ const schema = z.object({
   email: z.string().email('Email inválido'),
   rol: z.enum(['admin', 'contador', 'consulta']),
   nombre_completo: z.string().optional(),
-  password: z.string().min(8, 'Mínimo 8 caracteres').optional()
+  password: z.string().min(10, 'Mínimo 10 caracteres').optional()
 })
 type Schema = z.output<typeof schema>
 const state = reactive<Partial<Schema>>({ email: '', rol: 'consulta', nombre_completo: '', password: '' })

@@ -165,6 +165,13 @@ def recibo_pago(
     db: Annotated[Session, Depends(get_db_rls)],
     formato: Annotated[FormatoRecibo, Query()] = "pdf",
 ) -> Response:
+    # Auditoría de seguridad 2026-08-25 (hallazgo M1): antes se llamaba
+    # directo a obtener_movimiento, que hace un db.get() sin RLS (ver nota
+    # en planilla_service.obtener_movimiento) -- el único control real de
+    # que la planilla perteneciera a la empresa activa era un efecto
+    # colateral de reportes_service.armar_recibo_pago. Igual que
+    # recibos_pago_zip/listar_movimientos, se valida la planilla primero.
+    planilla_service.obtener_planilla(db, planilla_id)
     movimiento = planilla_service.obtener_movimiento(db, planilla_id, movimiento_id)
     contexto = reportes_service.armar_recibo_pago(db, movimiento)
     nombre_base = f"recibo-pago-{contexto['empleado_identificacion']}-{contexto['periodo_fin']}"

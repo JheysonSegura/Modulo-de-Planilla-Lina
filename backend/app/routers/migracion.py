@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.deps import get_db_rls, get_empresa_activa_id, get_usuario_actual, require_roles
 from app.core.responses import respuesta_archivo
-from app.core.uploads import LIMITE_EXCEL_MIGRACION, leer_archivo_limitado
+from app.core.uploads import LIMITE_EXCEL_MIGRACION, leer_archivo_limitado, validar_firma_excel
 from app.models import Usuario
 from app.schemas.migracion import (
     MigracionDisponibleOut,
@@ -58,6 +58,7 @@ async def validar(
 ) -> ResultadoValidacionMigracion:
     _validar_content_type(archivo)
     contenido = await leer_archivo_limitado(archivo, LIMITE_EXCEL_MIGRACION)
+    validar_firma_excel(contenido)
     return migracion_service.leer_y_validar(db, empresa_id, contenido, fecha_corte)
 
 
@@ -72,5 +73,6 @@ async def confirmar(
 ) -> ResultadoMigracionOut:
     _validar_content_type(archivo)
     contenido = await leer_archivo_limitado(archivo, LIMITE_EXCEL_MIGRACION)
+    validar_firma_excel(contenido)
     resumen = migracion_service.ejecutar_migracion(db, empresa_id, usuario.id, contenido, fecha_corte)
     return ResultadoMigracionOut(resumen=resumen, fecha_corte=fecha_corte)

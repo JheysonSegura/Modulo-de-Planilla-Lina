@@ -144,5 +144,10 @@ class HistorialSalarial(Base):
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+    # Auditoría de seguridad 2026-08-25 (hallazgo M2): ver nota en
+    # MovimientoPlanilla.empresa_id -- misma denormalización, mismo motivo.
+    empresa_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("empresas.id")
+    )
 
     contrato: Mapped["Contrato"] = relationship(back_populates="historial_salarial")

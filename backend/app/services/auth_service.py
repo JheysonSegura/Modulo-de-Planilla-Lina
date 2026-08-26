@@ -1,4 +1,5 @@
 import datetime
+import logging
 import uuid
 
 import jwt
@@ -6,26 +7,36 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core import security
+from app.core.logging_config import LOGGER_SEGURIDAD
 from app.models import Usuario
 from app.repositories import empresas as empresas_repo
 from app.repositories import refresh_tokens as refresh_tokens_repo
 from app.repositories import usuarios as usuarios_repo
 
+logger = logging.getLogger(LOGGER_SEGURIDAD)
 
-def autenticar(db: Session, email: str, password: str) -> Usuario:
+
+def autenticar(db: Session, email: str, password: str, ip: str | None = None) -> Usuario:
+    # Auditoría de seguridad 2026-08-25 (hallazgo M5): sin esto no había
+    # ningún registro de intentos de login fallidos -- necesario para
+    # detectar fuerza bruta/credential stuffing (ver también C2, rate
+    # limiting). Nunca se loguea la contraseña.
     usuario = usuarios_repo.get_by_email(db, email)
     credenciales_invalidas = HTTPException(
         status.HTTP_401_UNAUTHORIZED, "Credenciales inválidas"
     )
     if usuario is None or not usuario.activo:
+        logger.warning("Login fallido (usuario inexistente/inactivo): email=%s ip=%s", email, ip)
         raise credenciales_invalidas
     if not security.verify_password(password, usuario.password_hash):
+        logger.warning("Login fallido (contraseña incorrecta): email=%s ip=%s", email, ip)
         raise credenciales_invalidas
     if (
         usuario.debe_cambiar_password
         and usuario.password_temporal_expira is not None
         and usuario.password_temporal_expira < datetime.datetime.now(datetime.timezone.utc)
     ):
+        logger.warning("Login fallido (temporal expirada): email=%s ip=%s", email, ip)
         raise HTTPException(
             status.HTTP_401_UNAUTHORIZED,
             "La contraseña temporal expiró. Pedile a un administrador que la restablezca de nuevo.",

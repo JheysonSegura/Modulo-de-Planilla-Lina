@@ -575,6 +575,7 @@ def ejecutar_migracion(
         historial_repo.crear(
             db,
             HistorialSalarial(
+                empresa_id=empresa_id,
                 contrato_id=contrato.id, salario_base=fila_e.contrato.salario_base,
                 fecha_vigencia_desde=fila_e.contrato.fecha_inicio, fecha_vigencia_hasta=None,
                 motivo="migracion (vigente)",
@@ -596,6 +597,7 @@ def ejecutar_migracion(
         movimientos_repo.crear(
             db,
             MovimientoPlanilla(
+                empresa_id=empresa_id,
                 planilla_id=planilla_ancla.id, contrato_id=contrato.id,
                 salario_base_periodo=_CERO, salario_bruto=_CERO, css_empleado=_CERO,
                 css_patronal=_CERO, seguro_educativo_empleado=_CERO,
@@ -627,6 +629,7 @@ def ejecutar_migracion(
             historial_repo.crear(
                 db,
                 HistorialSalarial(
+                    empresa_id=empresa_id,
                     contrato_id=contrato.id, salario_base=fila_c.salario_anterior,
                     fecha_vigencia_desde=fila_c.fecha_vigencia_desde,
                     fecha_vigencia_hasta=fila_c.fecha_vigencia_hasta, motivo="migracion (tramo anterior)",
@@ -664,6 +667,7 @@ def ejecutar_migracion(
         movimientos_repo.crear(
             db,
             MovimientoPlanilla(
+                empresa_id=empresa_id,
                 planilla_id=planilla_isr.id, contrato_id=contrato.id,
                 salario_base_periodo=_CERO, salario_bruto=_CERO, css_empleado=_CERO,
                 css_patronal=_CERO, seguro_educativo_empleado=_CERO,
@@ -685,6 +689,7 @@ def ejecutar_migracion(
         movimientos_repo.crear(
             db,
             MovimientoPlanilla(
+                empresa_id=empresa_id,
                 planilla_id=planilla_mes.id, contrato_id=contrato.id,
                 salario_base_periodo=fila_b.salario_bruto, salario_bruto=fila_b.salario_bruto,
                 css_empleado=_CERO, css_patronal=_CERO, seguro_educativo_empleado=_CERO,

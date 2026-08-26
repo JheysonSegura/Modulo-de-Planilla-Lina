@@ -1,15 +1,19 @@
 import datetime
+import logging
 import uuid
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core import security
+from app.core.logging_config import LOGGER_SEGURIDAD
 from app.models import Usuario
 from app.repositories import refresh_tokens as refresh_tokens_repo
 from app.repositories import usuarios as usuarios_repo
 from app.schemas.usuarios import UsuarioAdminOut
 from app.services import auditoria_service
+
+logger = logging.getLogger(LOGGER_SEGURIDAD)
 
 # Vigencia de una contraseña temporal generada por un reset (ver
 # resetear_password) -- pasado este plazo sin usarla, autenticar()
@@ -55,6 +59,15 @@ def resetear_password(
             db, empresa_id, actor_id, "usuarios", usuario.id, "password_reseteado"
         )
     db.commit()
+    # Auditoría de seguridad 2026-08-25 (hallazgo M5): complementa el
+    # registro de auditoria_cambios (que no siempre aplica -- ver el
+    # `if empresa_id is not None` arriba, el reset de superadmin no tiene
+    # empresa) con un log de seguridad uniforme para los 3 endpoints de
+    # reset. Nunca la contraseña temporal, solo que hubo un reset.
+    logger.info(
+        "Password reseteado: usuario_id=%s actor_id=%s empresa_id=%s",
+        usuario.id, actor_id, empresa_id,
+    )
     return password_temporal, expira_en
 
 

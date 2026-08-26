@@ -5,7 +5,10 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 from app.core.config import settings
+from app.core.logging_config import configurar_logging
 from app.core.rate_limit import limiter
+
+configurar_logging()
 from app.routers import (
     auditoria,
     auth,
@@ -27,7 +30,16 @@ from app.routers import (
     vacaciones,
 )
 
-app = FastAPI(title="Nómina Panamá API")
+# Auditoría de seguridad 2026-08-25 (hallazgo M3): en producción, /docs,
+# /redoc y /openapi.json regalaban el esquema completo de la API (rutas,
+# modelos, nombres de roles/tablas) a cualquiera sin autenticarse.
+_docs_activos = settings.environment != "production"
+app = FastAPI(
+    title="Nómina Panamá API",
+    docs_url="/docs" if _docs_activos else None,
+    redoc_url="/redoc" if _docs_activos else None,
+    openapi_url="/openapi.json" if _docs_activos else None,
+)
 
 # Auditoría de seguridad 2026-08-25 (hallazgo C2): /auth/login y compañía
 # no tenían ningún límite de intentos -- ver routers/auth.py para los
@@ -40,8 +52,13 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_allowed_origins_list,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    # Auditoría de seguridad 2026-08-25 (hallazgo B2): wildcards de método/
+    # header no eran explotables hoy (Starlette rechaza "*" real junto con
+    # allow_credentials=True), pero acotarlos a lo que el frontend realmente
+    # usa reduce la superficie sin costo -- ningún composable manda otros
+    # verbos ni headers custom.
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 

@@ -18,7 +18,9 @@ class UsuarioEmpresaCreate(BaseModel):
     email: EmailStr
     rol: RolNombre
     nombre_completo: str | None = Field(default=None, min_length=1, max_length=200)
-    password: str | None = Field(default=None, min_length=8)
+    # Auditoría de seguridad 2026-08-25 (hallazgo B1): ver nota en
+    # schemas/auth.py::CambiarPasswordTemporalRequest.
+    password: str | None = Field(default=None, min_length=10)
 
     @model_validator(mode="after")
     def _validar_datos_de_usuario_nuevo(self) -> "UsuarioEmpresaCreate":

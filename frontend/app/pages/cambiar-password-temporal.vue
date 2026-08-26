@@ -8,7 +8,7 @@ const { cambiarPasswordTemporal } = useAuth()
 
 const schema = z.object({
   password_actual: z.string().min(1, 'Obligatorio'),
-  password_nueva: z.string().min(8, 'Mínimo 8 caracteres'),
+  password_nueva: z.string().min(10, 'Mínimo 10 caracteres'),
   confirmar: z.string().min(1, 'Obligatorio')
 }).refine(d => d.password_nueva === d.confirmar, {
   message: 'Las contraseñas no coinciden',

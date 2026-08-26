@@ -38,6 +38,7 @@ def crear_contrato(
     historial_repo.crear(
         db,
         HistorialSalarial(
+            empresa_id=empresa_id,
             contrato_id=contrato.id,
             salario_base=data.salario_base,
             fecha_vigencia_desde=data.fecha_inicio,
@@ -127,6 +128,7 @@ def cambiar_salario(
     fecha_desde_anterior = vigente.fecha_vigencia_desde
 
     nuevo = HistorialSalarial(
+        empresa_id=contrato.empresa_id,
         contrato_id=contrato.id,
         salario_base=data.salario_base,
         fecha_vigencia_desde=data.fecha_vigencia_desde,

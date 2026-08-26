@@ -91,6 +91,16 @@ def _subir(client, headers, path, contenido, fecha_corte):
     )
 
 
+def test_validar_rechaza_contenido_que_no_es_un_excel_real(client, db):
+    # Auditoría de seguridad 2026-08-25 (hallazgo M4): el content_type
+    # multipart lo declara el cliente -- esto simula spoofearlo con
+    # texto plano que dice ser un .xlsx.
+    headers = _preparar_empresa_admin(db, client)
+    resp = _subir(client, headers, "/empresas/actual/migracion/validar", b"no es un excel", datetime.date(2026, 9, 1))
+    assert resp.status_code == 422, resp.text
+    assert "Excel" in resp.json()["detail"]
+
+
 def test_disponible_empresa_nueva(client, db):
     headers = _preparar_empresa_admin(db, client)
     resp = client.get("/empresas/actual/migracion/disponible", headers=headers)

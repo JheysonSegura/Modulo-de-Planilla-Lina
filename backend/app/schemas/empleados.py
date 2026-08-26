@@ -36,10 +36,10 @@ class EmpleadoBase(BaseModel):
     email_personal: str | None = Field(default=None, max_length=150)
     codigo_pais: str | None = Field(default=None, max_length=5)
     telefono: str | None = Field(default=None, max_length=30)
-    direccion: str | None = None
+    direccion: str | None = Field(default=None, max_length=500)
     numero_seguro_social: str | None = Field(default=None, max_length=30)
     padece_enfermedad: bool = False
-    detalle_enfermedad: str | None = None
+    detalle_enfermedad: str | None = Field(default=None, max_length=1000)
 
 
 class EmpleadoCreate(EmpleadoBase):
@@ -67,10 +67,10 @@ class EmpleadoUpdate(BaseModel):
     sexo: Sexo | None = None
     codigo_pais: str | None = Field(default=None, max_length=5)
     telefono: str | None = Field(default=None, max_length=30)
-    direccion: str | None = None
+    direccion: str | None = Field(default=None, max_length=500)
     numero_seguro_social: str | None = Field(default=None, max_length=30)
     padece_enfermedad: bool | None = None
-    detalle_enfermedad: str | None = None
+    detalle_enfermedad: str | None = Field(default=None, max_length=1000)
     estado: EstadoEmpleado | None = None
 
     @field_validator("fecha_nacimiento")

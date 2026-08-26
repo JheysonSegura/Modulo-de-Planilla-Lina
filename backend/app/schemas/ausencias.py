@@ -21,7 +21,7 @@ class AusenciaCreate(BaseModel):
     tipo: TipoAusencia
     fecha_desde: datetime.date
     fecha_hasta: datetime.date
-    certificado_ref: str | None = None
+    certificado_ref: str | None = Field(default=None, max_length=200)
 
     @model_validator(mode="after")
     def _validar_rango(self) -> "AusenciaCreate":

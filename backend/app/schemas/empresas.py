@@ -44,7 +44,7 @@ class EmpresaUpdate(BaseModel):
     tamano_empresa: str | None = Field(default=None, max_length=50)
     ruc: str | None = Field(default=None, min_length=1, max_length=30)
     dv: str | None = Field(default=None, max_length=5)
-    direccion: str | None = Field(default=None)
+    direccion: str | None = Field(default=None, max_length=500)
     telefono: str | None = Field(default=None, max_length=30)
 
 

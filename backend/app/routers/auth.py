@@ -27,7 +27,8 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 def login(
     request: Request, body: LoginRequest, db: Annotated[Session, Depends(get_db)]
 ) -> TokenResponse:
-    usuario = auth_service.autenticar(db, body.email, body.password)
+    ip = request.client.host if request.client else None
+    usuario = auth_service.autenticar(db, body.email, body.password, ip)
     access_token, refresh_token = auth_service.emitir_tokens(db, usuario.id)
     return TokenResponse(access_token=access_token, refresh_token=refresh_token)
 

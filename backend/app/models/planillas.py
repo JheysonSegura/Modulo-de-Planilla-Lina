@@ -84,6 +84,16 @@ class MovimientoPlanilla(Base):
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+    # Auditoría de seguridad 2026-08-25 (hallazgo M2): denormalizado desde
+    # contratos.empresa_id -- antes esta tabla no tenía RLS propio, el
+    # aislamiento entre empresas dependía 100% de que cada código nuevo
+    # recordara validar la planilla/contrato padre (ver hallazgo M1, que
+    # demostró que eso es frágil). Nullable por el mismo motivo que
+    # Planilla.empresa_id: consistencia con el patrón ya usado en el
+    # resto de tablas operativas.
+    empresa_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("empresas.id")
+    )
 
     planilla: Mapped["Planilla"] = relationship(back_populates="movimientos")
     conceptos_variables: Mapped[list["ConceptoVariable"]] = relationship(

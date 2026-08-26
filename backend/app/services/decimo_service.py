@@ -232,6 +232,7 @@ def generar_pago_decimo(
         salario_neto = monto - css_empleado
 
         movimiento = MovimientoPlanilla(
+            empresa_id=empresa_id,
             planilla_id=planilla.id,
             contrato_id=contrato.id,
             salario_base_periodo=monto,

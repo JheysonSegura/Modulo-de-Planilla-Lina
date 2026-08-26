@@ -133,9 +133,13 @@ def listar_movimientos(db: Session, planilla_id: uuid.UUID) -> list[MovimientoPl
 def obtener_movimiento(
     db: Session, planilla_id: uuid.UUID, movimiento_id: uuid.UUID
 ) -> MovimientoPlanilla:
-    """Fase 16: usado por el endpoint de recibo de pago. RLS ya filtra
-    por empresa; acá solo se valida que el movimiento pertenezca a la
-    planilla de la URL (evita recibos cruzados entre planillas)."""
+    """Fase 16: usado por el endpoint de recibo de pago. Desde la
+    auditoría de seguridad 2026-08-25 (hallazgo M2), movimientos_planilla
+    tiene RLS propio (antes el comentario de esta función decía "RLS ya
+    filtra por empresa", pero era falso -- ver migración
+    0036_rls_movimientos_historial); acá se valida además que el
+    movimiento pertenezca a la planilla de la URL (evita recibos
+    cruzados entre planillas de la misma empresa)."""
     movimiento = movimientos_repo.get(db, movimiento_id)
     if movimiento is None or movimiento.planilla_id != planilla_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Movimiento no encontrado")
@@ -428,6 +432,7 @@ def _calcular_movimiento_de_contrato(
     )
 
     movimiento = MovimientoPlanilla(
+        empresa_id=empresa.id,
         contrato_id=contrato.id,
         salario_base_periodo=salario_base_periodo,
         salario_bruto=salario_bruto,

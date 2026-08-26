@@ -272,3 +272,26 @@ def test_logo_empresa_subir_y_obtener(db, client):
     assert resp.status_code == 200, resp.text
     assert resp.headers["content-type"] == "image/png"
     assert resp.content == png_1x1
+
+
+def test_logo_empresa_rechaza_contenido_que_no_coincide_con_el_content_type(db, client):
+    # Auditoría de seguridad 2026-08-25 (hallazgo M4): el content_type lo
+    # declara el cliente -- esto simula spoofearlo con texto plano.
+    _empresa, headers = _preparar_empresa(db, client)
+    resp = client.put(
+        "/empresas/actual/logo",
+        files={"archivo": ("logo.png", b"no soy un png real", "image/png")},
+        headers=headers,
+    )
+    assert resp.status_code == 422, resp.text
+
+
+def test_logo_empresa_rechaza_svg_con_script_embebido(db, client):
+    _empresa, headers = _preparar_empresa(db, client)
+    svg_malicioso = b'<svg onload="alert(1)"><script>alert(1)</script></svg>'
+    resp = client.put(
+        "/empresas/actual/logo",
+        files={"archivo": ("logo.svg", svg_malicioso, "image/svg+xml")},
+        headers=headers,
+    )
+    assert resp.status_code == 422, resp.text

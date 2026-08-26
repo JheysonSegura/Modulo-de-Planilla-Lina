@@ -24,7 +24,10 @@ class LogoutRequest(BaseModel):
 
 class CambiarPasswordTemporalRequest(BaseModel):
     password_actual: str
-    password_nueva: str = Field(min_length=8)
+    # Auditoría de seguridad 2026-08-25 (hallazgo B1): 8 agravaba C2
+    # (fuerza bruta) al ser el mínimo típico de diccionario. No es
+    # explotable por sí solo, pero subir el piso es gratis.
+    password_nueva: str = Field(min_length=10)
 
 
 class SeleccionarEmpresaRequest(BaseModel):
