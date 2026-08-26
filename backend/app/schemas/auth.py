@@ -9,17 +9,12 @@ class LoginRequest(BaseModel):
 
 
 class TokenResponse(BaseModel):
+    # Auditoría de seguridad 2026-08-25 (hallazgo A2): el refresh token ya
+    # NO viaja en el body -- se setea como cookie httpOnly desde el
+    # router (ver routers/auth.py::_set_refresh_cookie). Incluirlo acá
+    # también habría anulado el punto de que sea httpOnly.
     access_token: str
-    refresh_token: str
     token_type: str = "bearer"
-
-
-class RefreshRequest(BaseModel):
-    refresh_token: str
-
-
-class LogoutRequest(BaseModel):
-    refresh_token: str
 
 
 class CambiarPasswordTemporalRequest(BaseModel):

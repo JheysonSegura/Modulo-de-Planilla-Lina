@@ -170,7 +170,13 @@ def refrescar(db: Session, refresh_token: str) -> tuple[str, str]:
     return emitir_tokens(db, usuario_id, empresa_id, rol_nombre)
 
 
-def cerrar_sesion(db: Session, refresh_token: str) -> None:
+def cerrar_sesion(db: Session, refresh_token: str | None) -> None:
+    # Auditoría de seguridad 2026-08-25 (hallazgo A2): el refresh token
+    # ahora llega desde una cookie (ver routers/auth.py), que puede no
+    # existir (ya expiró, ya se borró, o nunca hubo sesión) -- antes
+    # siempre llegaba un string real desde el body.
+    if refresh_token is None:
+        return
     try:
         claims = security.decodificar_token(refresh_token)
     except jwt.PyJWTError:

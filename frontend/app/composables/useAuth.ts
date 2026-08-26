@@ -16,7 +16,6 @@ export interface EmpresaAcceso {
 
 interface TokenResponse {
   access_token: string
-  refresh_token: string
   token_type: string
 }
 
@@ -27,23 +26,23 @@ interface MeResponse {
 }
 
 /**
- * Sesión global: tokens en cookies (sobreviven un refresh de página),
- * usuario/empresa/rol en useState (reactivo, compartido entre todos
- * los composables/páginas). Los endpoints de /auth/* se llaman aquí
- * directo con $fetch (no vía useApi) para evitar el ciclo
- * refresh-llama-a-refresh.
+ * Sesión global: el access token vive SOLO en memoria (useState, se
+ * pierde en cada recarga de página a propósito -- ver hallazgo A2 de
+ * AUDITORIA-SEGURIDAD-2026-08-25.md), el refresh token vive en una
+ * cookie httpOnly que pone el backend (routers/auth.py) e invisible
+ * para JavaScript. usuario/empresa/rol en useState (reactivo,
+ * compartido entre todos los composables/páginas). Los endpoints de
+ * /auth/* se llaman aquí directo con $fetch (no vía useApi) para evitar
+ * el ciclo refresh-llama-a-refresh. `credentials: 'include'` es
+ * necesario en todas las llamadas a /auth/* para que el navegador
+ * mande/reciba la cookie httpOnly -- requiere que frontend y API sean
+ * subdominios del mismo dominio registrable (ver routers/auth.py).
  */
 export function useAuth() {
   const config = useRuntimeConfig()
   const baseURL = config.public.apiBase
 
-  // Auditoría de seguridad 2026-08-25 (hallazgo B3): antes dependía de que
-  // Nuxt infiriera 'secure' del entorno (no confirmado); fijarlo explícito
-  // según si es build de dev (import.meta.dev) evita que la cookie viaje
-  // en claro por error, sin romper el login en http://localhost.
-  const cookieOptions = { sameSite: 'lax' as const, secure: !import.meta.dev, default: () => null }
-  const accessToken = useCookie<string | null>('access_token', cookieOptions)
-  const refreshTokenCookie = useCookie<string | null>('refresh_token', cookieOptions)
+  const accessToken = useState<string | null>('auth_access_token', () => null)
 
   const usuario = useState<Usuario | null>('auth_usuario', () => null)
   const empresaActiva = useState<{ id: string, razon_social: string, nombre_comercial: string | null } | null>(
@@ -56,7 +55,6 @@ export function useAuth() {
 
   function limpiarSesion() {
     accessToken.value = null
-    refreshTokenCookie.value = null
     usuario.value = null
     empresaActiva.value = null
     rolActivo.value = null
@@ -66,10 +64,10 @@ export function useAuth() {
     const data = await $fetch<TokenResponse>('/auth/login', {
       baseURL,
       method: 'POST',
+      credentials: 'include',
       body: { email, password }
     })
     accessToken.value = data.access_token
-    refreshTokenCookie.value = data.refresh_token
   }
 
   async function listarEmpresas(): Promise<EmpresaAcceso[]> {
@@ -83,18 +81,24 @@ export function useAuth() {
     const data = await $fetch<TokenResponse>('/auth/seleccionar-empresa', {
       baseURL,
       method: 'POST',
+      credentials: 'include',
       headers: { Authorization: `Bearer ${accessToken.value}` },
       body: { empresa_id: empresaId }
     })
     accessToken.value = data.access_token
-    refreshTokenCookie.value = data.refresh_token
     await hidratarSesion()
   }
 
-  /** Vuelve a llamar /auth/me para poblar usuario/empresa/rol -- se
-   * usa al arrancar la app (plugin) y tras seleccionar empresa. */
+  /** Vuelve a llamar /auth/me para poblar usuario/empresa/rol -- se usa
+   * al arrancar la app (plugin) y tras seleccionar empresa. Si todavía
+   * no hay access token en memoria (recién arrancó la app, o se acaba
+   * de recargar la página), intenta primero un refresh silencioso
+   * contra la cookie httpOnly antes de darse por vencido. */
   async function hidratarSesion() {
-    if (!accessToken.value) return
+    if (!accessToken.value) {
+      const refrescado = await refrescarSesion()
+      if (!refrescado) return
+    }
     try {
       const me = await $fetch<MeResponse>('/auth/me', {
         baseURL,
@@ -117,18 +121,17 @@ export function useAuth() {
     }
   }
 
-  /** Intenta refrescar el access token una vez. Devuelve false (y
-   * limpia la sesión) si el refresh token también es inválido. */
+  /** Intenta refrescar el access token una vez, usando la cookie
+   * httpOnly (nunca visible acá -- el navegador la manda solo). Devuelve
+   * false (y limpia la sesión) si no hay cookie o ya no es válida. */
   async function refrescarSesion(): Promise<boolean> {
-    if (!refreshTokenCookie.value) return false
     try {
       const data = await $fetch<TokenResponse>('/auth/refresh', {
         baseURL,
         method: 'POST',
-        body: { refresh_token: refreshTokenCookie.value }
+        credentials: 'include'
       })
       accessToken.value = data.access_token
-      refreshTokenCookie.value = data.refresh_token
       return true
     } catch {
       limpiarSesion()
@@ -144,25 +147,23 @@ export function useAuth() {
     const data = await $fetch<TokenResponse>('/auth/cambiar-password-temporal', {
       baseURL,
       method: 'POST',
+      credentials: 'include',
       headers: { Authorization: `Bearer ${accessToken.value}` },
       body: { password_actual: passwordActual, password_nueva: passwordNueva }
     })
     accessToken.value = data.access_token
-    refreshTokenCookie.value = data.refresh_token
     await hidratarSesion()
   }
 
   async function logout() {
-    if (refreshTokenCookie.value) {
-      try {
-        await $fetch('/auth/logout', {
-          baseURL,
-          method: 'POST',
-          body: { refresh_token: refreshTokenCookie.value }
-        })
-      } catch {
-        // No bloquear el logout local si el server ya no responde.
-      }
+    try {
+      await $fetch('/auth/logout', {
+        baseURL,
+        method: 'POST',
+        credentials: 'include'
+      })
+    } catch {
+      // No bloquear el logout local si el server ya no responde.
     }
     limpiarSesion()
   }

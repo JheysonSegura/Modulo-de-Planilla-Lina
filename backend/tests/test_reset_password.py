@@ -99,16 +99,21 @@ def test_reset_queda_auditado(client, db):
 
 
 def test_reset_revoca_refresh_tokens_previos(client, db):
+    # Auditoría de seguridad 2026-08-25 (hallazgo A2): el refresh token ya
+    # no viaja en el body -- vive en una cookie httpOnly.
     empresa, admin, contador, headers_admin = _preparar_admin_y_contador(db, client)
 
     resp = client.post("/auth/login", json={"email": contador.email, "password": "Secreta123!"})
-    refresh_previo = resp.json()["refresh_token"]
+    assert resp.status_code == 200, resp.text
+    refresh_previo = client.cookies.get("refresh_token")
+    assert refresh_previo is not None
 
     vinculo_id = _vinculo_id(client, headers_admin, contador.email)
     resp = client.post(f"/empresas/actual/usuarios/{vinculo_id}/resetear-password", headers=headers_admin)
     assert resp.status_code == 200, resp.text
 
-    resp = client.post("/auth/refresh", json={"refresh_token": refresh_previo})
+    client.cookies.set("refresh_token", refresh_previo)
+    resp = client.post("/auth/refresh")
     assert resp.status_code == 401
 
 

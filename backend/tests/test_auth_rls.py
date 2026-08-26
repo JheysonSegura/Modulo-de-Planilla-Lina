@@ -15,7 +15,10 @@ def test_login_y_seleccion_de_empresa(client, db):
     resp = client.post("/auth/login", json={"email": usuario.email, "password": "Secreta123!"})
     assert resp.status_code == 200
     tokens = resp.json()
-    assert tokens["access_token"] and tokens["refresh_token"]
+    # Auditoría de seguridad 2026-08-25 (hallazgo A2): el refresh token ya
+    # no viaja en el body -- vive en una cookie httpOnly.
+    assert tokens["access_token"]
+    assert client.cookies.get("refresh_token") is not None
 
     headers = {"Authorization": f"Bearer {tokens['access_token']}"}
 
@@ -119,24 +122,31 @@ def test_no_ve_empleados_de_otra_empresa_ni_manipulando_empresa_id(client, db):
 
 
 def test_refresh_rota_token_y_logout_revoca(client, db):
+    # Auditoría de seguridad 2026-08-25 (hallazgo A2): el refresh token ya
+    # no viaja en el body -- vive en una cookie httpOnly que el propio
+    # TestClient persiste solo entre requests (igual que un navegador).
     empresa = crear_empresa(db, _sufijo())
     usuario = crear_usuario(db, f"user-{_sufijo()}@example.com")
     vincular(db, usuario, empresa, "admin")
 
     resp = client.post("/auth/login", json={"email": usuario.email, "password": "Secreta123!"})
-    tokens = resp.json()
-
-    resp = client.post("/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
     assert resp.status_code == 200
-    nuevos = resp.json()
-    assert nuevos["refresh_token"] != tokens["refresh_token"]
+    refresh_previo = client.cookies.get("refresh_token")
+    assert refresh_previo is not None
+
+    resp = client.post("/auth/refresh")
+    assert resp.status_code == 200
+    refresh_nuevo = client.cookies.get("refresh_token")
+    assert refresh_nuevo != refresh_previo
 
     # El refresh token viejo fue rotado/revocado: no sirve una segunda vez.
-    resp = client.post("/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
+    client.cookies.set("refresh_token", refresh_previo)
+    resp = client.post("/auth/refresh")
     assert resp.status_code == 401
 
-    resp = client.post("/auth/logout", json={"refresh_token": nuevos["refresh_token"]})
+    client.cookies.set("refresh_token", refresh_nuevo)
+    resp = client.post("/auth/logout")
     assert resp.status_code == 204
 
-    resp = client.post("/auth/refresh", json={"refresh_token": nuevos["refresh_token"]})
+    resp = client.post("/auth/refresh")
     assert resp.status_code == 401
