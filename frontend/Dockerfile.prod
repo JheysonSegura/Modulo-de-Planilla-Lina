@@ -2,7 +2,10 @@
 # el SPA (ssr:false); la imagen final solo lleva el resultado de
 # `nuxt build` (.output) y las dependencias de producción del server
 # Nitro que lo sirve -- no lleva node_modules completo ni código fuente.
-FROM node:22-alpine AS build
+# Auditoría de seguridad 2026-08-25 (hallazgo B5): ver nota en
+# frontend/Dockerfile -- mismo pin, misma razón. Las dos etapas usan el
+# mismo digest a propósito (misma imagen base para build y runtime).
+FROM node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32 AS build
 
 WORKDIR /app
 
@@ -12,7 +15,7 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
-FROM node:22-alpine
+FROM node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32
 
 WORKDIR /app
 

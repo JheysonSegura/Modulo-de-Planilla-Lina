@@ -29,10 +29,10 @@ Los 6 hallazgos Críticos y Altos que admitían un fix acotado quedaron **arregl
 | B2 | CORS con `allow_methods`/`allow_headers` wildcard | ✅ Arreglado — acotado a los métodos/headers que el frontend realmente usa |
 | B3 | Cookies del frontend sin `secure` explícito | ✅ Arreglado — `secure: !import.meta.dev` en `useAuth.ts` |
 | B4 | Campos de texto libre sin `max_length` | ✅ Arreglado — `direccion`, `detalle_enfermedad`, `certificado_ref` ahora tienen tope |
-| B5 | Imágenes Docker sin digest | Sin tocar — fuera de alcance de esta sesión |
+| B5 | Imágenes Docker sin digest | ✅ Arreglado — las 4 imágenes base (`python:3.12-slim`, `node:22-alpine`, `postgres:16-alpine`, `caddy:2-alpine`) fijadas con `tag@sha256:...` en los 7 lugares donde aparecen (Dockerfiles de dev/prod de backend y frontend, `scripts/backup/Dockerfile`, y los 2 `docker-compose*.yml`). Verificado con rebuild real de las imágenes de dev + suite completa (217/217) + datos existentes intactos tras recrear el contenedor de Postgres |
 | B6 | HTTPS/HSTS depende de infraestructura externa | ✅ Reverse proxy dejado armado — servicio `proxy` (Caddy) en `docker-compose.prod.yml`, con HTTPS automático (Let's Encrypt) para `DOMINIO_FRONTEND`/`DOMINIO_API` y `Strict-Transport-Security` explícito en el frontend (el backend ya lo manda desde A3). `backend`/`frontend` dejaron de publicar sus puertos a `0.0.0.0` — el proxy es la única puerta de entrada pública; ahora solo quedan en loopback para debug vía túnel SSH. Verificado el enrutamiento end-to-end (health check + un POST real a `/auth/login`) contra un stack aislado con dominios de prueba en HTTP plano — la emisión de un certificado real todavía no es verificable porque **no existe dominio/servidor elegido**, así que esa parte queda pendiente de activar el día que se elijan (ver comentarios en `docker-compose.prod.yml` y `scripts/proxy/Caddyfile`) |
 
-Pendiente explícito: A2 (JWT en cookies httpOnly, diferido); B5 (sin tocar, no urgente); y la emisión real del certificado TLS de B6, que depende de que exista un dominio/servidor real (el reverse proxy que lo hará ya está armado).
+Pendiente explícito: solo A2 (JWT en cookies httpOnly, diferido a pedido del usuario) y la emisión real del certificado TLS de B6, que depende de que exista un dominio/servidor real (el reverse proxy que lo hará ya está armado). Con esto, el reporte queda cerrado en todo lo demás.
 
 ---
 
