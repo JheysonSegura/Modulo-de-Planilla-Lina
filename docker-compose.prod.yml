@@ -23,8 +23,14 @@
 # y scripts/backup/restaurar.sh (prueba periódica de restauración, para
 # confirmar que un dump realmente sirve, no solo que el archivo existe).
 #
-# Pendiente de decidir cuando se elija el servidor real: terminación TLS
-# y reverse proxy (nginx/Caddy/Traefik) delante de estos dos puertos.
+# Reverse proxy con TLS: servicio "proxy" (hallazgo B6) -- Caddy emite y
+# renueva certificados solo (Let's Encrypt) para DOMINIO_FRONTEND/
+# DOMINIO_API, sin gestión manual de certificados. backend/frontend ya
+# NO publican sus puertos al host: el proxy es la única puerta de
+# entrada pública (80/443); ${BACKEND_PORT}/${FRONTEND_PORT} solo
+# quedan disponibles en loopback (127.0.0.1) para debug puntual vía
+# túnel SSH, nunca en 0.0.0.0. Pendiente de activar de verdad cuando se
+# elijan el dominio y el servidor -- ver scripts/proxy/Caddyfile.
 
 services:
   db:
@@ -55,7 +61,7 @@ services:
       ENVIRONMENT: production
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
     ports:
-      - "${BACKEND_PORT}:8000"
+      - "127.0.0.1:${BACKEND_PORT}:8000"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
       interval: 30s
@@ -74,7 +80,7 @@ services:
     environment:
       NUXT_PUBLIC_API_BASE: ${NUXT_PUBLIC_API_BASE}
     ports:
-      - "${FRONTEND_PORT}:3000"
+      - "127.0.0.1:${FRONTEND_PORT}:3000"
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000"]
       interval: 30s
@@ -105,6 +111,25 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  proxy:
+    image: caddy:2-alpine
+    environment:
+      DOMINIO_FRONTEND: ${DOMINIO_FRONTEND}
+      DOMINIO_API: ${DOMINIO_API}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./scripts/proxy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - backend
+      - frontend
+    restart: unless-stopped
+
 volumes:
   db_data:
   db_backups:
+  caddy_data:
+  caddy_config:

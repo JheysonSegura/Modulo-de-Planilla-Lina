@@ -30,9 +30,9 @@ Los 6 hallazgos Críticos y Altos que admitían un fix acotado quedaron **arregl
 | B3 | Cookies del frontend sin `secure` explícito | ✅ Arreglado — `secure: !import.meta.dev` en `useAuth.ts` |
 | B4 | Campos de texto libre sin `max_length` | ✅ Arreglado — `direccion`, `detalle_enfermedad`, `certificado_ref` ahora tienen tope |
 | B5 | Imágenes Docker sin digest | Sin tocar — fuera de alcance de esta sesión |
-| B6 | HTTPS/HSTS depende de infraestructura externa | Sin tocar — no es código, confirmar en el plan de despliegue |
+| B6 | HTTPS/HSTS depende de infraestructura externa | ✅ Reverse proxy dejado armado — servicio `proxy` (Caddy) en `docker-compose.prod.yml`, con HTTPS automático (Let's Encrypt) para `DOMINIO_FRONTEND`/`DOMINIO_API` y `Strict-Transport-Security` explícito en el frontend (el backend ya lo manda desde A3). `backend`/`frontend` dejaron de publicar sus puertos a `0.0.0.0` — el proxy es la única puerta de entrada pública; ahora solo quedan en loopback para debug vía túnel SSH. Verificado el enrutamiento end-to-end (health check + un POST real a `/auth/login`) contra un stack aislado con dominios de prueba en HTTP plano — la emisión de un certificado real todavía no es verificable porque **no existe dominio/servidor elegido**, así que esa parte queda pendiente de activar el día que se elijan (ver comentarios en `docker-compose.prod.yml` y `scripts/proxy/Caddyfile`) |
 
-Pendiente explícito: A2 (JWT en cookies httpOnly, diferido) y B5/B6 (infraestructura sin código que tocar).
+Pendiente explícito: A2 (JWT en cookies httpOnly, diferido); B5 (sin tocar, no urgente); y la emisión real del certificado TLS de B6, que depende de que exista un dominio/servidor real (el reverse proxy que lo hará ya está armado).
 
 ---
 

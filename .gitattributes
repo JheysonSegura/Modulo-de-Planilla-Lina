@@ -2,5 +2,7 @@
 # con core.autocrlf=true (default recomendado en Windows), git los
 # convertiría a CRLF al hacer checkout, rompiendo el shebang "#!/bin/sh"
 # dentro de la imagen Docker. Forzar LF siempre, sin importar el OS del
-# checkout.
+# checkout. El Caddyfile (scripts/proxy/) no tiene shebang, pero corre
+# en el mismo tipo de contenedor Linux -- mismo criterio por consistencia.
 *.sh text eol=lf
+Caddyfile text eol=lf

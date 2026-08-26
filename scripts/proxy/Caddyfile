@@ -1,0 +1,22 @@
+# Auditoría de seguridad 2026-08-25 (hallazgo B6): reverse proxy con TLS
+# delante de backend/frontend -- sin esto, ni HSTS ni la cookie `secure`
+# (ver B3, useAuth.ts) tienen ningún efecto real, y las contraseñas/JWT
+# viajarían en texto plano. Caddy emite y renueva los certificados solo
+# (Let's Encrypt vía ACME) mientras {$DOMINIO_FRONTEND}/{$DOMINIO_API}
+# apunten por DNS a este servidor y los puertos 80/443 estén abiertos --
+# eso todavía no existe (no hay servidor/dominio elegido), así que este
+# archivo queda listo para activarse el día que se elijan.
+#
+# El backend ya manda su propio header Strict-Transport-Security (ver
+# A3, backend/app/main.py) -- acá NO se repite para no mandarlo
+# duplicado. El frontend (SPA servida por el server de Nuxt) no lo
+# manda, así que ahí sí se agrega explícito.
+
+{$DOMINIO_API} {
+	reverse_proxy backend:8000
+}
+
+{$DOMINIO_FRONTEND} {
+	header Strict-Transport-Security "max-age=63072000; includeSubDomains"
+	reverse_proxy frontend:3000
+}
