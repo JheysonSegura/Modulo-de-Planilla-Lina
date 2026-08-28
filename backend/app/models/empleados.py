@@ -122,6 +122,9 @@ class Contrato(Base):
     historial_salarial: Mapped[list["HistorialSalarial"]] = relationship(
         back_populates="contrato"
     )
+    historial_cargos: Mapped[list["HistorialCargo"]] = relationship(
+        back_populates="contrato"
+    )
 
 
 class HistorialSalarial(Base):
@@ -151,3 +154,30 @@ class HistorialSalarial(Base):
     )
 
     contrato: Mapped["Contrato"] = relationship(back_populates="historial_salarial")
+
+
+class HistorialCargo(Base):
+    """Separado de 'contratos' por el mismo motivo que HistorialSalarial:
+    un cambio de puesto es una adenda al mismo contrato (no un contrato
+    nuevo), y necesitamos poder ver cuánto tiempo duró cada cargo."""
+
+    __tablename__ = "historial_cargos"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.uuid_generate_v4()
+    )
+    contrato_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("contratos.id"), nullable=False
+    )
+    cargo: Mapped[str] = mapped_column(String(150), nullable=False)
+    fecha_vigencia_desde: Mapped[datetime.date] = mapped_column(Date, nullable=False)
+    fecha_vigencia_hasta: Mapped[datetime.date | None] = mapped_column(Date)
+    motivo: Mapped[str | None] = mapped_column(String(100))
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    empresa_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("empresas.id")
+    )
+
+    contrato: Mapped["Contrato"] = relationship(back_populates="historial_cargos")

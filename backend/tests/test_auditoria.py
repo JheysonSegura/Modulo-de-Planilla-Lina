@@ -105,6 +105,31 @@ def test_cambio_de_salario_queda_auditado(client, db):
     assert evento["usuario_id"] is not None
 
 
+def test_cambio_de_cargo_queda_auditado(client, db):
+    headers = _preparar_empresa(db, client)
+    empleado_id, contrato_id = _crear_empleado_con_contrato(client, headers)
+
+    resp = client.post(
+        f"/contratos/{contrato_id}/cargo",
+        json={"cargo": "Supervisora de Ventas", "fecha_vigencia_desde": "2025-06-01"},
+        headers=headers,
+    )
+    assert resp.status_code == 201, resp.text
+
+    resp = _listar_auditoria(client, headers, empleado_id=empleado_id)
+    assert resp.status_code == 200, resp.text
+    eventos = resp.json()
+    assert len(eventos) == 1
+    evento = eventos[0]
+    assert evento["tabla_afectada"] == "contratos"
+    assert evento["registro_id"] == contrato_id
+    assert evento["accion"] == "cambio_cargo"
+    assert evento["empleado_id"] == empleado_id
+    assert evento["datos_anteriores"]["cargo"] == "Prueba auditoria"
+    assert evento["datos_nuevos"]["cargo"] == "Supervisora de Ventas"
+    assert evento["usuario_id"] is not None
+
+
 def test_aprobar_planilla_queda_auditada_y_es_idempotente_al_rechazo(client, db):
     headers = _preparar_empresa(db, client)
     _crear_empleado_con_contrato(client, headers)

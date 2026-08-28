@@ -48,11 +48,11 @@ class ContratoCreate(_ExencionSalarioMinimoMixin):
 
 
 class ContratoUpdate(_ExencionSalarioMinimoMixin):
-    """Nunca incluye salario: eso solo se cambia vía POST
-    /contratos/{id}/salario, para no poder pisar el historial por error."""
+    """Nunca incluye salario ni cargo: eso solo se cambia vía POST
+    /contratos/{id}/salario y POST /contratos/{id}/cargo respectivamente,
+    para no poder pisar el historial por error."""
 
     exento_salario_minimo: bool | None = None
-    cargo: str | None = Field(default=None, min_length=1, max_length=150)
     departamento: str | None = Field(default=None, max_length=150)
     fecha_fin_pactada: datetime.date | None = None
     fecha_fin_real: datetime.date | None = None
@@ -109,3 +109,20 @@ class SalarioVigenteOut(BaseModel):
     contrato_id: uuid.UUID
     fecha_consulta: datetime.date
     salario_base: decimal.Decimal
+
+
+class CambiarCargoRequest(BaseModel):
+    cargo: str = Field(min_length=1, max_length=150)
+    fecha_vigencia_desde: datetime.date
+    motivo: str = Field(default="cambio_puesto", max_length=100)
+
+
+class HistorialCargoOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    contrato_id: uuid.UUID
+    cargo: str
+    fecha_vigencia_desde: datetime.date
+    fecha_vigencia_hasta: datetime.date | None
+    motivo: str | None

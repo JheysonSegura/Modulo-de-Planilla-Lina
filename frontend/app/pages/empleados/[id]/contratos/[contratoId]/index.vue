@@ -67,6 +67,7 @@ const tabActivo = ref((route.query.tab as string) || 'resumen')
     <ContratoResumenTab
       v-if="tabActivo === 'resumen'"
       :contrato="contrato"
+      @contrato-actualizado="refrescarContrato"
     />
     <ContratoHistorialSalarialTab
       v-else-if="tabActivo === 'historial'"

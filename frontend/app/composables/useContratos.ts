@@ -32,6 +32,15 @@ export interface SalarioVigente {
   salario_base: string
 }
 
+export interface HistorialCargo {
+  id: string
+  contrato_id: string
+  cargo: string
+  fecha_vigencia_desde: string
+  fecha_vigencia_hasta: string | null
+  motivo: string | null
+}
+
 export function useContratos() {
   const api = useApi()
 
@@ -47,6 +56,10 @@ export function useContratos() {
     historialSalarial: (contratoId: string) =>
       api.get<HistorialSalarial[]>(`/contratos/${contratoId}/historial-salarial`),
     salarioVigente: (contratoId: string) =>
-      api.get<SalarioVigente>(`/contratos/${contratoId}/salario-vigente`)
+      api.get<SalarioVigente>(`/contratos/${contratoId}/salario-vigente`),
+    cambiarCargo: (contratoId: string, body: Record<string, unknown>) =>
+      api.post<HistorialCargo>(`/contratos/${contratoId}/cargo`, body),
+    historialCargos: (contratoId: string) =>
+      api.get<HistorialCargo[]>(`/contratos/${contratoId}/historial-cargos`)
   }
 }

@@ -70,6 +70,14 @@ def test_crear_empleado_y_contrato(client, db):
     assert historial[0]["fecha_vigencia_hasta"] is None
     assert decimal.Decimal(str(historial[0]["salario_base"])) == decimal.Decimal("1200.00")
 
+    resp = client.get(f"/contratos/{contrato['id']}/historial-cargos", headers=headers)
+    assert resp.status_code == 200
+    historial_cargos = resp.json()
+    assert len(historial_cargos) == 1
+    assert historial_cargos[0]["motivo"] == "ingreso"
+    assert historial_cargos[0]["fecha_vigencia_hasta"] is None
+    assert historial_cargos[0]["cargo"] == "Analista"
+
 
 def test_actualizar_empleado_no_toca_identificacion_si_no_se_manda(client, db):
     empresa, headers = _preparar_empresa_con_usuario(db, client)
@@ -281,6 +289,116 @@ def test_permite_subir_el_salario(client, db):
         headers=headers,
     )
     assert resp.status_code == 201, resp.text
+
+
+def test_cambio_cargo_no_borra_el_anterior_y_lista_historial_correcta(client, db):
+    empresa, headers = _preparar_empresa_con_usuario(db, client)
+
+    resp = client.post(
+        "/empleados",
+        json={"identificacion": f"8-{_sufijo()}", "nombre_completo": "Sofía Gómez"},
+        headers=headers,
+    )
+    empleado_id = resp.json()["id"]
+
+    resp = client.post(
+        f"/empleados/{empleado_id}/contratos",
+        json={
+            "tipo_contrato": "indefinido",
+            "cargo": "Recepcionista",
+            "fecha_inicio": "2024-01-01",
+            "salario_base": "800.00",
+        },
+        headers=headers,
+    )
+    contrato_id = resp.json()["id"]
+
+    resp = client.post(
+        f"/contratos/{contrato_id}/cargo",
+        json={
+            "cargo": "Vendedora",
+            "fecha_vigencia_desde": "2024-06-01",
+            "motivo": "promocion_interna",
+        },
+        headers=headers,
+    )
+    assert resp.status_code == 201, resp.text
+
+    resp = client.get(f"/contratos/{contrato_id}/historial-cargos", headers=headers)
+    historial = resp.json()
+    assert len(historial) == 2
+
+    original = next(h for h in historial if h["motivo"] == "ingreso")
+    nuevo = next(h for h in historial if h["motivo"] == "promocion_interna")
+
+    assert original["cargo"] == "Recepcionista"
+    assert original["fecha_vigencia_hasta"] == "2024-05-31"
+    assert nuevo["cargo"] == "Vendedora"
+    assert nuevo["fecha_vigencia_hasta"] is None
+
+    # El cargo actual del contrato queda sincronizado con el registro
+    # nuevo (recibos/exportaciones lo siguen leyendo directo).
+    resp = client.get(f"/contratos/{contrato_id}", headers=headers)
+    assert resp.json()["cargo"] == "Vendedora"
+
+
+def test_no_permite_retroceder_la_fecha_de_vigencia_del_cargo(client, db):
+    empresa, headers = _preparar_empresa_con_usuario(db, client)
+
+    resp = client.post(
+        "/empleados",
+        json={"identificacion": f"8-{_sufijo()}", "nombre_completo": "Empleado Test"},
+        headers=headers,
+    )
+    empleado_id = resp.json()["id"]
+    resp = client.post(
+        f"/empleados/{empleado_id}/contratos",
+        json={
+            "tipo_contrato": "indefinido",
+            "cargo": "Auxiliar",
+            "fecha_inicio": "2024-01-01",
+            "salario_base": "800.00",
+        },
+        headers=headers,
+    )
+    contrato_id = resp.json()["id"]
+
+    resp = client.post(
+        f"/contratos/{contrato_id}/cargo",
+        json={"cargo": "Supervisor", "fecha_vigencia_desde": "2023-12-01"},
+        headers=headers,
+    )
+    assert resp.status_code == 422
+
+
+def test_no_permite_mantener_el_mismo_cargo(client, db):
+    empresa, headers = _preparar_empresa_con_usuario(db, client)
+
+    resp = client.post(
+        "/empleados",
+        json={"identificacion": f"8-{_sufijo()}", "nombre_completo": "Empleado Test"},
+        headers=headers,
+    )
+    empleado_id = resp.json()["id"]
+    resp = client.post(
+        f"/empleados/{empleado_id}/contratos",
+        json={
+            "tipo_contrato": "indefinido",
+            "cargo": "Auxiliar",
+            "fecha_inicio": "2024-01-01",
+            "salario_base": "800.00",
+        },
+        headers=headers,
+    )
+    contrato_id = resp.json()["id"]
+
+    resp = client.post(
+        f"/contratos/{contrato_id}/cargo",
+        json={"cargo": "Auxiliar", "fecha_vigencia_desde": "2024-06-01"},
+        headers=headers,
+    )
+    assert resp.status_code == 422
+    assert "distinto" in resp.json()["detail"]
 
 
 def test_rechaza_salario_por_debajo_del_minimo_vigente_en_la_fecha_del_contrato(client, db):

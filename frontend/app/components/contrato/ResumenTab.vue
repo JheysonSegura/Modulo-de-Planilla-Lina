@@ -4,8 +4,9 @@ import type { FormSubmitEvent } from '@nuxt/ui'
 import type { Contrato } from '~/composables/useContratos'
 
 const props = defineProps<{ contrato: Contrato }>()
+const emit = defineEmits<{ 'contrato-actualizado': [] }>()
 
-const { salarioVigente, cambiarSalario } = useContratos()
+const { salarioVigente, cambiarSalario, historialCargos, cambiarCargo } = useContratos()
 const { puedeEscribir } = useAuth()
 const toast = useToast()
 
@@ -42,6 +43,38 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
     toast.add({ title: 'No se pudo cambiar el salario', description: extraerMensajeError(error), color: 'error' })
   } finally {
     guardando.value = false
+  }
+}
+
+// Cargo: un cambio de puesto es una adenda al mismo contrato (no un
+// contrato nuevo) -- ver historial_cargos. Sin mínimo/máximo, a
+// diferencia del salario, un cargo no tiene orden.
+const { data: historialCargo, refresh: refrescarHistorialCargo } = await useAsyncData(
+  `historial-cargo-${props.contrato.id}`, () => historialCargos(props.contrato.id)
+)
+
+const mostrarFormularioCargo = ref(false)
+const schemaCargo = z.object({
+  cargo: z.string().min(1, 'Obligatorio'),
+  fecha_vigencia_desde: z.string().min(1, 'Obligatorio'),
+  motivo: z.string().min(1)
+})
+type SchemaCargo = z.output<typeof schemaCargo>
+const stateCargo = reactive<Partial<SchemaCargo>>({ cargo: '', fecha_vigencia_desde: '', motivo: 'cambio_puesto' })
+const guardandoCargo = ref(false)
+
+async function onSubmitCargo(event: FormSubmitEvent<SchemaCargo>) {
+  guardandoCargo.value = true
+  try {
+    await cambiarCargo(props.contrato.id, event.data)
+    toast.add({ title: 'Cargo actualizado', color: 'success' })
+    mostrarFormularioCargo.value = false
+    await refrescarHistorialCargo()
+    emit('contrato-actualizado')
+  } catch (error) {
+    toast.add({ title: 'No se pudo cambiar el cargo', description: extraerMensajeError(error), color: 'error' })
+  } finally {
+    guardandoCargo.value = false
   }
 }
 </script>
@@ -94,6 +127,116 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
           </dt><dd>{{ contrato.exento_salario_minimo ? 'Sí' : 'No' }}</dd>
         </div>
       </dl>
+    </UCard>
+
+    <UCard>
+      <template #header>
+        <div class="flex items-center justify-between">
+          <span class="font-medium">Cargo actual</span>
+          <UButton
+            v-if="contrato.estado === 'vigente' && puedeEscribir"
+            size="xs"
+            variant="soft"
+            @click="mostrarFormularioCargo = !mostrarFormularioCargo"
+          >
+            Cambiar cargo
+          </UButton>
+        </div>
+      </template>
+      <p class="text-2xl font-semibold text-gray-900 dark:text-white">
+        {{ contrato.cargo }}
+      </p>
+
+      <UForm
+        v-if="mostrarFormularioCargo"
+        :schema="schemaCargo"
+        :state="stateCargo"
+        class="space-y-4 mt-4 pt-4 border-t border-gray-200 dark:border-gray-800"
+        @submit="onSubmitCargo"
+      >
+        <UFormField
+          label="Nuevo cargo"
+          name="cargo"
+        >
+          <UInput
+            v-model="stateCargo.cargo"
+            class="w-full"
+          />
+        </UFormField>
+        <UFormField
+          label="Vigente desde"
+          name="fecha_vigencia_desde"
+        >
+          <UInput
+            v-model="stateCargo.fecha_vigencia_desde"
+            type="date"
+            class="w-full"
+          />
+        </UFormField>
+        <UFormField
+          label="Motivo"
+          name="motivo"
+        >
+          <UInput
+            v-model="stateCargo.motivo"
+            class="w-full"
+          />
+        </UFormField>
+        <div class="flex gap-2">
+          <UButton
+            type="submit"
+            :loading="guardandoCargo"
+          >
+            Guardar
+          </UButton>
+          <UButton
+            color="neutral"
+            variant="ghost"
+            @click="mostrarFormularioCargo = false"
+          >
+            Cancelar
+          </UButton>
+        </div>
+      </UForm>
+
+      <table class="w-full text-sm mt-4 pt-4 border-t border-gray-200 dark:border-gray-800">
+        <thead>
+          <tr class="text-left text-gray-500 border-b border-gray-200 dark:border-gray-800">
+            <th class="py-2 pr-4">
+              Cargo
+            </th>
+            <th class="py-2 pr-4">
+              Vigente desde
+            </th>
+            <th class="py-2 pr-4">
+              Vigente hasta
+            </th>
+            <th class="py-2">
+              Motivo
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="h in historialCargo"
+            :key="h.id"
+            class="border-b border-gray-100 dark:border-gray-800 last:border-0"
+          >
+            <td class="py-2 pr-4 font-medium text-gray-900 dark:text-white">
+              {{ h.cargo }}
+            </td>
+            <td class="py-2 pr-4">
+              {{ formatearFecha(h.fecha_vigencia_desde) }}
+            </td>
+            <td class="py-2 pr-4">
+              {{ formatearFecha(h.fecha_vigencia_hasta, 'Vigente') }}
+            </td>
+            <td class="py-2 text-gray-500">
+              {{ h.motivo || '—' }}
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </UCard>
 
     <UCard>

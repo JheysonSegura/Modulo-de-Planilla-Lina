@@ -62,6 +62,11 @@ def _endpoints_de_escritura() -> list[tuple[str, str, dict]]:
         ),
         (
             "POST",
+            f"/contratos/{cid}/cargo",
+            {"json": {"cargo": "Otro cargo", "fecha_vigencia_desde": "2025-02-01"}},
+        ),
+        (
+            "POST",
             f"/contratos/{cid}/horas-extra",
             {"json": {"fecha": "2025-03-03", "tipo_hora": "diurna", "horas": "1.0"}},
         ),

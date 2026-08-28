@@ -28,6 +28,7 @@ from app.models import (
     Contrato,
     Empleado,
     Empresa,
+    HistorialCargo,
     HistorialSalarial,
     MovimientoPlanilla,
     Planilla,
@@ -36,6 +37,7 @@ from app.models import (
 from app.repositories import contratos as contratos_repo
 from app.repositories import empleados as empleados_repo
 from app.repositories import empresas as empresas_repo
+from app.repositories import historial_cargos as historial_cargos_repo
 from app.repositories import historial_salarial as historial_repo
 from app.repositories import movimientos_planilla as movimientos_repo
 from app.repositories import planillas as planillas_repo
@@ -577,6 +579,15 @@ def ejecutar_migracion(
             HistorialSalarial(
                 empresa_id=empresa_id,
                 contrato_id=contrato.id, salario_base=fila_e.contrato.salario_base,
+                fecha_vigencia_desde=fila_e.contrato.fecha_inicio, fecha_vigencia_hasta=None,
+                motivo="migracion (vigente)",
+            ),
+        )
+        historial_cargos_repo.crear(
+            db,
+            HistorialCargo(
+                empresa_id=empresa_id,
+                contrato_id=contrato.id, cargo=fila_e.contrato.cargo,
                 fecha_vigencia_desde=fila_e.contrato.fecha_inicio, fecha_vigencia_hasta=None,
                 motivo="migracion (vigente)",
             ),

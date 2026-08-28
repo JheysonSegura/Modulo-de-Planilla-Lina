@@ -6,12 +6,14 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_db_rls, get_empresa_activa_id, get_usuario_actual, require_escritura
-from app.models import Contrato, HistorialSalarial, Usuario
+from app.models import Contrato, HistorialCargo, HistorialSalarial, Usuario
 from app.schemas.contratos import (
+    CambiarCargoRequest,
     CambiarSalarioRequest,
     ContratoCreate,
     ContratoOut,
     ContratoUpdate,
+    HistorialCargoOut,
     HistorialSalarialOut,
     SalarioVigenteOut,
 )
@@ -93,3 +95,23 @@ def salario_vigente(
     return SalarioVigenteOut(
         contrato_id=contrato.id, fecha_consulta=fecha_consulta, salario_base=registro.salario_base
     )
+
+
+@router.post("/contratos/{contrato_id}/cargo", response_model=HistorialCargoOut, status_code=201)
+def cambiar_cargo(
+    contrato_id: uuid.UUID,
+    body: CambiarCargoRequest,
+    db: Annotated[Session, Depends(get_db_rls)],
+    usuario: Annotated[Usuario, Depends(get_usuario_actual)],
+    _rol: Annotated[str, Depends(require_escritura)],
+) -> HistorialCargo:
+    contrato = contratos_service.obtener_contrato(db, contrato_id)
+    return contratos_service.cambiar_cargo(db, contrato, body, usuario.id)
+
+
+@router.get("/contratos/{contrato_id}/historial-cargos", response_model=list[HistorialCargoOut])
+def listar_historial_cargos(
+    contrato_id: uuid.UUID, db: Annotated[Session, Depends(get_db_rls)]
+) -> list[HistorialCargo]:
+    contrato = contratos_service.obtener_contrato(db, contrato_id)
+    return contratos_service.listar_historial_cargos(db, contrato)

@@ -3,7 +3,7 @@ from app.models.auth import RefreshToken
 from app.models.ausencias import Ausencia
 from app.models.base import Base
 from app.models.conceptos_variables_pendientes import ConceptoVariablePendiente
-from app.models.empleados import Contrato, Empleado, HistorialSalarial
+from app.models.empleados import Contrato, Empleado, HistorialCargo, HistorialSalarial
 from app.models.empresas import Empresa, UsuarioEmpresa
 from app.models.horas_extra import RegistroHorasExtra
 from app.models.liquidaciones import Liquidacion
@@ -29,6 +29,7 @@ __all__ = [
     "Empleado",
     "Contrato",
     "HistorialSalarial",
+    "HistorialCargo",
     "RegistroHorasExtra",
     "TasaVigente",
     "TasaRiesgoProfesional",
