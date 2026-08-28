@@ -67,8 +67,12 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
 }
 
 async function borrar(registroId: string) {
-  await eliminar(props.contratoId, registroId)
-  await refresh()
+  try {
+    await eliminar(props.contratoId, registroId)
+    await refresh()
+  } catch (error) {
+    toast.add({ title: 'No se pudo eliminar', description: extraerMensajeError(error), color: 'error' })
+  }
 }
 </script>
 
@@ -220,6 +224,15 @@ async function borrar(registroId: string) {
             </td>
             <td class="py-2 pr-4 font-medium text-gray-900 dark:text-white">
               ${{ r.monto_calculado }}
+              <UBadge
+                v-if="r.aplicado"
+                color="neutral"
+                variant="subtle"
+                size="sm"
+                class="ml-1"
+              >
+                Pagada
+              </UBadge>
             </td>
             <td class="py-2 text-right space-x-1">
               <UButton
@@ -232,7 +245,7 @@ async function borrar(registroId: string) {
                 Ver desglose
               </UButton>
               <UButton
-                v-if="puedeEscribir"
+                v-if="puedeEscribir && !r.aplicado"
                 size="xs"
                 color="error"
                 variant="ghost"

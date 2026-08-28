@@ -83,6 +83,11 @@ def listar_de_contrato(
 
 
 def eliminar_registro(db: Session, registro: RegistroHorasExtra) -> None:
+    if registro.aplicado:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "No se puede eliminar una hora extra que ya fue aplicada a una planilla.",
+        )
     contrato_id = registro.contrato_id
     fecha = registro.fecha
     horas_extra_repo.eliminar(db, registro)

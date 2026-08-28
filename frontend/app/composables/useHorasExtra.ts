@@ -15,6 +15,7 @@ export interface RegistroHorasExtra {
   monto_dentro_limite: string
   monto_exceso_limite: string
   monto_calculado: string
+  aplicado: boolean
 }
 
 export function useHorasExtra() {

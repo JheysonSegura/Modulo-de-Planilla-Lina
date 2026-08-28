@@ -2,10 +2,10 @@ import datetime
 import decimal
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
-from app.models import RegistroHorasExtra
+from app.models import MovimientoPlanilla, RegistroHorasExtra
 
 
 def crear(db: Session, registro: RegistroHorasExtra) -> RegistroHorasExtra:
@@ -43,9 +43,45 @@ def listar_de_semana_iso(
     return listar_de_contrato(db, contrato_id, desde=lunes, hasta=domingo)
 
 
+def listar_pendientes_de_contrato(
+    db: Session,
+    contrato_id: uuid.UUID,
+    desde: datetime.date,
+    hasta: datetime.date,
+) -> list[RegistroHorasExtra]:
+    """Solo las horas extra no aplicadas todavía a ninguna planilla,
+    dentro del rango del período que está generando el motor de
+    planilla -- para no volver a sumarlas si ya fueron pagadas."""
+    stmt = (
+        select(RegistroHorasExtra)
+        .where(
+            RegistroHorasExtra.contrato_id == contrato_id,
+            RegistroHorasExtra.fecha >= desde,
+            RegistroHorasExtra.fecha <= hasta,
+            RegistroHorasExtra.aplicado.is_(False),
+        )
+        .order_by(RegistroHorasExtra.fecha, RegistroHorasExtra.created_at)
+    )
+    return list(db.execute(stmt).scalars().all())
+
+
 def eliminar(db: Session, registro: RegistroHorasExtra) -> None:
     db.delete(registro)
     db.flush()
+
+
+def revertir_aplicados_de_planilla(db: Session, planilla_id: uuid.UUID) -> None:
+    """Al anular una planilla (planilla_service.anular_planilla): libera
+    las horas extra que esa planilla había marcado como aplicadas, para
+    que la planilla de reemplazo del mismo período las vuelva a recoger
+    (listar_pendientes_de_contrato solo trae las no aplicadas)."""
+    subquery = select(MovimientoPlanilla.id).where(MovimientoPlanilla.planilla_id == planilla_id)
+    stmt = (
+        update(RegistroHorasExtra)
+        .where(RegistroHorasExtra.movimiento_planilla_id.in_(subquery))
+        .values(aplicado=False, movimiento_planilla_id=None)
+    )
+    db.execute(stmt)
 
 
 def sumar_monto_periodo(

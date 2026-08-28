@@ -39,3 +39,4 @@ class RegistroHorasExtraOut(BaseModel):
     monto_exceso_limite: decimal.Decimal
     monto_calculado: decimal.Decimal
     observaciones: str | None
+    aplicado: bool

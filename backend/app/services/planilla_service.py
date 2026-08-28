@@ -13,6 +13,7 @@ from app.models import (
     Empresa,
     MovimientoPlanilla,
     Planilla,
+    RegistroHorasExtra,
 )
 from app.repositories import conceptos_variables as conceptos_variables_repo
 from app.repositories import conceptos_variables_pendientes as pendientes_repo
@@ -81,8 +82,8 @@ def generar_planilla(
 
     contratos = contratos_repo.listar_vigentes_en_periodo(db, empresa_id, periodo_inicio, periodo_fin)
     for contrato in contratos:
-        movimiento, conceptos, pendientes_aplicados = _calcular_movimiento_de_contrato(
-            db, empresa, contrato, tipo, periodo_inicio, periodo_fin
+        movimiento, conceptos, pendientes_aplicados, horas_extra_aplicadas = (
+            _calcular_movimiento_de_contrato(db, empresa, contrato, tipo, periodo_inicio, periodo_fin)
         )
         movimiento.planilla_id = planilla.id
         movimientos_repo.crear(db, movimiento)
@@ -94,6 +95,10 @@ def generar_planilla(
         for pendiente in pendientes_aplicados:
             pendiente.aplicado = True
             pendiente.movimiento_planilla_id = movimiento.id
+
+        for registro_horas_extra in horas_extra_aplicadas:
+            registro_horas_extra.aplicado = True
+            registro_horas_extra.movimiento_planilla_id = movimiento.id
 
         # Fase 8: cada planilla regular actualiza (recalcula completo)
         # la provisión de décimo del cuatrimestre que contiene su
@@ -277,8 +282,9 @@ def anular_planilla(
     empleado por ingresar) -- nunca un borrado físico: las provisiones de
     décimo/vacaciones se recalculan completas en cada planilla real, así
     que no quedan desincronizadas, pero los conceptos variables pendientes
-    (bonos, comisiones, descuentos puntuales) que esta planilla marcó como
-    aplicados sí quedarían perdidos para siempre si no se revierten."""
+    (bonos, comisiones, descuentos puntuales) y las horas extra que esta
+    planilla marcó como aplicados sí quedarían perdidos para siempre (o
+    bloqueados para borrar) si no se revierten."""
     if planilla.estado != "borrador":
         raise HTTPException(
             status.HTTP_409_CONFLICT,
@@ -289,6 +295,7 @@ def anular_planilla(
     estado_anterior = planilla.estado
     planilla.estado = "anulada"
     pendientes_repo.revertir_aplicados_de_planilla(db, planilla.id)
+    horas_extra_repo.revertir_aplicados_de_planilla(db, planilla.id)
 
     auditoria_service.registrar(
         db,
@@ -313,7 +320,10 @@ def _calcular_movimiento_de_contrato(
     tipo: str,
     periodo_inicio: datetime.date,
     periodo_fin: datetime.date,
-) -> tuple[MovimientoPlanilla, list[ConceptoVariable], list[ConceptoVariablePendiente]]:
+) -> tuple[
+    MovimientoPlanilla, list[ConceptoVariable], list[ConceptoVariablePendiente],
+    list[RegistroHorasExtra],
+]:
     salario_vigente = historial_repo.get_vigente_en_fecha(db, contrato.id, periodo_fin)
     if salario_vigente is None:
         raise HTTPException(
@@ -360,7 +370,7 @@ def _calcular_movimiento_de_contrato(
             )
         )
 
-    registros_horas_extra = horas_extra_repo.listar_de_contrato(
+    registros_horas_extra = horas_extra_repo.listar_pendientes_de_contrato(
         db, contrato.id, periodo_inicio, periodo_fin
     )
     monto_horas_extra = sum((r.monto_calculado for r in registros_horas_extra), _CERO)
@@ -450,7 +460,7 @@ def _calcular_movimiento_de_contrato(
         otras_deducciones=otras_deducciones,
         salario_neto=salario_neto,
     )
-    return movimiento, conceptos, pendientes
+    return movimiento, conceptos, pendientes, registros_horas_extra
 
 
 def _factor_obligatorio(db: Session, tipo_tasa: str, fecha: datetime.date) -> decimal.Decimal:
