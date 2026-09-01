@@ -113,7 +113,16 @@ def _recalcular_semana(db: Session, contrato_id: uuid.UUID, fecha: datetime.date
     9h/semana) junto con los montos en cascada. Se ejecuta completa cada
     vez que cambia un registro de la semana, para que una captura tardía
     de un día anterior reajuste correctamente lo que ya se había
-    calculado para los días siguientes de la misma semana."""
+    calculado para los días siguientes de la misma semana.
+
+    Los registros ya `aplicado=True` (pagados en una planilla) siguen
+    consumiendo su parte de los topes diario/semanal -- sus horas ya
+    fueron trabajadas y pagadas, así que un registro nuevo en la misma
+    semana ISO debe ver ese consumo como real -- pero NO se les vuelve a
+    escribir horas_dentro_limite/monto_calculado/etc.: esos valores ya
+    respaldan un recibo entregado, y sobreescribirlos los desalinearía
+    de lo que realmente se pagó (una semana ISO puede cruzar dos
+    quincenas de planilla distintas)."""
     registros = horas_extra_repo.listar_de_semana_iso(db, contrato_id, fecha)
 
     horas_acumuladas_semana = _CERO
@@ -130,6 +139,11 @@ def _recalcular_semana(db: Session, contrato_id: uuid.UUID, fecha: datetime.date
 
         horas_acumuladas_por_dia[registro.fecha] = horas_dia_previas + registro.horas
         horas_acumuladas_semana += registro.horas
+
+        if registro.aplicado:
+            # Ya pagado: cuenta para el tope de los registros siguientes
+            # de la semana, pero sus propios campos quedan congelados.
+            continue
 
         salario_vigente = historial_repo.get_vigente_en_fecha(db, contrato_id, registro.fecha)
         if salario_vigente is None:
