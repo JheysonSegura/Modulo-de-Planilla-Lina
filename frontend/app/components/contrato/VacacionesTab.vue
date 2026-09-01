@@ -130,13 +130,21 @@ async function onSubmitAcumular(event: FormSubmitEvent<SchemaAcumular>) {
             class="w-full"
           />
         </UFormField>
-        <UButton
-          type="submit"
-          class="w-fit"
-          :loading="guardandoTomar"
-        >
-          Guardar
-        </UButton>
+        <div class="flex gap-2 col-span-2">
+          <UButton
+            type="submit"
+            :loading="guardandoTomar"
+          >
+            Guardar
+          </UButton>
+          <UButton
+            color="neutral"
+            variant="ghost"
+            @click="mostrarTomar = false"
+          >
+            Cancelar
+          </UButton>
+        </div>
       </UForm>
     </UCard>
 

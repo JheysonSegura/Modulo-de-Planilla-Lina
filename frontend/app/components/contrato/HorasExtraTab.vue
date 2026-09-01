@@ -172,13 +172,21 @@ async function borrar(registroId: string) {
             class="w-full"
           />
         </UFormField>
-        <UButton
-          type="submit"
-          class="w-fit"
-          :loading="guardando"
-        >
-          Guardar
-        </UButton>
+        <div class="flex gap-2 col-span-2">
+          <UButton
+            type="submit"
+            :loading="guardando"
+          >
+            Guardar
+          </UButton>
+          <UButton
+            color="neutral"
+            variant="ghost"
+            @click="mostrarFormulario = false"
+          >
+            Cancelar
+          </UButton>
+        </div>
       </UForm>
     </UCard>
 
