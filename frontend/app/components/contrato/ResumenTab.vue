@@ -15,22 +15,21 @@ const { data: salario, refresh: refrescarSalario } = await useAsyncData(
 )
 
 const mostrarFormulario = ref(false)
+// El salario de un contrato vigente nunca puede bajar (ver CLAUDE.md) --
+// el backend es la autoridad final, este refine solo evita el viaje
+// redondo obvio de enviar un valor que ya se sabe inválido, mostrando
+// el mensaje en vez de dejar que el input clampe el número en silencio.
 const schema = z.object({
-  salario_base: z.number().positive('Debe ser mayor que cero'),
+  salario_base: z.number().positive('Debe ser mayor que cero').refine(
+    valor => valor > Number(salario.value?.salario_base ?? 0),
+    'El salario de un trabajador no se puede desmejorar, por favor ingresa un monto superior al actual.'
+  ),
   fecha_vigencia_desde: z.string().min(1, 'Obligatorio'),
   motivo: z.string().min(1)
 })
 type Schema = z.output<typeof schema>
 const state = reactive<Partial<Schema>>({ salario_base: undefined, fecha_vigencia_desde: '', motivo: 'ajuste_salarial' })
 const guardando = ref(false)
-
-// El salario de un contrato vigente nunca puede bajar (ver CLAUDE.md) --
-// el backend es la autoridad final, este mínimo solo evita el viaje
-// redondo obvio de escribir un valor que ya se sabe inválido.
-const salarioMinimoNuevo = computed(() => {
-  const actual = Number(salario.value?.salario_base ?? 0)
-  return Math.round((actual + 0.01) * 100) / 100
-})
 
 async function onSubmit(event: FormSubmitEvent<Schema>) {
   guardando.value = true
@@ -270,7 +269,7 @@ async function onSubmitCargo(event: FormSubmitEvent<SchemaCargo>) {
         >
           <UInputNumber
             v-model="state.salario_base"
-            :min="salarioMinimoNuevo"
+            :min="0.01"
             :step="0.01"
             class="w-full"
           />
