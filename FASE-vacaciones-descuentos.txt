@@ -18,8 +18,9 @@ CIFRAS VERIFICADAS
 Caso A — $2,500/mes, 30 días (1 al 30-mar-2026)
   Bruto 2,500.00 | CSS 243.75 | SE 31.25 | ISR 268.75 | Neto 1,956.25
   Patronal: CSS 331.25 | SE 37.50
-  Quincenas de marzo: salario 0.00, ISR 0.00
-  1a quincena de abril: ISR 134.38 (la reconciliación anual cuadra)
+  1a quincena de marzo: salario 0.00, ISR 0.00
+  2a quincena de marzo: salario 83.33 (el 31), ISR 8.49
+  1a quincena de abril: ISR 133.90 (la reconciliación anual cuadra)
 Caso B — $900/mes, 15 días (1 al 15-mar-2026)
   Bruto 450.00 | CSS 43.88 | SE 5.62 | ISR 4.38 | Neto 396.12 (= quincena normal)
 Solape parcial — $900/mes, 30 días del 10-mar al 8-abr-2026
@@ -47,8 +48,12 @@ CONFIRMADO POR EL USUARIO (2026-10-27)
 - El descanso son 30 días calendario y la quincena paga solo los días
   trabajados. Los días de vacaciones dentro de una quincena se cuentan en base
   comercial (si el descanso llega al fin de mes, cubre hasta el día 30):
-  * 1 al 30-mar, regresa el 31: quincena 16-31 en 0 (el 31 no se paga de más).
-    Ya era así.
+  * 1 al 30-mar, regresa el 31: CORREGIDO por indicación de un contador
+    (2026-10-27): el 31 trabajado se paga en la quincena 16-31 (1 día,
+    83.33 con $2,500/mes). Regla: nunca se descuentan más días que
+    (días del período - días calendario trabajados). Solo para vacaciones.
+  * 20-feb al 21-mar, regresa el 22: 2a de marzo paga 10 días (22 al 31),
+    no los 9 de la cuenta comercial.
   * Sale el 1-feb, termina el 2-mar, regresa el 3-mar: quincenas de febrero
     en 0 y la 1a de marzo paga solo del 3 al 15 (390 con $900/mes). CORREGIDO:
     antes la quincena 16-28 de febrero pagaba 2 días (60) porque contaba 13
