@@ -1,8 +1,10 @@
 import base64
 import csv
+import datetime
 import decimal
 import io
 import json
+import re
 import zipfile
 from pathlib import Path
 
@@ -27,6 +29,31 @@ _env = Environment(
     loader=FileSystemLoader(_TEMPLATES_DIR),
     autoescape=select_autoescape(["html"]),
 )
+
+_FECHA_ISO = re.compile(r"\b(\d{4})-(\d{2})-(\d{2})\b")
+
+
+def _formatear_fecha(valor) -> str:
+    """Fecha pura en mes/día/año (03/31/2026), el mismo formato que
+    muestra el frontend (formatearFecha, locale es-PA) -- pedido del
+    usuario 2026-10-27 para que pantalla y PDF coincidan."""
+    if valor is None or valor == "":
+        return ""
+    if isinstance(valor, datetime.date):
+        return valor.strftime("%m/%d/%Y")
+    return _formatear_fechas_en_texto(str(valor))
+
+
+def _formatear_fechas_en_texto(texto) -> str:
+    """Cada fecha YYYY-MM-DD dentro de un texto (ej. la descripción de un
+    ajuste al salario) pasa a mes/día/año."""
+    if texto is None:
+        return ""
+    return _FECHA_ISO.sub(lambda m: f"{m.group(2)}/{m.group(3)}/{m.group(1)}", str(texto))
+
+
+_env.filters["fecha"] = _formatear_fecha
+_env.filters["fechas_en_texto"] = _formatear_fechas_en_texto
 
 COLUMNAS_RECIBO_PAGO = [
     ("empleado_nombre", "Empleado"),

@@ -19,14 +19,14 @@
         </tr>
         <tr>
             <td class="etiqueta">Descanso</td>
-            <td>{{ fecha }} al {{ fecha_fin_goce }}</td>
+            <td>{{ fecha|fecha }} al {{ fecha_fin_goce|fecha }}</td>
             <td class="etiqueta">Días tomados</td>
             <td>{{ dias_tomados }}</td>
         </tr>
         {% if pago %}
         <tr>
             <td class="etiqueta">Fecha de pago</td>
-            <td>{{ pago.fecha_pago }}</td>
+            <td>{{ pago.fecha_pago|fecha }}</td>
             <td class="etiqueta"></td>
             <td></td>
         </tr>
