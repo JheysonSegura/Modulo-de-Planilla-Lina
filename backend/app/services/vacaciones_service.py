@@ -394,13 +394,19 @@ def revertir_toma_de_planilla(db: Session, planilla: Planilla) -> None:
     (planilla_service los resta como "pagados aparte"): anular solo la de
     vacaciones dejaría esos días sin pagar en ningún lado."""
     movimientos = movimientos_repo.listar_de_planilla(db, planilla.id)
+    hasta = planilla.periodo_fin
+    if hasta.day == 30 and (hasta + datetime.timedelta(days=1)).day == 31:
+        # Regresó el día 31: el período que arranca el 1 del mes siguiente
+        # ya le pagó ese día (planilla_service.dia_31_trabajado_tras_vacaciones).
+        # Sin la vacación, la quincena 16-31 lo volvería a pagar.
+        hasta += datetime.timedelta(days=2)
     for movimiento in movimientos:
         regular = movimientos_repo.buscar_planilla_que_solapa(
             db,
             movimiento.contrato_id,
             ("mensual", "quincenal"),
             planilla.periodo_inicio,
-            planilla.periodo_fin,
+            hasta,
         )
         if regular is not None:
             raise HTTPException(
