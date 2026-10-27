@@ -35,6 +35,7 @@ COLUMNAS_RECIBO_PAGO = [
     ("periodo_inicio", "Período inicio"),
     ("periodo_fin", "Período fin"),
     ("salario_base_periodo", "Salario base"),
+    ("ajustes_salario_detalle", "Ajustes al salario"),
     ("total_horas_extra", "Horas extra"),
     ("total_otros_ingresos", "Otros ingresos"),
     ("salario_bruto", "Salario bruto"),
@@ -146,6 +147,14 @@ def armar_recibo_pago(db: Session, movimiento: MovimientoPlanilla) -> dict:
     ]
     otras_deducciones_detalle = [c for c in movimiento.conceptos_variables if c.tipo == "deduccion"]
     total_otros_ingresos = sum((c.monto for c in otros_ingresos), _CERO)
+    # Ajustes ya aplicados dentro de salario_base_periodo (conceptos
+    # 'informativo': ausencia sin goce, vacaciones pagadas aparte, día 31
+    # tras vacaciones). Se muestran para que se vea de dónde sale el salario
+    # del período; no cambian ningún total.
+    ajustes_salario = [c for c in movimiento.conceptos_variables if c.tipo == "informativo"]
+    salario_base_sin_ajustes = movimiento.salario_base_periodo - sum(
+        (c.monto for c in ajustes_salario), _CERO
+    )
 
     total_deducciones = (
         movimiento.css_empleado
@@ -165,6 +174,11 @@ def armar_recibo_pago(db: Session, movimiento: MovimientoPlanilla) -> dict:
         "periodo_fin": planilla.periodo_fin,
         "fecha_pago": planilla.fecha_pago,
         "salario_base_periodo": movimiento.salario_base_periodo,
+        "ajustes_salario": ajustes_salario,
+        "salario_base_sin_ajustes": salario_base_sin_ajustes,
+        "ajustes_salario_detalle": "; ".join(
+            f"{c.descripcion or c.codigo}: {c.monto:.2f}" for c in ajustes_salario
+        ),
         "horas_extra_por_tipo": horas_extra_por_tipo,
         "total_horas_extra": total_horas_extra,
         "otros_ingresos": otros_ingresos,
