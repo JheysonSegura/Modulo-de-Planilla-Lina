@@ -48,10 +48,15 @@ COLUMNAS_RECIBO_PAGO = [
 COLUMNAS_RECIBO_VACACION = [
     ("empleado_nombre", "Empleado"),
     ("empleado_identificacion", "Identificación"),
-    ("fecha", "Fecha"),
+    ("fecha", "Inicio del descanso"),
+    ("fecha_fin_goce", "Fin del descanso"),
     ("dias_tomados", "Días tomados"),
     ("valor_dia", "Valor día"),
     ("monto", "Monto"),
+    ("css_empleado", "CSS empleado"),
+    ("seguro_educativo_empleado", "Seguro educativo empleado"),
+    ("isr_retenido", "ISR retenido"),
+    ("salario_neto", "Neto a pagar"),
     ("saldo_despues", "Saldo después"),
 ]
 
@@ -196,9 +201,42 @@ def zip_recibos_pago(db: Session, movimientos: list[MovimientoPlanilla]) -> byte
 
 
 def armar_recibo_vacacion(db: Session, evento: VacacionTomada) -> dict:
+    """Desde 2026-10-27 una toma tiene su propia planilla de vacaciones con
+    descuentos de ley: si el evento tiene movimiento, el recibo muestra
+    bruto, CSS, SE, ISR y neto de esa planilla (de toda la toma, aunque
+    haya cruzado 2 períodos). Las tomas viejas sin movimiento se muestran
+    igual que antes, solo con el bruto."""
     contrato = contratos_repo.get(db, evento.contrato_id)
     empresa = empresas_repo.get(db, evento.empresa_id)
+    movimiento = evento.movimiento_planilla
+    pago = None
+    if movimiento is not None:
+        pago = {
+            "fecha_pago": movimiento.planilla.fecha_pago,
+            "planilla_estado": movimiento.planilla.estado,
+            "salario_bruto": movimiento.salario_bruto,
+            "css_empleado": movimiento.css_empleado,
+            "seguro_educativo_empleado": movimiento.seguro_educativo_empleado,
+            "isr_retenido": movimiento.isr_retenido,
+            "total_deducciones": (
+                movimiento.css_empleado
+                + movimiento.seguro_educativo_empleado
+                + movimiento.isr_retenido
+            ),
+            "salario_neto": movimiento.salario_neto,
+            "css_patronal": movimiento.css_patronal,
+            "seguro_educativo_patronal": movimiento.seguro_educativo_patronal,
+            "riesgo_profesional_patronal": movimiento.riesgo_profesional_patronal,
+        }
     return {
+        "pago": pago,
+        "fecha_fin_goce": evento.fecha_fin_goce,
+        "anulada": evento.anulada,
+        # Columnas planas para el Excel (COLUMNAS_RECIBO_VACACION).
+        "css_empleado": pago["css_empleado"] if pago else None,
+        "seguro_educativo_empleado": pago["seguro_educativo_empleado"] if pago else None,
+        "isr_retenido": pago["isr_retenido"] if pago else None,
+        "salario_neto": pago["salario_neto"] if pago else None,
         "empresa": armar_contexto_empresa(empresa),
         "empleado_nombre": contrato.empleado.nombre_completo,
         "empleado_identificacion": contrato.empleado.identificacion,
