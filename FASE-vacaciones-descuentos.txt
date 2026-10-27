@@ -43,9 +43,16 @@ QUÉ SE PROBÓ Y CÓMO
   rechazo de anulación por quincena ya generada, liquidación. No se generaron
   quincenas en Empresa Demo para no tocar a los demás empleados.
 
+CONFIRMADO POR EL USUARIO (2026-10-27)
+- Vacación de 30 días en un mes de 31 (1 al 30-mar, regresa el 31): el día 31
+  no se paga de más, la quincena 16-31 queda en 0. Ya era el comportamiento
+  del sistema (caso A).
+
 PUNTOS PARA CONFIRMAR CON EL CONTADOR (no bloquean)
-1. Vacación de 30 días en un mes de 31 que no arranca el día 1: con la regla
-   "días calendario con tope de 15 por quincena" se paga 1 día de más en el mes.
+1. Vacación de 30 días que cruza de un mes de 31 al siguiente (10-mar al
+   8-abr): el 31-mar cae dentro del descanso y el tope de 15 lo absorbe, pero
+   abril descuenta solo sus 8 días -> 270 + 0 + 210 + 900 de vacaciones = 46
+   días pagados por 45 comerciales (1-mar a 15-abr).
 2. Tasa de CSS a la fecha de pago (mismo criterio que el décimo).
 3. Laguna anterior, no tocada: Art. 54.2 (promedio de 11 meses si es más
    favorable). Hoy se usa el salario vigente / 30.

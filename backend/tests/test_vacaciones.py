@@ -454,6 +454,8 @@ def test_caso_a_vacacion_de_30_dias_con_descuentos_y_quincenas_en_cero(client, d
     assert _d(mov["isr_impuesto_anual_proyectado"]) == _d("3225.00")
 
     # Las quincenas de marzo no vuelven a pagar esos días: salario e ISR en cero.
+    # El 31-mar ya trabaja, pero no se paga de más (confirmado por el usuario
+    # 2026-10-27): las vacaciones cubren el mes comercial completo.
     for mitad in (1, 2):
         mov_q = _quincena(client, headers, 2026, 3, mitad)
         assert _d(mov_q["salario_bruto"]) == _d("0.00")
