@@ -130,14 +130,17 @@ def _calcular_salario_pendiente(
         if ultimo_periodo_fin is not None
         else contrato.fecha_inicio
     )
-    if fecha_terminacion < fecha_desde:
-        return _CERO
-    dias = decimal.Decimal((fecha_terminacion - fecha_desde).days + 1)
-    # Días que ya pagó una planilla tipo='vacaciones' (el pago de
-    # vacaciones reemplaza el salario de esos días, 2026-10-23).
-    dias -= planilla_service.dias_de_vacaciones_en_rango(
-        db, contrato.id, fecha_desde, fecha_terminacion
-    )
+    # El día 31 trabajado al regresar de vacaciones se paga en el período
+    # siguiente; si la liquidación llega antes, va aquí.
+    dia_31 = planilla_service.dia_31_trabajado_tras_vacaciones(db, contrato, fecha_desde)
+    dias = decimal.Decimal(1 if dia_31 is not None and dia_31 <= fecha_terminacion else 0)
+    if fecha_terminacion >= fecha_desde:
+        dias += (fecha_terminacion - fecha_desde).days + 1
+        # Días que ya pagó una planilla tipo='vacaciones' (el pago de
+        # vacaciones reemplaza el salario de esos días, 2026-10-23).
+        dias -= planilla_service.dias_de_vacaciones_en_rango(
+            db, contrato.id, fecha_desde, fecha_terminacion
+        )
     return (max(dias, _CERO) * _salario_diario_vigente(db, contrato, fecha_terminacion)).quantize(
         _CENTAVO
     )

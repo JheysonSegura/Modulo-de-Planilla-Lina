@@ -380,27 +380,14 @@ def _calcular_movimiento_de_contrato(
     # en días comerciales, igual que el salario: si el descanso llega al
     # último día del mes, cubre hasta el día 30 -- quien sale de vacaciones
     # el 1-feb (regresa el 3-mar) no cobra la quincena 16-28 de febrero
-    # (confirmado por el usuario 2026-10-27). Pero los días que la persona
-    # SÍ trabajó en el período nunca quedan sin pagar: quien regresa de
-    # vacaciones el día 31 cobra ese día en la quincena 16-31 (confirmado
-    # por el contador 2026-10-27, solo para vacaciones).
+    # (confirmado por el usuario 2026-10-27). La excepción del día 31
+    # trabajado al regresar se paga en el período siguiente (más abajo).
     dias_comerciales_periodo = TIPO_A_DIAS_COMERCIALES[tipo]
-    dias_base_periodo = (
-        dias_comerciales_periodo
-        if cubre_periodo_completo
-        else decimal.Decimal((efectivo_fin - efectivo_inicio).days + 1)
-    )
-    dias_vacaciones_comerciales = min(
+    dias_vacaciones = min(
         dias_de_vacaciones_en_rango(
             db, contrato.id, efectivo_inicio, efectivo_fin, comerciales=True
         ),
-        dias_base_periodo,
-    )
-    dias_trabajados_calendario = (efectivo_fin - efectivo_inicio).days + 1 - (
-        dias_de_vacaciones_en_rango(db, contrato.id, efectivo_inicio, efectivo_fin)
-    )
-    dias_vacaciones = min(
-        dias_vacaciones_comerciales, max(dias_base_periodo - dias_trabajados_calendario, _CERO)
+        dias_comerciales_periodo,
     )
     monto_descuento_vacaciones = min(
         (dias_vacaciones * salario_diario).quantize(_CENTAVO), max(salario_base_periodo, _CERO)
@@ -416,6 +403,26 @@ def _calcular_movimiento_de_contrato(
                     f"vacaciones ({periodo_inicio.isoformat()} a {periodo_fin.isoformat()})"
                 ),
                 monto=-monto_descuento_vacaciones,
+            )
+        )
+
+    # Quien regresa de vacaciones justo el día 31 trabajó ese día, pero la
+    # quincena 16-31 ya quedó cubierta por las vacaciones (mes comercial).
+    # Se le paga en el período siguiente, porque las quincenas se pagan el
+    # 15 y el 30 (indicación del contador 2026-10-27, solo este caso).
+    dia_31 = dia_31_trabajado_tras_vacaciones(db, contrato, periodo_inicio)
+    if dia_31 is not None:
+        monto_dia_31 = salario_diario.quantize(_CENTAVO)
+        salario_base_periodo += monto_dia_31
+        conceptos.append(
+            ConceptoVariable(
+                tipo="informativo",
+                codigo="dia_31_tras_vacaciones",
+                descripcion=(
+                    f"Día {dia_31.isoformat()} trabajado al regresar de vacaciones, "
+                    "pagado en este período"
+                ),
+                monto=monto_dia_31,
             )
         )
 
@@ -543,6 +550,28 @@ def dias_de_vacaciones_en_rango(
         else:
             dias += (solape_fin - solape_inicio).days + 1
     return dias
+
+
+def dia_31_trabajado_tras_vacaciones(
+    db: Session, contrato: Contrato, inicio_periodo: datetime.date
+) -> datetime.date | None:
+    """Si el período empieza el día 1 y la persona regresó de vacaciones el
+    día 31 del mes anterior (descanso terminado el 30), devuelve ese día 31,
+    que todavía no se le pagó. Si no, None."""
+    if inicio_periodo.day != 1:
+        return None
+    dia_31 = inicio_periodo - datetime.timedelta(days=1)
+    if dia_31.day != 31:
+        return None
+    if contrato.fecha_inicio > dia_31 or (
+        contrato.fecha_fin_real is not None and contrato.fecha_fin_real < dia_31
+    ):
+        return None
+    dia_30 = dia_31.replace(day=30)
+    rangos = movimientos_repo.listar_rangos_vacaciones(db, contrato.id, dia_30, dia_30)
+    if any(fin == dia_30 for _, fin in rangos):
+        return dia_31
+    return None
 
 
 def _factor_obligatorio(db: Session, tipo_tasa: str, fecha: datetime.date) -> decimal.Decimal:
