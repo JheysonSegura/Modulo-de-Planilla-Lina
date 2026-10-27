@@ -508,6 +508,24 @@ def test_vacacion_que_cruza_quincenas_descuenta_solo_los_dias_de_cada_una(client
     assert _d(_quincena(client, headers, 2026, 4, 1)["salario_bruto"]) == _d("210.00")
 
 
+def test_vacacion_desde_el_1_de_febrero_no_paga_la_segunda_quincena_de_febrero(client, db):
+    """Confirmado por el usuario 2026-10-27: sale el 1-feb-2026, 30 días
+    calendario -> termina el 2-mar, regresa el 3-mar. La 2ª quincena de
+    febrero (16-28, 13 días reales) vale 15 comerciales y está toda dentro
+    del descanso -> 0, no 2 días. 1ª de marzo: solo del 3 al 15 ->
+    450 - 2 × 30 = 390."""
+    headers = _preparar_empresa(db, client)
+    contrato_id = _crear_empleado_con_contrato(client, headers, datetime.date(2025, 1, 1))
+
+    resp = _registrar_vacacion_tomada(client, headers, contrato_id, datetime.date(2026, 2, 1), 30)
+    assert resp.status_code == 201, resp.text
+    assert _vacaciones_tomadas(client, headers, contrato_id)[0]["fecha_fin_goce"] == "2026-03-02"
+
+    assert _d(_quincena(client, headers, 2026, 2, 1)["salario_bruto"]) == _d("0.00")
+    assert _d(_quincena(client, headers, 2026, 2, 2)["salario_bruto"]) == _d("0.00")
+    assert _d(_quincena(client, headers, 2026, 3, 1)["salario_bruto"]) == _d("390.00")
+
+
 def test_rechaza_vacacion_sobre_dias_que_ya_paga_una_planilla_regular(client, db):
     headers = _preparar_empresa(db, client)
     contrato_id = _crear_empleado_con_contrato(client, headers, datetime.date(2025, 1, 1))

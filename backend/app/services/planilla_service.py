@@ -376,13 +376,18 @@ def _calcular_movimiento_de_contrato(
 
     # Días de este período que ya paga una planilla tipo='vacaciones' (el
     # pago de vacaciones REEMPLAZA el salario de esos días, decisión del
-    # usuario 2026-10-23 -- ver PLAN-vacaciones-descuentos.md). Días
-    # calendario del descanso dentro del período, sin pasar de los días
-    # comerciales del período (15/30): una vacación del 16 al 31 de un mes
-    # de 31 días deja la segunda quincena en cero, no en negativo.
+    # usuario 2026-10-23 -- ver PLAN-vacaciones-descuentos.md). Se cuentan
+    # en días comerciales, igual que el salario: si el descanso llega al
+    # último día del mes, cubre hasta el día 30. Así el 31 no se paga de
+    # más tras unas vacaciones del 1 al 30, y quien sale de vacaciones el
+    # 1-feb (regresa el 3-mar) no cobra la quincena 16-28 de febrero, solo
+    # del 3 al 15 de marzo (ambos casos confirmados por el usuario
+    # 2026-10-27).
     dias_comerciales_periodo = TIPO_A_DIAS_COMERCIALES[tipo]
     dias_vacaciones = min(
-        dias_de_vacaciones_en_rango(db, contrato.id, efectivo_inicio, efectivo_fin),
+        dias_de_vacaciones_en_rango(
+            db, contrato.id, efectivo_inicio, efectivo_fin, comerciales=True
+        ),
         dias_comerciales_periodo,
     )
     monto_descuento_vacaciones = min(
@@ -504,17 +509,28 @@ def _calcular_movimiento_de_contrato(
 
 
 def dias_de_vacaciones_en_rango(
-    db: Session, contrato_id: uuid.UUID, desde: datetime.date, hasta: datetime.date
+    db: Session,
+    contrato_id: uuid.UUID,
+    desde: datetime.date,
+    hasta: datetime.date,
+    comerciales: bool = False,
 ) -> decimal.Decimal:
-    """Días calendario de [desde, hasta] cubiertos por alguna planilla
-    tipo='vacaciones' no anulada del contrato."""
-    dias = 0
+    """Días de [desde, hasta] cubiertos por alguna planilla
+    tipo='vacaciones' no anulada del contrato. Por defecto días
+    calendario; con comerciales=True, en base 30 (el último día real del
+    mes cuenta hasta el 30), para descontarlos de un salario que también
+    se paga en meses de 30 días."""
+    dias = decimal.Decimal(0)
     for inicio, fin in movimientos_repo.listar_rangos_vacaciones(db, contrato_id, desde, hasta):
         solape_inicio = max(inicio, desde)
         solape_fin = min(fin, hasta)
-        if solape_fin >= solape_inicio:
+        if solape_fin < solape_inicio:
+            continue
+        if comerciales:
+            dias += decimo_service._dias_comerciales_entre(solape_inicio, solape_fin)
+        else:
             dias += (solape_fin - solape_inicio).days + 1
-    return decimal.Decimal(dias)
+    return dias
 
 
 def _factor_obligatorio(db: Session, tipo_tasa: str, fecha: datetime.date) -> decimal.Decimal:
