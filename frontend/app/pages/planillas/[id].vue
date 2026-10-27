@@ -394,7 +394,7 @@ async function exportarPlanilla(formato: 'excel' | 'csv' | 'pdf') {
                   :key="c.id"
                   class="flex justify-between gap-4 max-w-2xl"
                 >
-                  <span>{{ c.descripcion || c.codigo }}</span>
+                  <span>{{ c.descripcion ? formatearFechasEnTexto(c.descripcion) : c.codigo }}</span>
                   <span :class="Number(c.monto) < 0 ? 'text-error' : 'text-success'">
                     {{ Number(c.monto) < 0 ? '-' : '+' }}${{ c.monto.replace('-', '') }}
                   </span>
