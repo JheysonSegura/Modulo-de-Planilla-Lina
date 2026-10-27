@@ -13,6 +13,15 @@ export function formatearFecha(fecha: string | null | undefined, fallback = '—
   return new Date(fecha).toLocaleDateString('es-PA', { timeZone: 'UTC' })
 }
 
+/**
+ * Formatea con `formatearFecha` cada fecha pura (YYYY-MM-DD) dentro de un
+ * texto armado por el backend -- ej. la descripción de un ajuste al
+ * salario -- para que se vea igual que el resto de fechas de la pantalla.
+ */
+export function formatearFechasEnTexto(texto: string): string {
+  return texto.replace(/\b\d{4}-\d{2}-\d{2}\b/g, fecha => formatearFecha(fecha))
+}
+
 const EDAD_MINIMA_ANOS = 18
 
 /**
