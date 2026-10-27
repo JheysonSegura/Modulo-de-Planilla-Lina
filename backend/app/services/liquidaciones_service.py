@@ -9,7 +9,7 @@ from app.models import Contrato, Liquidacion
 from app.repositories import historial_salarial as historial_repo
 from app.repositories import liquidaciones as liquidaciones_repo
 from app.repositories import movimientos_planilla as movimientos_repo
-from app.services import auditoria_service, decimo_service, vacaciones_service
+from app.services import auditoria_service, decimo_service, planilla_service, vacaciones_service
 
 # Código de Trabajo, Título VI (Art. 210-229D), verificado contra
 # código-detrabajo.pdf el 2026-08-05 -- ver FASE10-plan-liquidaciones.txt
@@ -132,8 +132,13 @@ def _calcular_salario_pendiente(
     )
     if fecha_terminacion < fecha_desde:
         return _CERO
-    dias = (fecha_terminacion - fecha_desde).days + 1
-    return (decimal.Decimal(dias) * _salario_diario_vigente(db, contrato, fecha_terminacion)).quantize(
+    dias = decimal.Decimal((fecha_terminacion - fecha_desde).days + 1)
+    # Días que ya pagó una planilla tipo='vacaciones' (el pago de
+    # vacaciones reemplaza el salario de esos días, 2026-10-23).
+    dias -= planilla_service.dias_de_vacaciones_en_rango(
+        db, contrato.id, fecha_desde, fecha_terminacion
+    )
+    return (max(dias, _CERO) * _salario_diario_vigente(db, contrato, fecha_terminacion)).quantize(
         _CENTAVO
     )
 

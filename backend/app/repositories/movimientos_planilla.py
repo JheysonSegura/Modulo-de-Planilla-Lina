@@ -111,3 +111,55 @@ def obtener_ultimo_periodo_fin_pagado(
         )
     )
     return db.scalar(stmt)
+
+
+def buscar_planilla_que_solapa(
+    db: Session,
+    contrato_id: uuid.UUID,
+    tipos: tuple[str, ...],
+    fecha_desde: datetime.date,
+    fecha_hasta: datetime.date,
+) -> Planilla | None:
+    """Primera planilla no anulada de alguno de `tipos` que incluye a este
+    contrato y cuyo rango se solapa con [fecha_desde, fecha_hasta]. Usado
+    al registrar una vacación para no pagar dos veces los mismos días (ver
+    vacaciones_service.registrar_vacacion_tomada)."""
+    stmt = (
+        select(Planilla)
+        .join(MovimientoPlanilla, MovimientoPlanilla.planilla_id == Planilla.id)
+        .where(
+            MovimientoPlanilla.contrato_id == contrato_id,
+            Planilla.estado != "anulada",
+            Planilla.tipo.in_(tipos),
+            Planilla.periodo_inicio <= fecha_hasta,
+            Planilla.periodo_fin >= fecha_desde,
+        )
+        .order_by(Planilla.periodo_inicio)
+        .limit(1)
+    )
+    return db.scalar(stmt)
+
+
+def listar_rangos_vacaciones(
+    db: Session,
+    contrato_id: uuid.UUID,
+    fecha_desde: datetime.date,
+    fecha_hasta: datetime.date,
+) -> list[tuple[datetime.date, datetime.date]]:
+    """Rangos de descanso (periodo_inicio, periodo_fin) de las planillas
+    tipo='vacaciones' no anuladas de este contrato que se solapan con
+    [fecha_desde, fecha_hasta] -- usado por planilla_service para no
+    volver a pagar en la quincena los días que ya pagó la planilla de
+    vacaciones."""
+    stmt = (
+        select(Planilla.periodo_inicio, Planilla.periodo_fin)
+        .join(MovimientoPlanilla, MovimientoPlanilla.planilla_id == Planilla.id)
+        .where(
+            MovimientoPlanilla.contrato_id == contrato_id,
+            Planilla.estado != "anulada",
+            Planilla.tipo == "vacaciones",
+            Planilla.periodo_inicio <= fecha_hasta,
+            Planilla.periodo_fin >= fecha_desde,
+        )
+    )
+    return [(fila[0], fila[1]) for fila in db.execute(stmt).all()]

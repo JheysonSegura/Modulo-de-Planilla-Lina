@@ -5,9 +5,19 @@ import uuid
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.models import Contrato, ProvisionVacaciones, VacacionTomada
+from app.models import (
+    Contrato,
+    MovimientoPlanilla,
+    Planilla,
+    ProvisionVacaciones,
+    VacacionTomada,
+)
+from app.repositories import empresas as empresas_repo
 from app.repositories import historial_salarial as historial_repo
+from app.repositories import movimientos_planilla as movimientos_repo
+from app.repositories import planillas as planillas_repo
 from app.repositories import provisiones_vacaciones as provisiones_vacaciones_repo
+from app.repositories import tasas as tasas_repo
 from app.services import ausencias_service
 
 # Código de Trabajo, Art. 54.1: "Treinta días por cada once meses
@@ -140,6 +150,8 @@ def registrar_vacacion_tomada(
     contrato: Contrato,
     dias_tomados: decimal.Decimal,
     fecha: datetime.date,
+    fecha_pago: datetime.date | None = None,
+    usuario_id: uuid.UUID | None = None,
 ) -> ProvisionVacaciones:
     """Registra días de vacación efectivamente gozados, descontándolos
     del saldo disponible. `dias_tomados` llega siempre como entero desde
@@ -167,11 +179,26 @@ def registrar_vacacion_tomada(
     dias_acumulados desde que se acumuló (acumular_periodo), así que
     aquí solo se le resta el valor de los días tomados al
     monto_provisionado que ya tenía -- a diferencia del 'abierto', que
-    siempre se recalcula completo desde cero."""
+    siempre se recalcula completo desde cero.
+
+    Descuentos de ley (2026-10-23, ver PLAN-vacaciones-descuentos.md):
+    `fecha` es el inicio del descanso, que dura `dias_tomados` días
+    calendario. Cada toma genera su propia Planilla tipo='vacaciones'
+    (borrador -> aprobar -> pagar, igual que el décimo) con un
+    MovimientoPlanilla que lleva CSS/SE/riesgo profesional (mismas tasas
+    que una quincena, a `fecha_pago`) e ISR = impuesto anual proyectado
+    ÷ 12 × días/30. Ese pago REEMPLAZA el salario de esos días en las
+    quincenas (planilla_service._calcular_movimiento_de_contrato), así que
+    se rechaza la toma si ya hay una planilla regular o de vacaciones no
+    anulada que cubra alguno de esos días -- habría doble pago.
+    `fecha_pago` por defecto es 3 días antes del descanso (Art. 54.5 CT)."""
     if dias_tomados <= _CERO:
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY, "dias_tomados debe ser mayor que cero."
         )
+    fecha_fin_goce = fecha + datetime.timedelta(days=int(dias_tomados) - 1)
+    if fecha_pago is None:
+        fecha_pago = fecha - datetime.timedelta(days=3)
 
     periodos = provisiones_vacaciones_repo.get_todas_activas(db, contrato.id)
     if not periodos:
@@ -198,6 +225,30 @@ def registrar_vacacion_tomada(
             f"Solo hay {saldo_total} días de vacaciones disponibles al "
             f"{fecha.isoformat()}, se intentaron tomar {dias_tomados}.",
         )
+
+    solapada = movimientos_repo.buscar_planilla_que_solapa(
+        db, contrato.id, ("mensual", "quincenal", "vacaciones"), fecha, fecha_fin_goce
+    )
+    if solapada is not None:
+        if solapada.tipo == "vacaciones":
+            detalle = "Ya hay vacaciones registradas que cubren parte de esos días"
+        else:
+            detalle = (
+                f"Ya hay una planilla {solapada.tipo} (estado '{solapada.estado}') que paga el "
+                "salario de parte de esos días"
+            )
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"{detalle} ({solapada.periodo_inicio.isoformat()} a "
+            f"{solapada.periodo_fin.isoformat()}). El descanso va del {fecha.isoformat()} al "
+            f"{fecha_fin_goce.isoformat()}; para no pagar dos veces los mismos días, anula "
+            "primero esa planilla si todavía está en borrador, o elige otra fecha de inicio.",
+        )
+
+    planilla, movimiento = _crear_planilla_de_vacaciones(
+        db, empresa_id, usuario_id, contrato, dias_tomados, valor_dia, fecha, fecha_fin_goce,
+        fecha_pago,
+    )
 
     restante = dias_tomados
     ultimo_modificado: ProvisionVacaciones | None = None
@@ -229,11 +280,13 @@ def registrar_vacacion_tomada(
             ultimo_modificado,
             contrato.id,
             fecha,
+            fecha_fin_goce,
             tomar,
             valor_dia,
             (tomar * valor_dia).quantize(_CENTAVO),
             dias_acumulados,
             nuevos_dias_gozados,
+            movimiento.id,
         )
         restante -= tomar
 
@@ -242,6 +295,139 @@ def registrar_vacacion_tomada(
     # LOCAL app.empresa_actual no sobrevive al commit).
     assert ultimo_modificado is not None  # dias_tomados > 0 y <= saldo_total: siempre toca algo
     return ultimo_modificado
+
+
+def _crear_planilla_de_vacaciones(
+    db: Session,
+    empresa_id: uuid.UUID,
+    usuario_id: uuid.UUID | None,
+    contrato: Contrato,
+    dias_tomados: decimal.Decimal,
+    valor_dia: decimal.Decimal,
+    fecha: datetime.date,
+    fecha_fin_goce: datetime.date,
+    fecha_pago: datetime.date,
+) -> tuple[Planilla, MovimientoPlanilla]:
+    """Planilla tipo='vacaciones' en borrador con un solo movimiento, mismo
+    patrón que decimo_service.generar_pago_decimo. El pago de vacaciones es
+    salario: lleva las mismas cuotas que una quincena (CSS, Seguro
+    Educativo, riesgo profesional), con las tasas vigentes a `fecha_pago`.
+    El ISR es el del mes que reemplaza: impuesto anual proyectado ÷ 12 ×
+    días/30 (decisión del usuario 2026-10-23), y la reconciliación anual
+    de las quincenas siguientes ajusta cualquier diferencia."""
+    # Import local: planilla_service ya importa este módulo (anular una
+    # planilla de vacaciones llama a revertir_toma_de_planilla).
+    from app.services import planilla_service
+
+    empresa = empresas_repo.get(db, empresa_id)
+    if empresa is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Empresa no encontrada")
+
+    salario_bruto = (dias_tomados * valor_dia).quantize(_CENTAVO)
+
+    def _cuota(tipo_tasa: str) -> decimal.Decimal:
+        factor = planilla_service._factor_obligatorio(db, tipo_tasa, fecha_pago)
+        return (salario_bruto * factor).quantize(_CENTAVO)
+
+    css_empleado = _cuota("css_empleado")
+    css_patronal = _cuota("css_patronal")
+    seguro_educativo_empleado = _cuota("seguro_educativo_empleado")
+    seguro_educativo_patronal = _cuota("seguro_educativo_patronal")
+
+    riesgo_profesional_patronal = _CERO
+    if empresa.clase_riesgo:
+        tasa_riesgo = tasas_repo.obtener_tasa_riesgo_profesional_vigente(
+            db, empresa.clase_riesgo, fecha_pago
+        )
+        if tasa_riesgo is not None:
+            riesgo_profesional_patronal = (salario_bruto * tasa_riesgo.tasa).quantize(_CENTAVO)
+
+    salario_mensual = valor_dia * DIAS_MES_COMERCIAL
+    impuesto_anual, renta_bruta_anual, decimo_tratamiento = (
+        planilla_service.calcular_impuesto_anual_proyectado(db, salario_mensual, fecha)
+    )
+    isr_retenido = (
+        impuesto_anual / decimal.Decimal("12") * dias_tomados / DIAS_MES_COMERCIAL
+    ).quantize(_CENTAVO)
+
+    planilla = Planilla(
+        empresa_id=empresa_id,
+        tipo="vacaciones",
+        periodo_inicio=fecha,
+        periodo_fin=fecha_fin_goce,
+        fecha_pago=fecha_pago,
+        estado="borrador",
+        procesada_por=usuario_id,
+    )
+    planillas_repo.crear(db, planilla)
+
+    movimiento = MovimientoPlanilla(
+        empresa_id=empresa_id,
+        planilla_id=planilla.id,
+        contrato_id=contrato.id,
+        salario_base_periodo=salario_bruto,
+        salario_bruto=salario_bruto,
+        css_empleado=css_empleado,
+        css_patronal=css_patronal,
+        seguro_educativo_empleado=seguro_educativo_empleado,
+        seguro_educativo_patronal=seguro_educativo_patronal,
+        riesgo_profesional_patronal=riesgo_profesional_patronal,
+        isr_retenido=isr_retenido,
+        isr_renta_anual_proyectada=renta_bruta_anual,
+        isr_impuesto_anual_proyectado=impuesto_anual,
+        isr_decimo_tratamiento=decimo_tratamiento,
+        otras_deducciones=_CERO,
+        salario_neto=salario_bruto - css_empleado - seguro_educativo_empleado - isr_retenido,
+    )
+    movimientos_repo.crear(db, movimiento)
+    return planilla, movimiento
+
+
+def revertir_toma_de_planilla(db: Session, planilla: Planilla) -> None:
+    """Se llama desde planilla_service.anular_planilla cuando se anula una
+    planilla tipo='vacaciones' (solo en borrador): devuelve los días de
+    cada fila de la toma a su período de vacaciones y las marca anuladas.
+    No hace commit -- lo hace anular_planilla junto con el cambio de
+    estado y la auditoría.
+
+    Rechaza si una planilla regular no anulada ya descontó esos días
+    (planilla_service los resta como "pagados aparte"): anular solo la de
+    vacaciones dejaría esos días sin pagar en ningún lado."""
+    movimientos = movimientos_repo.listar_de_planilla(db, planilla.id)
+    for movimiento in movimientos:
+        regular = movimientos_repo.buscar_planilla_que_solapa(
+            db,
+            movimiento.contrato_id,
+            ("mensual", "quincenal"),
+            planilla.periodo_inicio,
+            planilla.periodo_fin,
+        )
+        if regular is not None:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                f"La planilla {regular.tipo} del {regular.periodo_inicio.isoformat()} al "
+                f"{regular.periodo_fin.isoformat()} (estado '{regular.estado}') ya descontó "
+                "estos días de vacaciones del salario. Anúlala primero (si sigue en borrador) "
+                "para no dejar esos días sin pagar.",
+            )
+
+    for movimiento in movimientos:
+        for evento in provisiones_vacaciones_repo.listar_eventos_de_movimiento(db, movimiento.id):
+            if evento.anulada:
+                continue
+            provision = provisiones_vacaciones_repo.get(db, evento.provision_id)
+            # El 'abierto' igual se recalcula completo en la próxima
+            # planilla; el 'acumulado' está congelado y solo así recupera
+            # el valor de esos días.
+            provisiones_vacaciones_repo.registrar_goce(
+                db,
+                provision,
+                provision.dias_acumulados,
+                max(provision.dias_gozados - evento.dias_tomados, _CERO),
+                provision.monto_provisionado + evento.monto,
+            )
+            evento.anulada = True
+    db.flush()
 
 
 def acumular_periodo(

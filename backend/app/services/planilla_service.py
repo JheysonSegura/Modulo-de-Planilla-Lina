@@ -296,6 +296,10 @@ def anular_planilla(
     planilla.estado = "anulada"
     pendientes_repo.revertir_aplicados_de_planilla(db, planilla.id)
     horas_extra_repo.revertir_aplicados_de_planilla(db, planilla.id)
+    if planilla.tipo == "vacaciones":
+        # Devuelve los días al saldo y marca la toma como anulada -- sin
+        # esto el trabajador perdería días que nunca se le pagaron.
+        vacaciones_service.revertir_toma_de_planilla(db, planilla)
 
     auditoria_service.registrar(
         db,
@@ -370,6 +374,34 @@ def _calcular_movimiento_de_contrato(
             )
         )
 
+    # Días de este período que ya paga una planilla tipo='vacaciones' (el
+    # pago de vacaciones REEMPLAZA el salario de esos días, decisión del
+    # usuario 2026-10-23 -- ver PLAN-vacaciones-descuentos.md). Días
+    # calendario del descanso dentro del período, sin pasar de los días
+    # comerciales del período (15/30): una vacación del 16 al 31 de un mes
+    # de 31 días deja la segunda quincena en cero, no en negativo.
+    dias_comerciales_periodo = TIPO_A_DIAS_COMERCIALES[tipo]
+    dias_vacaciones = min(
+        dias_de_vacaciones_en_rango(db, contrato.id, efectivo_inicio, efectivo_fin),
+        dias_comerciales_periodo,
+    )
+    monto_descuento_vacaciones = min(
+        (dias_vacaciones * salario_diario).quantize(_CENTAVO), max(salario_base_periodo, _CERO)
+    )
+    if monto_descuento_vacaciones > _CERO:
+        salario_base_periodo -= monto_descuento_vacaciones
+        conceptos.append(
+            ConceptoVariable(
+                tipo="informativo",
+                codigo="vacaciones_pagadas_aparte",
+                descripcion=(
+                    f"{dias_vacaciones} día(s) de vacaciones pagados en su propia planilla de "
+                    f"vacaciones ({periodo_inicio.isoformat()} a {periodo_fin.isoformat()})"
+                ),
+                monto=-monto_descuento_vacaciones,
+            )
+        )
+
     registros_horas_extra = horas_extra_repo.listar_pendientes_de_contrato(
         db, contrato.id, periodo_inicio, periodo_fin
     )
@@ -436,6 +468,14 @@ def _calcular_movimiento_de_contrato(
     isr_retenido, isr_auditoria = _calcular_isr_retenido(
         db, contrato, tipo, periodo_inicio, periodo_fin, salario_mensual
     )
+    if dias_vacaciones > _CERO:
+        # La planilla de vacaciones ya retuvo el ISR de esos días
+        # (vacaciones_service). La reconciliación anual de
+        # _calcular_isr_retenido ajusta cualquier diferencia de centavos en
+        # los períodos siguientes.
+        isr_retenido = (
+            isr_retenido * (dias_comerciales_periodo - dias_vacaciones) / dias_comerciales_periodo
+        ).quantize(_CENTAVO)
 
     salario_neto = (
         salario_bruto - css_empleado - seguro_educativo_empleado - isr_retenido - otras_deducciones
@@ -461,6 +501,20 @@ def _calcular_movimiento_de_contrato(
         salario_neto=salario_neto,
     )
     return movimiento, conceptos, pendientes, registros_horas_extra
+
+
+def dias_de_vacaciones_en_rango(
+    db: Session, contrato_id: uuid.UUID, desde: datetime.date, hasta: datetime.date
+) -> decimal.Decimal:
+    """Días calendario de [desde, hasta] cubiertos por alguna planilla
+    tipo='vacaciones' no anulada del contrato."""
+    dias = 0
+    for inicio, fin in movimientos_repo.listar_rangos_vacaciones(db, contrato_id, desde, hasta):
+        solape_inicio = max(inicio, desde)
+        solape_fin = min(fin, hasta)
+        if solape_fin >= solape_inicio:
+            dias += (solape_fin - solape_inicio).days + 1
+    return decimal.Decimal(dias)
 
 
 def _factor_obligatorio(db: Session, tipo_tasa: str, fecha: datetime.date) -> decimal.Decimal:
@@ -528,9 +582,42 @@ def _calcular_isr_retenido(
     numero_periodo = numero_periodo_actual - numero_periodo_inicio + 1
     periodos_restantes = periodos_por_anio - numero_periodo + 1
 
+    impuesto_anual_proyectado, renta_bruta_anual, decimo_tratamiento = (
+        calcular_impuesto_anual_proyectado(db, salario_mensual_vigente, periodo_fin)
+    )
+
+    ya_retenido_este_anio = movimientos_repo.sumar_isr_retenido_del_anio(
+        db, contrato.id, periodo_inicio.year
+    )
+
+    isr_periodo = max(
+        _CERO,
+        (impuesto_anual_proyectado - ya_retenido_este_anio) / decimal.Decimal(periodos_restantes),
+    ).quantize(_CENTAVO)
+
+    auditoria = {
+        "isr_renta_anual_proyectada": renta_bruta_anual,
+        "isr_impuesto_anual_proyectado": impuesto_anual_proyectado,
+        "isr_decimo_tratamiento": decimo_tratamiento,
+        "isr_numero_periodo_anio": numero_periodo,
+        "isr_periodos_restantes_anio": periodos_restantes,
+    }
+    return isr_periodo, auditoria
+
+
+def calcular_impuesto_anual_proyectado(
+    db: Session, salario_mensual_vigente: decimal.Decimal, fecha: datetime.date
+) -> tuple[decimal.Decimal, decimal.Decimal, str]:
+    """Pasos (1) y (2) de _calcular_isr_retenido: impuesto anual sobre la
+    renta bruta proyectada (salario × 12 + décimo), con los tramos vigentes
+    a `fecha`. Devuelve (impuesto_anual, renta_bruta_anual,
+    decimo_tratamiento). Separado para que vacaciones_service retenga el
+    ISR de un pago de vacaciones con la misma lógica de tramos, sin
+    duplicarla (impuesto anual ÷ 12 × días/30, decisión del usuario
+    2026-10-23)."""
     renta_bruta_anual = salario_mensual_vigente * decimal.Decimal("12")
 
-    parametro = parametros_isr_repo.obtener_vigente(db, periodo_fin)
+    parametro = parametros_isr_repo.obtener_vigente(db, fecha)
     if parametro is None:
         # No debería pasar desde la migración 0015 (decimo confirmado
         # e integrado); si algún día no hay parámetro vigente para la
@@ -551,34 +638,17 @@ def _calcular_isr_retenido(
     # restar CSS/SE de esa base.
     renta_gravable_anual = renta_bruta_anual
 
-    tramo = tramos_isr_repo.obtener_tramo_aplicable(db, renta_gravable_anual, periodo_fin)
+    tramo = tramos_isr_repo.obtener_tramo_aplicable(db, renta_gravable_anual, fecha)
     if tramo is None:
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
-            f"No hay un tramo de ISR vigente para el {periodo_fin.isoformat()} que cubra una "
+            f"No hay un tramo de ISR vigente para el {fecha.isoformat()} que cubra una "
             f"renta gravable anual de {renta_gravable_anual}. Verifica el seed de tramos_isr.",
         )
     impuesto_anual_proyectado = (
         tramo.impuesto_base + (renta_gravable_anual - tramo.monto_desde) * tramo.tasa_marginal
     ).quantize(_CENTAVO)
-
-    ya_retenido_este_anio = movimientos_repo.sumar_isr_retenido_del_anio(
-        db, contrato.id, periodo_inicio.year
-    )
-
-    isr_periodo = max(
-        _CERO,
-        (impuesto_anual_proyectado - ya_retenido_este_anio) / decimal.Decimal(periodos_restantes),
-    ).quantize(_CENTAVO)
-
-    auditoria = {
-        "isr_renta_anual_proyectada": renta_bruta_anual.quantize(_CENTAVO),
-        "isr_impuesto_anual_proyectado": impuesto_anual_proyectado,
-        "isr_decimo_tratamiento": decimo_tratamiento,
-        "isr_numero_periodo_anio": numero_periodo,
-        "isr_periodos_restantes_anio": periodos_restantes,
-    }
-    return isr_periodo, auditoria
+    return impuesto_anual_proyectado, renta_bruta_anual.quantize(_CENTAVO), decimo_tratamiento
 
 
 def _numero_periodo_de_fecha(tipo: str, fecha: datetime.date) -> int:
