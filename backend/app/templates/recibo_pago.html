@@ -35,7 +35,15 @@
             <tr><th>Concepto</th><th class="monto">Monto</th></tr>
         </thead>
         <tbody>
+            {% if ajustes_salario %}
+            <tr><td>Salario base del período</td><td class="monto">{{ "%.2f"|format(salario_base_sin_ajustes) }}</td></tr>
+            {% for c in ajustes_salario %}
+            <tr><td>{{ c.descripcion or c.codigo }}</td><td class="monto">{{ "%.2f"|format(c.monto) }}</td></tr>
+            {% endfor %}
+            <tr class="subtotal"><td>Salario del período</td><td class="monto">{{ "%.2f"|format(salario_base_periodo) }}</td></tr>
+            {% else %}
             <tr><td>Salario base del período</td><td class="monto">{{ "%.2f"|format(salario_base_periodo) }}</td></tr>
+            {% endif %}
             {% for h in horas_extra_por_tipo %}
             <tr><td>Horas extra &mdash; {{ h.tipo_hora }} ({{ h.horas }} h)</td><td class="monto">{{ "%.2f"|format(h.monto) }}</td></tr>
             {% endfor %}

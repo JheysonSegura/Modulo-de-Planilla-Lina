@@ -335,3 +335,69 @@ def test_recibo_vacacion_muestra_descuentos_de_ley_y_neto(db, client):
     )
     assert resp.status_code == 200, resp.text
     assert resp.content.startswith(b"%PDF")
+
+
+def _generar_quincena(client, headers, inicio, fin):
+    resp = client.post(
+        "/planillas/generar",
+        json={
+            "tipo": "quincenal",
+            "periodo_inicio": inicio,
+            "periodo_fin": fin,
+            "fecha_pago": fin,
+        },
+        headers=headers,
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()
+
+
+def test_recibo_pago_muestra_ajustes_al_salario(db, client):
+    """Transparencia (pedido del usuario 2026-10-27): el recibo muestra el
+    salario base completo y cada ajuste ya aplicado (vacaciones pagadas
+    aparte, día 31 tras vacaciones) sin cambiar ningún total. Vacaciones
+    del 1 al 30-mar, $2,500/mes: 2ª de marzo = 1,250 - 1,250 = 0; 1ª de
+    abril = 1,250 + 83.33 del 31-mar."""
+    import openpyxl
+
+    empresa, headers = _preparar_empresa(db, client)
+    contrato_id = _crear_empleado_con_contrato(client, headers)
+    resp = client.post(
+        f"/contratos/{contrato_id}/vacaciones-tomadas",
+        json={"fecha": "2026-03-01", "dias": 30},
+        headers=headers,
+    )
+    assert resp.status_code == 201, resp.text
+    marzo = _generar_quincena(client, headers, "2026-03-16", "2026-03-31")
+    abril = _generar_quincena(client, headers, "2026-04-01", "2026-04-15")
+
+    db.execute(
+        text("SELECT set_config('app.empresa_actual', :eid, false)"), {"eid": str(empresa.id)}
+    )
+    mov_marzo = _unico_movimiento(client, headers, marzo["id"])
+    contexto = reportes_service.armar_recibo_pago(
+        db, db.get(MovimientoPlanilla, uuid.UUID(mov_marzo["id"]))
+    )
+    assert contexto["cuadra"] is True
+    assert contexto["salario_base_sin_ajustes"] == decimal.Decimal("1250.00")
+    assert [c.codigo for c in contexto["ajustes_salario"]] == ["vacaciones_pagadas_aparte"]
+    assert contexto["salario_base_periodo"] == decimal.Decimal("0.00")
+
+    mov_abril = _unico_movimiento(client, headers, abril["id"])
+    contexto = reportes_service.armar_recibo_pago(
+        db, db.get(MovimientoPlanilla, uuid.UUID(mov_abril["id"]))
+    )
+    assert contexto["cuadra"] is True
+    assert contexto["salario_base_sin_ajustes"] == decimal.Decimal("1250.00")
+    assert [c.codigo for c in contexto["ajustes_salario"]] == ["dia_31_tras_vacaciones"]
+    assert contexto["salario_base_periodo"] == decimal.Decimal("1333.33")
+
+    url = f"/planillas/{abril['id']}/movimientos/{mov_abril['id']}/recibo"
+    resp = client.get(f"{url}?formato=excel", headers=headers)
+    assert resp.status_code == 200, resp.text
+    hoja = openpyxl.load_workbook(io.BytesIO(resp.content)).active
+    fila = dict(zip([c.value for c in hoja[1]], [c.value for c in hoja[2]]))
+    assert "2026-03-31" in fila["Ajustes al salario"]
+    resp = client.get(f"{url}?formato=pdf", headers=headers)
+    assert resp.status_code == 200, resp.text
+    assert resp.content.startswith(b"%PDF")

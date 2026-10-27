@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { MovimientoPlanilla } from '~/composables/usePlanillas'
+
 const route = useRoute()
 const planillaId = route.params.id as string
 
@@ -28,6 +30,13 @@ async function cargarNombres() {
   }
 }
 await cargarNombres()
+
+// Ajustes que el backend ya aplicó al salario del período (ausencia sin
+// goce, vacaciones pagadas aparte, día 31 tras vacaciones): solo se
+// muestran, por transparencia, no cambian ningún total.
+function ajustesSalario(m: MovimientoPlanilla) {
+  return m.conceptos_variables.filter(c => c.tipo === 'informativo')
+}
 
 const aprobando = ref(false)
 async function aprobarPlanilla() {
@@ -323,53 +332,76 @@ async function exportarPlanilla(formato: 'excel' | 'csv' | 'pdf') {
           </tr>
         </thead>
         <tbody>
-          <tr
+          <template
             v-for="m in movs"
             :key="m.id"
-            class="border-b border-gray-100 dark:border-gray-800 last:border-0"
           >
-            <td class="py-2 pr-4 font-medium text-gray-900 dark:text-white">
-              {{ nombresPorContrato[m.contrato_id] || m.contrato_id }}
-            </td>
-            <td class="py-2 pr-4">
-              ${{ m.salario_bruto }}
-            </td>
-            <td class="py-2 pr-4 text-error">
-              -${{ m.css_empleado }}
-            </td>
-            <td class="py-2 pr-4 text-error">
-              -${{ m.seguro_educativo_empleado }}
-            </td>
-            <td class="py-2 pr-4 text-error">
-              -${{ m.isr_retenido }}
-            </td>
-            <td class="py-2 pr-4 text-error">
-              -${{ m.otras_deducciones }}
-            </td>
-            <td class="py-2 pr-4 font-medium text-gray-900 dark:text-white">
-              ${{ m.salario_neto }}
-            </td>
-            <td class="py-2">
-              <div class="flex gap-1">
-                <UButton
-                  size="xs"
-                  variant="ghost"
-                  color="neutral"
-                  icon="i-lucide-file-text"
-                  title="Descargar PDF"
-                  @click="descargarRecibo(m.id, m.contrato_id, 'pdf')"
-                />
-                <UButton
-                  size="xs"
-                  variant="ghost"
-                  color="neutral"
-                  icon="i-lucide-file-spreadsheet"
-                  title="Descargar Excel"
-                  @click="descargarRecibo(m.id, m.contrato_id, 'excel')"
-                />
-              </div>
-            </td>
-          </tr>
+            <tr
+              class="border-b border-gray-100 dark:border-gray-800 last:border-0"
+            >
+              <td class="py-2 pr-4 font-medium text-gray-900 dark:text-white">
+                {{ nombresPorContrato[m.contrato_id] || m.contrato_id }}
+              </td>
+              <td class="py-2 pr-4">
+                ${{ m.salario_bruto }}
+              </td>
+              <td class="py-2 pr-4 text-error">
+                -${{ m.css_empleado }}
+              </td>
+              <td class="py-2 pr-4 text-error">
+                -${{ m.seguro_educativo_empleado }}
+              </td>
+              <td class="py-2 pr-4 text-error">
+                -${{ m.isr_retenido }}
+              </td>
+              <td class="py-2 pr-4 text-error">
+                -${{ m.otras_deducciones }}
+              </td>
+              <td class="py-2 pr-4 font-medium text-gray-900 dark:text-white">
+                ${{ m.salario_neto }}
+              </td>
+              <td class="py-2">
+                <div class="flex gap-1">
+                  <UButton
+                    size="xs"
+                    variant="ghost"
+                    color="neutral"
+                    icon="i-lucide-file-text"
+                    title="Descargar PDF"
+                    @click="descargarRecibo(m.id, m.contrato_id, 'pdf')"
+                  />
+                  <UButton
+                    size="xs"
+                    variant="ghost"
+                    color="neutral"
+                    icon="i-lucide-file-spreadsheet"
+                    title="Descargar Excel"
+                    @click="descargarRecibo(m.id, m.contrato_id, 'excel')"
+                  />
+                </div>
+              </td>
+            </tr>
+            <tr
+              v-if="ajustesSalario(m).length > 0"
+              class="border-b border-gray-100 dark:border-gray-800"
+            >
+              <td
+                colspan="8"
+                class="pb-2 pl-4 text-xs text-gray-500"
+              >
+                <div
+                  v-for="c in ajustesSalario(m)"
+                  :key="c.id"
+                  class="flex justify-between gap-4 max-w-2xl"
+                >
+                  <span>{{ c.descripcion || c.codigo }}</span>
+                  <span :class="Number(c.monto) < 0 ? 'text-error' : 'text-success'">
+                    {{ Number(c.monto) < 0 ? '-' : '+' }}${{ c.monto.replace('-', '') }}
+                  </span>
+                </div>
+              </td>
+            </tr>
+          </template>
           <tr v-if="!movs || movs.length === 0">
             <td
               colspan="8"
