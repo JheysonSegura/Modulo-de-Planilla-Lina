@@ -23,9 +23,9 @@
         </tr>
         <tr>
             <td class="etiqueta">Período</td>
-            <td>{{ periodo_inicio }} al {{ periodo_fin }}</td>
+            <td>{{ periodo_inicio|fecha }} al {{ periodo_fin|fecha }}</td>
             <td class="etiqueta">Fecha de pago</td>
-            <td>{{ fecha_pago }}</td>
+            <td>{{ fecha_pago|fecha }}</td>
         </tr>
     </table>
 
@@ -38,7 +38,7 @@
             {% if ajustes_salario %}
             <tr><td>Salario base del período</td><td class="monto">{{ "%.2f"|format(salario_base_sin_ajustes) }}</td></tr>
             {% for c in ajustes_salario %}
-            <tr><td>{{ c.descripcion or c.codigo }}</td><td class="monto">{{ "%.2f"|format(c.monto) }}</td></tr>
+            <tr><td>{{ (c.descripcion or c.codigo)|fechas_en_texto }}</td><td class="monto">{{ "%.2f"|format(c.monto) }}</td></tr>
             {% endfor %}
             <tr class="subtotal"><td>Salario del período</td><td class="monto">{{ "%.2f"|format(salario_base_periodo) }}</td></tr>
             {% else %}
@@ -48,7 +48,7 @@
             <tr><td>Horas extra &mdash; {{ h.tipo_hora }} ({{ h.horas }} h)</td><td class="monto">{{ "%.2f"|format(h.monto) }}</td></tr>
             {% endfor %}
             {% for c in otros_ingresos %}
-            <tr><td>{{ c.descripcion or c.codigo }}</td><td class="monto">{{ "%.2f"|format(c.monto) }}</td></tr>
+            <tr><td>{{ (c.descripcion or c.codigo)|fechas_en_texto }}</td><td class="monto">{{ "%.2f"|format(c.monto) }}</td></tr>
             {% endfor %}
             <tr class="subtotal"><td>Salario bruto</td><td class="monto">{{ "%.2f"|format(salario_bruto) }}</td></tr>
         </tbody>
@@ -64,7 +64,7 @@
             <tr><td>Seguro Educativo</td><td class="monto">{{ "%.2f"|format(seguro_educativo_empleado) }}</td></tr>
             <tr><td>ISR retenido</td><td class="monto">{{ "%.2f"|format(isr_retenido) }}</td></tr>
             {% for c in otras_deducciones_detalle %}
-            <tr><td>{{ c.descripcion or c.codigo }}</td><td class="monto">{{ "%.2f"|format(c.monto) }}</td></tr>
+            <tr><td>{{ (c.descripcion or c.codigo)|fechas_en_texto }}</td><td class="monto">{{ "%.2f"|format(c.monto) }}</td></tr>
             {% endfor %}
             <tr class="subtotal"><td>Total deducciones</td><td class="monto">{{ "%.2f"|format(total_deducciones) }}</td></tr>
         </tbody>

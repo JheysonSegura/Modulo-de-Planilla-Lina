@@ -13,9 +13,9 @@
     {% include "_base_recibo.html" %}
 
     <h2 class="titulo-documento">
-        Planilla {{ planilla_tipo.replace("_", " ") }} — {{ periodo_inicio }} al {{ periodo_fin }}
+        Planilla {{ planilla_tipo.replace("_", " ") }} — {{ periodo_inicio|fecha }} al {{ periodo_fin|fecha }}
     </h2>
-    <p style="text-align:center; font-size: 9pt; color:#555; margin-top:-8pt;">Fecha de pago: {{ fecha_pago }}</p>
+    <p style="text-align:center; font-size: 9pt; color:#555; margin-top:-8pt;">Fecha de pago: {{ fecha_pago|fecha }}</p>
 
     <table class="desglose">
         <thead>

@@ -19,7 +19,7 @@
         </tr>
         <tr>
             <td class="etiqueta">Fecha de terminación</td>
-            <td>{{ fecha_terminacion }}</td>
+            <td>{{ fecha_terminacion|fecha }}</td>
             <td class="etiqueta">Motivo</td>
             <td>{{ motivo.replace("_", " ")|capitalize }}</td>
         </tr>
@@ -31,7 +31,7 @@
         </thead>
         <tbody>
             {% for nombre, monto in conceptos %}
-            <tr><td>{{ nombre }}</td><td class="monto">{{ "%.2f"|format(monto) }}</td></tr>
+            <tr><td>{{ nombre|fechas_en_texto }}</td><td class="monto">{{ "%.2f"|format(monto) }}</td></tr>
             {% endfor %}
             <tr class="total"><td>Monto total</td><td class="monto">{{ "%.2f"|format(monto_total) }}</td></tr>
         </tbody>

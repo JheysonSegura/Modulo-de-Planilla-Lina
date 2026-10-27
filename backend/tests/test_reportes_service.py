@@ -401,3 +401,15 @@ def test_recibo_pago_muestra_ajustes_al_salario(db, client):
     resp = client.get(f"{url}?formato=pdf", headers=headers)
     assert resp.status_code == 200, resp.text
     assert resp.content.startswith(b"%PDF")
+
+
+def test_pdf_formatea_fechas_en_mes_dia_anio():
+    """Pedido del usuario 2026-10-27: el PDF muestra las fechas igual que
+    la pantalla (03/31/2026), también dentro de las descripciones."""
+    formatear = reportes_service._env.filters["fecha"]
+    en_texto = reportes_service._env.filters["fechas_en_texto"]
+    assert formatear(datetime.date(2026, 3, 31)) == "03/31/2026"
+    assert formatear("2026-04-01") == "04/01/2026"
+    assert formatear(None) == ""
+    assert en_texto("Vacaciones (2026-03-16 a 2026-03-31)") == "Vacaciones (03/16/2026 a 03/31/2026)"
+    assert en_texto("Bono de marzo") == "Bono de marzo"
