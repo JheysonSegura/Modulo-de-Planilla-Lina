@@ -627,6 +627,33 @@ def test_liquidacion_no_vuelve_a_pagar_dias_de_vacaciones(client, db):
     assert _d(resp.json()["salario_pendiente"]) == _d("150.00")
 
 
+def test_no_anular_vacacion_si_la_quincena_siguiente_ya_pago_el_dia_31(client, db):
+    """Vacaciones del 1 al 30-mar; la 1ª de abril ya pagó el 31-mar. Aunque
+    se anulen las quincenas de marzo, anular la vacación dejaría que la
+    2ª de marzo regenerada volviera a pagar el 31 -> 409."""
+    headers = _preparar_empresa(db, client)
+    contrato_id = _crear_empleado_con_contrato(client, headers, datetime.date(2025, 1, 1))
+
+    resp = _registrar_vacacion_tomada(client, headers, contrato_id, datetime.date(2026, 3, 1), 30)
+    assert resp.status_code == 201, resp.text
+    planilla_id = _planilla_de_vacaciones(client, headers, contrato_id)
+    marzo = [
+        _generar_planilla(client, headers, "quincenal", inicio, fin)
+        for inicio, fin in (
+            (datetime.date(2026, 3, 1), datetime.date(2026, 3, 15)),
+            (datetime.date(2026, 3, 16), datetime.date(2026, 3, 31)),
+        )
+    ]
+    _quincena(client, headers, 2026, 4, 1)
+    for planilla_marzo in marzo:
+        resp = client.post(f"/planillas/{planilla_marzo['id']}/anular", headers=headers)
+        assert resp.status_code == 200, resp.text
+
+    resp = client.post(f"/planillas/{planilla_id}/anular", headers=headers)
+    assert resp.status_code == 409, resp.text
+    assert "2026-04-01" in resp.json()["detail"]
+
+
 def test_liquidacion_paga_el_dia_31_si_regreso_de_vacaciones_ese_dia(client, db):
     """Vacaciones del 1 al 30-mar, regresa el 31; las quincenas de marzo ya
     se pagaron (en cero). Se liquida el 5-abr, antes de la quincena que
