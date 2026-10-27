@@ -453,21 +453,26 @@ def test_caso_a_vacacion_de_30_dias_con_descuentos_y_quincenas_en_cero(client, d
     assert _d(mov["seguro_educativo_patronal"]) == _d("37.50")
     assert _d(mov["isr_impuesto_anual_proyectado"]) == _d("3225.00")
 
-    # Las quincenas de marzo no vuelven a pagar esos días: salario e ISR en cero.
-    # El 31-mar ya trabaja, pero no se paga de más (confirmado por el usuario
-    # 2026-10-27): las vacaciones cubren el mes comercial completo.
-    for mitad in (1, 2):
-        mov_q = _quincena(client, headers, 2026, 3, mitad)
-        assert _d(mov_q["salario_bruto"]) == _d("0.00")
-        assert _d(mov_q["isr_retenido"]) == _d("0.00")
+    # Las quincenas de marzo no vuelven a pagar los días de vacaciones. La
+    # 1ª queda en cero; la 2ª paga solo el 31-mar, día en que la persona ya
+    # regresó a trabajar (confirmado por el contador 2026-10-27): 2,500/30 =
+    # 83.33. ISR: (3,225 - 537.50 de ene/feb - 268.75 de vacaciones) / 19
+    # períodos restantes = 127.30... × 1/15 = 8.49.
+    mov_q1 = _quincena(client, headers, 2026, 3, 1)
+    assert _d(mov_q1["salario_bruto"]) == _d("0.00")
+    assert _d(mov_q1["isr_retenido"]) == _d("0.00")
+    mov_q2 = _quincena(client, headers, 2026, 3, 2)
+    assert _d(mov_q2["salario_bruto"]) == _d("83.33")
+    assert _d(mov_q2["isr_retenido"]) == _d("8.49")
+    for mov_q in (mov_q1, mov_q2):
         codigos = [c["codigo"] for c in mov_q["conceptos_variables"]]
         assert "vacaciones_pagadas_aparte" in codigos
 
     # 1ª quincena de abril: ISR normal, la reconciliación anual cuadra
-    # (3,225 - 537.50 de ene/feb - 268.75 de vacaciones) / 18 = 134.375.
+    # (3,225 - 537.50 - 268.75 - 8.49) / 18 = 133.903...
     mov_abril = _quincena(client, headers, 2026, 4, 1)
     assert _d(mov_abril["salario_bruto"]) == _d("1250.00")
-    assert _d(mov_abril["isr_retenido"]) == _d("134.38")
+    assert _d(mov_abril["isr_retenido"]) == _d("133.90")
 
 
 def test_caso_b_quince_dias_equivale_a_una_quincena_normal(client, db):
@@ -524,6 +529,25 @@ def test_vacacion_desde_el_1_de_febrero_no_paga_la_segunda_quincena_de_febrero(c
     assert _d(_quincena(client, headers, 2026, 2, 1)["salario_bruto"]) == _d("0.00")
     assert _d(_quincena(client, headers, 2026, 2, 2)["salario_bruto"]) == _d("0.00")
     assert _d(_quincena(client, headers, 2026, 3, 1)["salario_bruto"]) == _d("390.00")
+
+
+def test_vacacion_que_termina_a_mitad_de_quincena_paga_los_dias_trabajados_incluido_el_31(
+    client, db
+):
+    """Del 20-feb al 21-mar-2026 (30 días), regresa el 22-mar. 2ª de
+    febrero: vacaciones del 20 al 28 = 11 días comerciales -> paga 4 (16 al
+    19) = 120. 2ª de marzo: trabaja del 22 al 31 = 10 días calendario; la
+    cuenta comercial (15 - 6) daría 9, pero el 31 trabajado tras volver de
+    vacaciones se paga (contador 2026-10-27) -> 10 × 30 = 300."""
+    headers = _preparar_empresa(db, client)
+    contrato_id = _crear_empleado_con_contrato(client, headers, datetime.date(2025, 1, 1))
+
+    resp = _registrar_vacacion_tomada(client, headers, contrato_id, datetime.date(2026, 2, 20), 30)
+    assert resp.status_code == 201, resp.text
+
+    assert _d(_quincena(client, headers, 2026, 2, 2)["salario_bruto"]) == _d("120.00")
+    assert _d(_quincena(client, headers, 2026, 3, 1)["salario_bruto"]) == _d("0.00")
+    assert _d(_quincena(client, headers, 2026, 3, 2)["salario_bruto"]) == _d("300.00")
 
 
 def test_rechaza_vacacion_sobre_dias_que_ya_paga_una_planilla_regular(client, db):

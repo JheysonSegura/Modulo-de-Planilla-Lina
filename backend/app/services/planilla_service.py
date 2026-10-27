@@ -378,17 +378,29 @@ def _calcular_movimiento_de_contrato(
     # pago de vacaciones REEMPLAZA el salario de esos días, decisión del
     # usuario 2026-10-23 -- ver PLAN-vacaciones-descuentos.md). Se cuentan
     # en días comerciales, igual que el salario: si el descanso llega al
-    # último día del mes, cubre hasta el día 30. Así el 31 no se paga de
-    # más tras unas vacaciones del 1 al 30, y quien sale de vacaciones el
-    # 1-feb (regresa el 3-mar) no cobra la quincena 16-28 de febrero, solo
-    # del 3 al 15 de marzo (ambos casos confirmados por el usuario
-    # 2026-10-27).
+    # último día del mes, cubre hasta el día 30 -- quien sale de vacaciones
+    # el 1-feb (regresa el 3-mar) no cobra la quincena 16-28 de febrero
+    # (confirmado por el usuario 2026-10-27). Pero los días que la persona
+    # SÍ trabajó en el período nunca quedan sin pagar: quien regresa de
+    # vacaciones el día 31 cobra ese día en la quincena 16-31 (confirmado
+    # por el contador 2026-10-27, solo para vacaciones).
     dias_comerciales_periodo = TIPO_A_DIAS_COMERCIALES[tipo]
-    dias_vacaciones = min(
+    dias_base_periodo = (
+        dias_comerciales_periodo
+        if cubre_periodo_completo
+        else decimal.Decimal((efectivo_fin - efectivo_inicio).days + 1)
+    )
+    dias_vacaciones_comerciales = min(
         dias_de_vacaciones_en_rango(
             db, contrato.id, efectivo_inicio, efectivo_fin, comerciales=True
         ),
-        dias_comerciales_periodo,
+        dias_base_periodo,
+    )
+    dias_trabajados_calendario = (efectivo_fin - efectivo_inicio).days + 1 - (
+        dias_de_vacaciones_en_rango(db, contrato.id, efectivo_inicio, efectivo_fin)
+    )
+    dias_vacaciones = min(
+        dias_vacaciones_comerciales, max(dias_base_periodo - dias_trabajados_calendario, _CERO)
     )
     monto_descuento_vacaciones = min(
         (dias_vacaciones * salario_diario).quantize(_CENTAVO), max(salario_base_periodo, _CERO)
