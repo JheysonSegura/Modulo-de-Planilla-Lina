@@ -239,7 +239,9 @@ def test_vacaciones_pendientes_en_liquidacion_conserva_decimales_tras_tomar_dias
     # empleado ya tomó 1 día entero de vacaciones antes de irse.
     resp = client.post(
         f"/contratos/{contrato_id}/vacaciones-tomadas",
-        json={"fecha": "2025-01-31", "dias": "1"},
+        # 1-feb, no 31-ene: enero ya tiene planilla generada y no se
+        # permite registrar vacaciones sobre días ya pagados (2026-10-27).
+        json={"fecha": "2025-02-01", "dias": "1"},
         headers=headers,
     )
     assert resp.status_code == 201, resp.text

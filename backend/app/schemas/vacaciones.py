@@ -24,7 +24,11 @@ class ProvisionVacacionesOut(BaseModel):
 
 
 class VacacionTomadaCreate(BaseModel):
+    # Inicio del descanso (el descanso dura `dias` días calendario).
     fecha: datetime.date
+    # Fecha de pago de la planilla de vacaciones; si se omite, 3 días antes
+    # del inicio del descanso (Art. 54.5 CT).
+    fecha_pago: datetime.date | None = None
     # Días efectivamente gozados: siempre número entero -- a diferencia de
     # dias_acumulados (Art. 54.1 CT, decimal por diseño, nunca redondear),
     # un trabajador toma días de calendario completos, no fracciones de
@@ -43,9 +47,18 @@ class VacacionTomadaOut(BaseModel):
     provision_id: uuid.UUID
     contrato_id: uuid.UUID
     fecha: datetime.date
+    fecha_fin_goce: datetime.date
     dias_tomados: decimal.Decimal
     valor_dia: decimal.Decimal
     monto: decimal.Decimal
+    anulada: bool
+    # Planilla tipo='vacaciones' que paga esta toma (migración 0039). None
+    # en las tomas anteriores a ese cambio, pagadas en bruto sin planilla.
+    movimiento_planilla_id: uuid.UUID | None
+    planilla_id: uuid.UUID | None
+    planilla_estado: str | None
+    # Neto de toda la toma (si cruzó 2 períodos, ambas filas muestran el mismo).
+    salario_neto: decimal.Decimal | None
     created_at: datetime.datetime
 
 

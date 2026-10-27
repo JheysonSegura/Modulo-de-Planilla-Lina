@@ -1,3 +1,4 @@
+import calendar
 import datetime
 import decimal
 import uuid
@@ -150,22 +151,27 @@ def test_registrar_vacacion_tomada_reduce_el_saldo(client, db):
     prov = _provision_abierta(client, headers, contrato_id)
     assert decimal.Decimal(str(prov["saldo_disponible"])) == decimal.Decimal("12.45")
 
-    resp = _registrar_vacacion_tomada(client, headers, contrato_id, datetime.date(2025, 4, 30), "5")
+    # 2026-10-27: el descanso arranca el 1-may (no el 30-abr) porque ya no
+    # se permite registrar vacaciones sobre días que paga una planilla
+    # regular (abril ya generada) -- habría doble pago. El saldo se
+    # recalcula a la fecha de inicio: 138 días -> 138/11=12.5454... -> 12.55.
+    resp = _registrar_vacacion_tomada(client, headers, contrato_id, datetime.date(2025, 5, 1), "5")
     assert resp.status_code == 201, resp.text
     prov = resp.json()
     assert decimal.Decimal(str(prov["dias_gozados"])) == decimal.Decimal("5.00")
-    assert decimal.Decimal(str(prov["dias_acumulados"])) == decimal.Decimal("12.45")
-    assert decimal.Decimal(str(prov["saldo_disponible"])) == decimal.Decimal("7.45")
-    # 373.636363... - 5*30.00 = 223.636363... -> 223.64
-    assert decimal.Decimal(str(prov["monto_provisionado"])) == decimal.Decimal("223.64")
+    assert decimal.Decimal(str(prov["dias_acumulados"])) == decimal.Decimal("12.55")
+    assert decimal.Decimal(str(prov["saldo_disponible"])) == decimal.Decimal("7.55")
+    # 376.363636... - 5*30.00 = 226.363636... -> 226.36
+    assert decimal.Decimal(str(prov["monto_provisionado"])) == decimal.Decimal("226.36")
 
     # Una segunda vacación tomada sigue reduciendo desde el saldo ya
-    # descontado, no desde el acumulado original.
-    resp = _registrar_vacacion_tomada(client, headers, contrato_id, datetime.date(2025, 4, 30), "7")
+    # descontado, no desde el acumulado original. Arranca el 6-may, al día
+    # siguiente de terminar la primera (1 al 5-may): 143 días -> 13.00.
+    resp = _registrar_vacacion_tomada(client, headers, contrato_id, datetime.date(2025, 5, 6), "7")
     assert resp.status_code == 201, resp.text
     prov = resp.json()
     assert decimal.Decimal(str(prov["dias_gozados"])) == decimal.Decimal("12.00")
-    assert decimal.Decimal(str(prov["saldo_disponible"])) == decimal.Decimal("0.45")
+    assert decimal.Decimal(str(prov["saldo_disponible"])) == decimal.Decimal("1.00")
 
 
 def test_no_se_puede_tomar_mas_dias_de_los_disponibles(client, db):
@@ -315,7 +321,7 @@ def test_una_toma_dentro_de_un_solo_periodo_genera_un_evento(client, db):
     contrato_id = _crear_empleado_con_contrato(client, headers, datetime.date(2024, 12, 15))
     _generar_planilla(client, headers, "mensual", datetime.date(2025, 4, 1), datetime.date(2025, 4, 30))
 
-    resp = _registrar_vacacion_tomada(client, headers, contrato_id, datetime.date(2025, 4, 30), "5")
+    resp = _registrar_vacacion_tomada(client, headers, contrato_id, datetime.date(2025, 5, 1), "5")
     assert resp.status_code == 201, resp.text
 
     eventos = _vacaciones_tomadas(client, headers, contrato_id)
@@ -326,7 +332,7 @@ def test_una_toma_dentro_de_un_solo_periodo_genera_un_evento(client, db):
 
     # Una segunda toma (todavía dentro del mismo período 'abierto') es
     # un segundo evento independiente, no se acumula al primero.
-    resp = _registrar_vacacion_tomada(client, headers, contrato_id, datetime.date(2025, 4, 30), "7")
+    resp = _registrar_vacacion_tomada(client, headers, contrato_id, datetime.date(2025, 5, 6), "7")
     assert resp.status_code == 201, resp.text
     eventos = _vacaciones_tomadas(client, headers, contrato_id)
     assert len(eventos) == 2
@@ -372,3 +378,209 @@ def test_periodo_acumulado_no_crece_en_planillas_posteriores(client, db):
     acumulado = _provision_acumulada(client, headers, contrato_id)
     assert decimal.Decimal(str(acumulado["dias_acumulados"])) == decimal.Decimal("15.27")
     assert decimal.Decimal(str(acumulado["monto_provisionado"])) == decimal.Decimal("458.18")
+
+
+# --- Descuentos de ley en el pago de vacaciones (2026-10-23/27) ---
+# Ver PLAN-vacaciones-descuentos.md. Cada toma genera su propia planilla
+# tipo='vacaciones' con CSS/SE/ISR, y ese pago REEMPLAZA el salario de
+# esos días en las quincenas regulares. ISR = impuesto anual proyectado
+# ÷ 12 × días/30.
+
+
+def _d(valor) -> decimal.Decimal:
+    return decimal.Decimal(str(valor))
+
+
+def _movimiento_unico(client, headers, planilla_id):
+    resp = client.get(f"/planillas/{planilla_id}/movimientos", headers=headers)
+    assert resp.status_code == 200, resp.text
+    movimientos = resp.json()
+    assert len(movimientos) == 1
+    return movimientos[0]
+
+
+def _planilla_de_vacaciones(client, headers, contrato_id):
+    eventos = [e for e in _vacaciones_tomadas(client, headers, contrato_id) if not e["anulada"]]
+    assert eventos, "la toma no generó eventos"
+    return eventos[0]["planilla_id"]
+
+
+def _quincena(client, headers, anio, mes, mitad):
+    if mitad == 1:
+        inicio, fin = datetime.date(anio, mes, 1), datetime.date(anio, mes, 15)
+    else:
+        ultimo = calendar.monthrange(anio, mes)[1]
+        inicio, fin = datetime.date(anio, mes, 16), datetime.date(anio, mes, ultimo)
+    planilla = _generar_planilla(client, headers, "quincenal", inicio, fin)
+    return _movimiento_unico(client, headers, planilla["id"])
+
+
+def test_caso_a_vacacion_de_30_dias_con_descuentos_y_quincenas_en_cero(client, db):
+    """Caso A del plan: $2,500/mes, 30 días del 1 al 30-mar-2026.
+    Bruto 2,500.00; CSS 9.75% = 243.75; SE 1.25% = 31.25; ISR =
+    3,225.00/12 = 268.75 (mismo caso de verificación del contador, Fase 7)
+    -> neto 1,956.25. Patronal: CSS 13.25% = 331.25, SE 1.5% = 37.50."""
+    headers = _preparar_empresa(db, client)
+    contrato_id = _crear_empleado_con_contrato(
+        client, headers, datetime.date(2025, 1, 1), salario_base="2500.00"
+    )
+    for mes in (1, 2):
+        for mitad in (1, 2):
+            _quincena(client, headers, 2026, mes, mitad)
+
+    resp = _registrar_vacacion_tomada(client, headers, contrato_id, datetime.date(2026, 3, 1), 30)
+    assert resp.status_code == 201, resp.text
+
+    evento = _vacaciones_tomadas(client, headers, contrato_id)[0]
+    assert evento["fecha_fin_goce"] == "2026-03-30"
+    assert evento["planilla_estado"] == "borrador"
+    assert _d(evento["salario_neto"]) == _d("1956.25")
+
+    planilla = client.get(f"/planillas/{evento['planilla_id']}", headers=headers).json()
+    assert planilla["tipo"] == "vacaciones"
+    assert planilla["periodo_inicio"] == "2026-03-01"
+    assert planilla["periodo_fin"] == "2026-03-30"
+    # Art. 54.5 CT: por defecto 3 días antes del descanso.
+    assert planilla["fecha_pago"] == "2026-02-26"
+
+    mov = _movimiento_unico(client, headers, evento["planilla_id"])
+    assert _d(mov["salario_bruto"]) == _d("2500.00")
+    assert _d(mov["css_empleado"]) == _d("243.75")
+    assert _d(mov["seguro_educativo_empleado"]) == _d("31.25")
+    assert _d(mov["isr_retenido"]) == _d("268.75")
+    assert _d(mov["salario_neto"]) == _d("1956.25")
+    assert _d(mov["css_patronal"]) == _d("331.25")
+    assert _d(mov["seguro_educativo_patronal"]) == _d("37.50")
+    assert _d(mov["isr_impuesto_anual_proyectado"]) == _d("3225.00")
+
+    # Las quincenas de marzo no vuelven a pagar esos días: salario e ISR en cero.
+    for mitad in (1, 2):
+        mov_q = _quincena(client, headers, 2026, 3, mitad)
+        assert _d(mov_q["salario_bruto"]) == _d("0.00")
+        assert _d(mov_q["isr_retenido"]) == _d("0.00")
+        codigos = [c["codigo"] for c in mov_q["conceptos_variables"]]
+        assert "vacaciones_pagadas_aparte" in codigos
+
+    # 1ª quincena de abril: ISR normal, la reconciliación anual cuadra
+    # (3,225 - 537.50 de ene/feb - 268.75 de vacaciones) / 18 = 134.375.
+    mov_abril = _quincena(client, headers, 2026, 4, 1)
+    assert _d(mov_abril["salario_bruto"]) == _d("1250.00")
+    assert _d(mov_abril["isr_retenido"]) == _d("134.38")
+
+
+def test_caso_b_quince_dias_equivale_a_una_quincena_normal(client, db):
+    """Caso B del plan: $900/mes, 15 días del 1 al 15-mar-2026. Bruto
+    450.00, CSS 43.88, SE 5.62, ISR 105.00/12 × 15/30 = 4.38 -> neto
+    396.12, igual que la quincena base de Bruno (Fase 17)."""
+    headers = _preparar_empresa(db, client)
+    contrato_id = _crear_empleado_con_contrato(client, headers, datetime.date(2025, 1, 1))
+
+    resp = _registrar_vacacion_tomada(client, headers, contrato_id, datetime.date(2026, 3, 1), 15)
+    assert resp.status_code == 201, resp.text
+
+    mov = _movimiento_unico(client, headers, _planilla_de_vacaciones(client, headers, contrato_id))
+    assert _d(mov["salario_bruto"]) == _d("450.00")
+    assert _d(mov["css_empleado"]) == _d("43.88")
+    assert _d(mov["seguro_educativo_empleado"]) == _d("5.62")
+    assert _d(mov["isr_retenido"]) == _d("4.38")
+    assert _d(mov["salario_neto"]) == _d("396.12")
+
+    assert _d(_quincena(client, headers, 2026, 3, 1)["salario_bruto"]) == _d("0.00")
+    assert _d(_quincena(client, headers, 2026, 3, 2)["salario_bruto"]) == _d("450.00")
+
+
+def test_vacacion_que_cruza_quincenas_descuenta_solo_los_dias_de_cada_una(client, db):
+    """Del 10-mar al 8-abr-2026 (30 días). 1ª de marzo: 6 días (10-15) ->
+    450 - 180 = 270. 2ª de marzo: 16 días calendario (16-31) pero la
+    quincena vale 15 comerciales -> tope 15 -> 0. 1ª de abril: 8 días ->
+    450 - 240 = 210. (El día 31-mar queda como punto a confirmar con el
+    contador, ver PLAN-vacaciones-descuentos.md.)"""
+    headers = _preparar_empresa(db, client)
+    contrato_id = _crear_empleado_con_contrato(client, headers, datetime.date(2025, 1, 1))
+
+    resp = _registrar_vacacion_tomada(client, headers, contrato_id, datetime.date(2026, 3, 10), 30)
+    assert resp.status_code == 201, resp.text
+
+    assert _d(_quincena(client, headers, 2026, 3, 1)["salario_bruto"]) == _d("270.00")
+    assert _d(_quincena(client, headers, 2026, 3, 2)["salario_bruto"]) == _d("0.00")
+    assert _d(_quincena(client, headers, 2026, 4, 1)["salario_bruto"]) == _d("210.00")
+
+
+def test_rechaza_vacacion_sobre_dias_que_ya_paga_una_planilla_regular(client, db):
+    headers = _preparar_empresa(db, client)
+    contrato_id = _crear_empleado_con_contrato(client, headers, datetime.date(2025, 1, 1))
+    _quincena(client, headers, 2026, 3, 1)
+
+    resp = _registrar_vacacion_tomada(client, headers, contrato_id, datetime.date(2026, 3, 10), 10)
+    assert resp.status_code == 422, resp.text
+    assert "dos veces" in resp.json()["detail"]
+    assert _vacaciones_tomadas(client, headers, contrato_id) == []
+    prov = _provision_abierta(client, headers, contrato_id)
+    assert _d(prov["dias_gozados"]) == _d("0.00")
+
+
+def test_rechaza_vacacion_que_se_solapa_con_otra_vacacion(client, db):
+    headers = _preparar_empresa(db, client)
+    contrato_id = _crear_empleado_con_contrato(client, headers, datetime.date(2025, 1, 1))
+
+    resp = _registrar_vacacion_tomada(client, headers, contrato_id, datetime.date(2026, 3, 1), 10)
+    assert resp.status_code == 201, resp.text
+    resp = _registrar_vacacion_tomada(client, headers, contrato_id, datetime.date(2026, 3, 5), 5)
+    assert resp.status_code == 422, resp.text
+
+
+def test_anular_planilla_de_vacaciones_devuelve_los_dias_al_saldo(client, db):
+    headers = _preparar_empresa(db, client)
+    contrato_id = _crear_empleado_con_contrato(client, headers, datetime.date(2025, 1, 1))
+
+    resp = _registrar_vacacion_tomada(client, headers, contrato_id, datetime.date(2026, 3, 1), 15)
+    assert resp.status_code == 201, resp.text
+    assert _d(resp.json()["dias_gozados"]) == _d("15.00")
+    planilla_id = _planilla_de_vacaciones(client, headers, contrato_id)
+
+    resp = client.post(f"/planillas/{planilla_id}/anular", headers=headers)
+    assert resp.status_code == 200, resp.text
+
+    prov = _provision_abierta(client, headers, contrato_id)
+    assert _d(prov["dias_gozados"]) == _d("0.00")
+    evento = _vacaciones_tomadas(client, headers, contrato_id)[0]
+    assert evento["anulada"] is True
+    assert evento["planilla_estado"] == "anulada"
+
+    # Sin la planilla de vacaciones, la quincena vuelve a pagar completo.
+    assert _d(_quincena(client, headers, 2026, 3, 1)["salario_bruto"]) == _d("450.00")
+
+
+def test_no_se_anula_vacacion_ya_descontada_por_una_quincena(client, db):
+    headers = _preparar_empresa(db, client)
+    contrato_id = _crear_empleado_con_contrato(client, headers, datetime.date(2025, 1, 1))
+
+    resp = _registrar_vacacion_tomada(client, headers, contrato_id, datetime.date(2026, 3, 1), 15)
+    assert resp.status_code == 201, resp.text
+    planilla_id = _planilla_de_vacaciones(client, headers, contrato_id)
+    _quincena(client, headers, 2026, 3, 1)
+
+    resp = client.post(f"/planillas/{planilla_id}/anular", headers=headers)
+    assert resp.status_code == 409, resp.text
+    prov = _provision_abierta(client, headers, contrato_id)
+    assert _d(prov["dias_gozados"]) == _d("15.00")
+
+
+def test_liquidacion_no_vuelve_a_pagar_dias_de_vacaciones(client, db):
+    """Salario pendiente desde la última planilla regular (28-feb) hasta
+    el 10-mar = 10 días, menos 5 días que ya pagó la planilla de
+    vacaciones (1 al 5-mar) -> 5 × 30.00 = 150.00."""
+    headers = _preparar_empresa(db, client)
+    contrato_id = _crear_empleado_con_contrato(client, headers, datetime.date(2025, 1, 1))
+    _quincena(client, headers, 2026, 2, 2)
+
+    resp = _registrar_vacacion_tomada(client, headers, contrato_id, datetime.date(2026, 3, 1), 5)
+    assert resp.status_code == 201, resp.text
+
+    resp = client.post(
+        f"/contratos/{contrato_id}/liquidacion",
+        json={"motivo": "renuncia_voluntaria", "fecha_terminacion": "2026-03-10"},
+        headers=headers,
+    )
+    assert resp.status_code == 201, resp.text
+    assert _d(resp.json()["salario_pendiente"]) == _d("150.00")

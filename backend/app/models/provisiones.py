@@ -1,13 +1,17 @@
 import datetime
 import decimal
 import uuid
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Numeric, String
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from app.models.base import Base
+
+if TYPE_CHECKING:
+    from app.models.planillas import MovimientoPlanilla
 
 
 class ProvisionDecimo(Base):
@@ -57,19 +61,46 @@ class VacacionTomada(Base):
     contrato_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("contratos.id"), nullable=False
     )
+    # Inicio del descanso; fecha_fin_goce = fecha + días - 1 (días
+    # calendario). Migración 0039.
     fecha: Mapped[datetime.date] = mapped_column(Date, nullable=False)
+    fecha_fin_goce: Mapped[datetime.date] = mapped_column(Date, nullable=False)
     dias_tomados: Mapped[decimal.Decimal] = mapped_column(Numeric(6, 2), nullable=False)
     valor_dia: Mapped[decimal.Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     monto: Mapped[decimal.Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     # Snapshot de auditoría: estado del período justo después de esta toma.
     dias_acumulados_snapshot: Mapped[decimal.Decimal] = mapped_column(Numeric(6, 2), nullable=False)
     dias_gozados_snapshot: Mapped[decimal.Decimal] = mapped_column(Numeric(6, 2), nullable=False)
+    # Movimiento de la Planilla tipo='vacaciones' que pagó esta toma, con
+    # sus descuentos de ley (migración 0039). NULL en las tomas anteriores
+    # a ese cambio, que se pagaban en bruto sin planilla propia.
+    movimiento_planilla_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("movimientos_planilla.id")
+    )
+    # True si se anuló su planilla de vacaciones (los días volvieron al saldo).
+    anulada: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     empresa_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("empresas.id")
     )
+
+    movimiento_planilla: Mapped["MovimientoPlanilla | None"] = relationship()
+
+    # Atajos de solo lectura para VacacionTomadaOut (el frontend muestra el
+    # estado de la planilla y el neto de cada toma).
+    @property
+    def planilla_id(self) -> uuid.UUID | None:
+        return self.movimiento_planilla.planilla_id if self.movimiento_planilla else None
+
+    @property
+    def planilla_estado(self) -> str | None:
+        return self.movimiento_planilla.planilla.estado if self.movimiento_planilla else None
+
+    @property
+    def salario_neto(self) -> decimal.Decimal | None:
+        return self.movimiento_planilla.salario_neto if self.movimiento_planilla else None
 
 
 class ProvisionVacaciones(Base):

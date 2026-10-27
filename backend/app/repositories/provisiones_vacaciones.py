@@ -114,11 +114,13 @@ def crear_evento_tomado(
     provision: ProvisionVacaciones,
     contrato_id: uuid.UUID,
     fecha: datetime.date,
+    fecha_fin_goce: datetime.date,
     dias_tomados: decimal.Decimal,
     valor_dia: decimal.Decimal,
     monto: decimal.Decimal,
     dias_acumulados_snapshot: decimal.Decimal,
     dias_gozados_snapshot: decimal.Decimal,
+    movimiento_planilla_id: uuid.UUID | None = None,
 ) -> VacacionTomada:
     """Fase 16: un registro por cada período efectivamente tocado dentro
     de una llamada a vacaciones_service.registrar_vacacion_tomada -- ver
@@ -129,11 +131,13 @@ def crear_evento_tomado(
         provision_id=provision.id,
         contrato_id=contrato_id,
         fecha=fecha,
+        fecha_fin_goce=fecha_fin_goce,
         dias_tomados=dias_tomados,
         valor_dia=valor_dia,
         monto=monto,
         dias_acumulados_snapshot=dias_acumulados_snapshot,
         dias_gozados_snapshot=dias_gozados_snapshot,
+        movimiento_planilla_id=movimiento_planilla_id,
     )
     db.add(evento)
     db.flush()
@@ -151,3 +155,18 @@ def listar_eventos_de_contrato(db: Session, contrato_id: uuid.UUID) -> list[Vaca
 
 def obtener_evento(db: Session, evento_id: uuid.UUID) -> VacacionTomada | None:
     return db.get(VacacionTomada, evento_id)
+
+
+def listar_eventos_de_movimiento(
+    db: Session, movimiento_planilla_id: uuid.UUID
+) -> list[VacacionTomada]:
+    """Las filas (1 o 2, una por período tocado) de la toma que pagó este
+    movimiento de una planilla tipo='vacaciones' -- usado al anularla."""
+    stmt = select(VacacionTomada).where(
+        VacacionTomada.movimiento_planilla_id == movimiento_planilla_id
+    )
+    return list(db.execute(stmt).scalars().all())
+
+
+def get(db: Session, provision_id: uuid.UUID) -> ProvisionVacaciones | None:
+    return db.get(ProvisionVacaciones, provision_id)
