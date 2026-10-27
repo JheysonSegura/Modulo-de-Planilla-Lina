@@ -8,7 +8,7 @@
 <body>
     {% include "_base_recibo.html" %}
 
-    <h2 class="titulo-documento">Recibo de vacaciones</h2>
+    <h2 class="titulo-documento">Recibo de vacaciones{% if anulada %} &mdash; ANULADO{% endif %}</h2>
 
     <table class="datos-empleado">
         <tr>
@@ -18,13 +18,47 @@
             <td>{{ cargo }}</td>
         </tr>
         <tr>
-            <td class="etiqueta">Fecha de goce</td>
-            <td>{{ fecha }}</td>
+            <td class="etiqueta">Descanso</td>
+            <td>{{ fecha }} al {{ fecha_fin_goce }}</td>
             <td class="etiqueta">Días tomados</td>
             <td>{{ dias_tomados }}</td>
         </tr>
+        {% if pago %}
+        <tr>
+            <td class="etiqueta">Fecha de pago</td>
+            <td>{{ pago.fecha_pago }}</td>
+            <td class="etiqueta"></td>
+            <td></td>
+        </tr>
+        {% endif %}
     </table>
 
+    {% if pago %}
+    <table class="desglose">
+        <thead>
+            <tr><th>Concepto</th><th class="monto">Valor</th></tr>
+        </thead>
+        <tbody>
+            <tr><td>Valor por día</td><td class="monto">{{ "%.2f"|format(valor_dia) }}</td></tr>
+            <tr><td>Días tomados</td><td class="monto">{{ dias_tomados }}</td></tr>
+            <tr class="subtotal"><td>Salario bruto de vacaciones</td><td class="monto">{{ "%.2f"|format(pago.salario_bruto) }}</td></tr>
+            <tr><td>CSS empleado</td><td class="monto">-{{ "%.2f"|format(pago.css_empleado) }}</td></tr>
+            <tr><td>Seguro educativo empleado</td><td class="monto">-{{ "%.2f"|format(pago.seguro_educativo_empleado) }}</td></tr>
+            <tr><td>ISR retenido</td><td class="monto">-{{ "%.2f"|format(pago.isr_retenido) }}</td></tr>
+            <tr class="subtotal"><td>Total deducciones</td><td class="monto">-{{ "%.2f"|format(pago.total_deducciones) }}</td></tr>
+            <tr class="total"><td>Neto a pagar</td><td class="monto">{{ "%.2f"|format(pago.salario_neto) }}</td></tr>
+        </tbody>
+    </table>
+
+    <div class="seccion-titulo">Aportes patronales (informativo)</div>
+    <table class="desglose">
+        <tbody>
+            <tr><td>CSS patronal</td><td class="monto">{{ "%.2f"|format(pago.css_patronal) }}</td></tr>
+            <tr><td>Seguro educativo patronal</td><td class="monto">{{ "%.2f"|format(pago.seguro_educativo_patronal) }}</td></tr>
+            <tr><td>Riesgo profesional</td><td class="monto">{{ "%.2f"|format(pago.riesgo_profesional_patronal) }}</td></tr>
+        </tbody>
+    </table>
+    {% else %}
     <table class="desglose">
         <thead>
             <tr><th>Concepto</th><th class="monto">Valor</th></tr>
@@ -35,6 +69,7 @@
             <tr class="total"><td>Monto pagado</td><td class="monto">{{ "%.2f"|format(monto) }}</td></tr>
         </tbody>
     </table>
+    {% endif %}
 
     <div class="seccion-titulo">Saldo del período tras esta toma</div>
     <table class="desglose">

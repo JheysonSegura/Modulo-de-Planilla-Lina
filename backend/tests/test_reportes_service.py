@@ -295,3 +295,43 @@ def test_logo_empresa_rechaza_svg_con_script_embebido(db, client):
         headers=headers,
     )
     assert resp.status_code == 422, resp.text
+
+
+def test_recibo_vacacion_muestra_descuentos_de_ley_y_neto(db, client):
+    """Desde 2026-10-27 cada toma tiene su planilla de vacaciones con
+    descuentos: el recibo (Excel y PDF) muestra CSS, SE, ISR y neto. Mismo
+    caso A del plan ($2,500/mes, 30 días): neto 1,956.25."""
+    import openpyxl
+
+    _empresa, headers = _preparar_empresa(db, client)
+    contrato_id = _crear_empleado_con_contrato(client, headers)
+
+    resp = client.post(
+        f"/contratos/{contrato_id}/vacaciones-tomadas",
+        json={"fecha": "2026-03-01", "dias": 30},
+        headers=headers,
+    )
+    assert resp.status_code == 201, resp.text
+    evento_id = client.get(f"/contratos/{contrato_id}/vacaciones-tomadas", headers=headers).json()[0][
+        "id"
+    ]
+
+    resp = client.get(
+        f"/contratos/{contrato_id}/vacaciones-tomadas/{evento_id}/recibo?formato=excel",
+        headers=headers,
+    )
+    assert resp.status_code == 200, resp.text
+    hoja = openpyxl.load_workbook(io.BytesIO(resp.content)).active
+    encabezados = [c.value for c in hoja[1]]
+    fila = dict(zip(encabezados, [c.value for c in hoja[2]]))
+    assert decimal.Decimal(str(fila["CSS empleado"])) == decimal.Decimal("243.75")
+    assert decimal.Decimal(str(fila["Seguro educativo empleado"])) == decimal.Decimal("31.25")
+    assert decimal.Decimal(str(fila["ISR retenido"])) == decimal.Decimal("268.75")
+    assert decimal.Decimal(str(fila["Neto a pagar"])) == decimal.Decimal("1956.25")
+
+    resp = client.get(
+        f"/contratos/{contrato_id}/vacaciones-tomadas/{evento_id}/recibo?formato=pdf",
+        headers=headers,
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.content.startswith(b"%PDF")
