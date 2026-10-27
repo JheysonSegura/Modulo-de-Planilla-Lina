@@ -1,0 +1,53 @@
+FASE — Descuentos de ley en el pago de vacaciones
+Cerrada en código el 2026-10-27. Plan aprobado: PLAN-vacaciones-descuentos.md (2026-10-23).
+
+QUÉ CAMBIÓ
+- Cada toma de vacaciones genera una Planilla tipo 'vacaciones' en borrador
+  (aprobar -> pagar con constancia, igual que el décimo) con CSS, SE, riesgo
+  profesional e ISR.
+- ISR = impuesto anual proyectado / 12 x días/30.
+- El pago de vacaciones reemplaza el salario de esos días en las quincenas y en
+  el salario pendiente de una liquidación.
+- Se rechaza una toma que se solapa con planillas ya generadas (regulares o de
+  vacaciones). Anular la planilla de vacaciones devuelve los días al saldo.
+- Recibo de vacaciones (PDF/Excel) con bruto, deducciones, neto y aportes
+  patronales. Frontend: fecha de pago opcional, neto y estado de la planilla por
+  toma, filtro "Vacaciones" en Planillas.
+
+CIFRAS VERIFICADAS
+Caso A — $2,500/mes, 30 días (1 al 30-mar-2026)
+  Bruto 2,500.00 | CSS 243.75 | SE 31.25 | ISR 268.75 | Neto 1,956.25
+  Patronal: CSS 331.25 | SE 37.50
+  Quincenas de marzo: salario 0.00, ISR 0.00
+  1a quincena de abril: ISR 134.38 (la reconciliación anual cuadra)
+Caso B — $900/mes, 15 días (1 al 15-mar-2026)
+  Bruto 450.00 | CSS 43.88 | SE 5.62 | ISR 4.38 | Neto 396.12 (= quincena normal)
+Solape parcial — $900/mes, 30 días del 10-mar al 8-abr-2026
+  1a quincena de marzo 270.00 | 2a de marzo 0.00 | 1a de abril 210.00
+Liquidación — $900/mes, vacación 1 al 5-mar, terminación 10-mar
+  Salario pendiente 150.00 (10 días - 5 ya pagados como vacaciones)
+
+QUÉ SE PROBÓ Y CÓMO
+- Automatizado: 234 tests backend en verde (incluida la suite de regresión
+  tests/regresion sin cambios en sus cifras). 3 tests viejos se movieron al día
+  siguiente de la planilla ya generada (ya no se permite registrar vacaciones
+  sobre días pagados); test_registrar_vacacion_tomada_reduce_el_saldo cambió sus
+  cifras esperadas por eso (12.55/226.36/7.55 y saldo final 1.00).
+- En vivo (navegador, Empresa Demo, empleado de prueba ya borrado): registrar
+  la vacación del caso A desde la pestaña Vacaciones -> neto 1,956.25 y planilla
+  en borrador; detalle de la planilla con CSS/SE/ISR; recibo PDF con descuentos y
+  aportes patronales (riesgo profesional 24.50 de la clase de la empresa);
+  rechazo de una toma solapada (API); anular desde la UI -> saldo restaurado
+  (38.64) y toma marcada como anulada.
+- NO se probó en vivo (solo en tests): quincenas en cero tras la vacación,
+  rechazo de anulación por quincena ya generada, liquidación. No se generaron
+  quincenas en Empresa Demo para no tocar a los demás empleados.
+
+PUNTOS PARA CONFIRMAR CON EL CONTADOR (no bloquean)
+1. Vacación de 30 días en un mes de 31 que no arranca el día 1: con la regla
+   "días calendario con tope de 15 por quincena" se paga 1 día de más en el mes.
+2. Tasa de CSS a la fecha de pago (mismo criterio que el décimo).
+3. Laguna anterior, no tocada: Art. 54.2 (promedio de 11 meses si es más
+   favorable). Hoy se usa el salario vigente / 30.
+4. Nuevo y no previsto en el plan: el salario pendiente de la liquidación resta
+   los días ya pagados como vacaciones (misma regla de no pagar dos veces).
