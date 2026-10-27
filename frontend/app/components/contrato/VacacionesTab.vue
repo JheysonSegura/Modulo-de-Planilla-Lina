@@ -20,10 +20,28 @@ const mostrarAcumular = ref(false)
 // Días tomados: siempre entero -- un trabajador toma días de calendario
 // completos, nunca una fracción (confirmado 2026-08-07; días acumulados
 // sigue siendo decimal, ver useVacaciones.ts).
-const schemaTomar = z.object({ fecha: z.string().min(1, 'Obligatorio'), dias: z.number().int().positive() })
+const schemaTomar = z.object({
+  fecha: z.string().min(1, 'Obligatorio'),
+  dias: z.number().int().positive(),
+  fecha_pago: z.string().optional()
+})
 type SchemaTomar = z.output<typeof schemaTomar>
-const stateTomar = reactive<Partial<SchemaTomar>>({ fecha: '', dias: undefined })
+const stateTomar = reactive<Partial<SchemaTomar>>({ fecha: '', dias: undefined, fecha_pago: '' })
 const guardandoTomar = ref(false)
+
+// Sugerencia de fecha de pago: 3 días antes del descanso (Art. 54.5 CT),
+// el mismo valor que usa el backend si el campo queda vacío. Solo es un
+// valor de fecha, no un cálculo de nómina.
+const fechaPagoSugerida = computed(() => {
+  if (!stateTomar.fecha) return ''
+  const fecha = new Date(`${stateTomar.fecha}T00:00:00Z`)
+  fecha.setUTCDate(fecha.getUTCDate() - 3)
+  return fecha.toISOString().slice(0, 10)
+})
+
+const colorEstadoPlanilla: Record<string, 'neutral' | 'success' | 'warning' | 'error'> = {
+  borrador: 'warning', procesada: 'success', pagada: 'success', anulada: 'error'
+}
 
 const schemaAcumular = z.object({ fecha_acuerdo: z.string().min(1, 'Obligatorio'), notificado_autoridad_trabajo: z.boolean() })
 type SchemaAcumular = z.output<typeof schemaAcumular>
@@ -33,10 +51,19 @@ const guardandoAcumular = ref(false)
 async function onSubmitTomar(event: FormSubmitEvent<SchemaTomar>) {
   guardandoTomar.value = true
   try {
-    await tomar(props.contratoId, { fecha: event.data.fecha, dias: event.data.dias })
-    toast.add({ title: 'Vacación registrada', color: 'success' })
+    await tomar(props.contratoId, {
+      fecha: event.data.fecha,
+      dias: event.data.dias,
+      fecha_pago: event.data.fecha_pago || undefined
+    })
+    toast.add({
+      title: 'Vacación registrada',
+      description: 'Se generó su planilla de vacaciones en borrador. Apruébala y paga desde Planillas.',
+      color: 'success'
+    })
     mostrarTomar.value = false
     stateTomar.dias = undefined
+    stateTomar.fecha_pago = ''
     await refresh()
     await refrescarEventos()
   } catch (error) {
@@ -110,7 +137,7 @@ async function onSubmitAcumular(event: FormSubmitEvent<SchemaAcumular>) {
         @submit="onSubmitTomar"
       >
         <UFormField
-          label="Fecha"
+          label="Fecha de inicio del descanso"
           name="fecha"
         >
           <UInput
@@ -130,6 +157,20 @@ async function onSubmitAcumular(event: FormSubmitEvent<SchemaAcumular>) {
             class="w-full"
           />
         </UFormField>
+        <UFormField
+          label="Fecha de pago (opcional)"
+          name="fecha_pago"
+          :help="fechaPagoSugerida ? `Si la dejas vacía: ${formatearFecha(fechaPagoSugerida)} (3 días antes, Art. 54.5 CT)` : 'Por defecto, 3 días antes del descanso (Art. 54.5 CT)'"
+        >
+          <UInput
+            v-model="stateTomar.fecha_pago"
+            type="date"
+            class="w-full"
+          />
+        </UFormField>
+        <p class="col-span-2 text-xs text-gray-500">
+          Se genera una planilla de vacaciones con CSS, Seguro Educativo e ISR. Esos días dejan de pagarse en la quincena.
+        </p>
         <div class="flex gap-2 col-span-2">
           <UButton
             type="submit"
@@ -255,7 +296,7 @@ async function onSubmitAcumular(event: FormSubmitEvent<SchemaAcumular>) {
         <thead>
           <tr class="text-left text-gray-500 border-b border-gray-200 dark:border-gray-800">
             <th class="py-2 pr-4">
-              Fecha
+              Descanso
             </th>
             <th class="py-2 pr-4">
               Días tomados
@@ -264,7 +305,13 @@ async function onSubmitAcumular(event: FormSubmitEvent<SchemaAcumular>) {
               Valor día
             </th>
             <th class="py-2 pr-4">
-              Monto
+              Bruto
+            </th>
+            <th class="py-2 pr-4">
+              Neto
+            </th>
+            <th class="py-2 pr-4">
+              Planilla
             </th>
             <th class="py-2">
               Recibo
@@ -276,9 +323,10 @@ async function onSubmitAcumular(event: FormSubmitEvent<SchemaAcumular>) {
             v-for="e in eventos"
             :key="e.id"
             class="border-b border-gray-100 dark:border-gray-800 last:border-0"
+            :class="{ 'opacity-50': e.anulada }"
           >
             <td class="py-2 pr-4">
-              {{ formatearFecha(e.fecha) }}
+              {{ formatearFecha(e.fecha) }} — {{ formatearFecha(e.fecha_fin_goce) }}
             </td>
             <td class="py-2 pr-4">
               {{ e.dias_tomados }}
@@ -286,8 +334,35 @@ async function onSubmitAcumular(event: FormSubmitEvent<SchemaAcumular>) {
             <td class="py-2 pr-4">
               ${{ e.valor_dia }}
             </td>
-            <td class="py-2 pr-4 font-medium text-gray-900 dark:text-white">
+            <td class="py-2 pr-4">
               ${{ e.monto }}
+            </td>
+            <td class="py-2 pr-4 font-medium text-gray-900 dark:text-white">
+              <template v-if="e.salario_neto">
+                ${{ e.salario_neto }}
+              </template>
+              <span
+                v-else
+                class="text-gray-400"
+                title="Toma registrada antes de los descuentos de ley: se pagó en bruto"
+              >—</span>
+            </td>
+            <td class="py-2 pr-4">
+              <NuxtLink
+                v-if="e.planilla_id"
+                :to="`/planillas/${e.planilla_id}`"
+              >
+                <UBadge
+                  :color="colorEstadoPlanilla[e.planilla_estado ?? ''] ?? 'neutral'"
+                  variant="subtle"
+                >
+                  {{ e.anulada ? 'anulada' : e.planilla_estado }}
+                </UBadge>
+              </NuxtLink>
+              <span
+                v-else
+                class="text-gray-400"
+              >Sin planilla</span>
             </td>
             <td class="py-2">
               <div class="flex gap-1">
@@ -314,7 +389,7 @@ async function onSubmitAcumular(event: FormSubmitEvent<SchemaAcumular>) {
           </tr>
           <tr v-if="!eventos || eventos.length === 0">
             <td
-              colspan="5"
+              colspan="7"
               class="py-8 text-center text-gray-500"
             >
               Todavía no se registraron vacaciones tomadas.

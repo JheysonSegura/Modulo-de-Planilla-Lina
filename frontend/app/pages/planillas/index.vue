@@ -15,7 +15,8 @@ const opcionesTipo = [
   { label: 'Todos', value: undefined },
   { label: 'Mensual', value: 'mensual' },
   { label: 'Quincenal', value: 'quincenal' },
-  { label: 'Décimo tercer mes', value: 'decimo_tercer_mes' }
+  { label: 'Décimo tercer mes', value: 'decimo_tercer_mes' },
+  { label: 'Vacaciones', value: 'vacaciones' }
 ]
 const opcionesEstado = [
   { label: 'Todos', value: undefined },
