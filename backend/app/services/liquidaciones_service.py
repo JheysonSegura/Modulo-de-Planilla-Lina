@@ -9,7 +9,13 @@ from app.models import Contrato, Liquidacion
 from app.repositories import historial_salarial as historial_repo
 from app.repositories import liquidaciones as liquidaciones_repo
 from app.repositories import movimientos_planilla as movimientos_repo
-from app.services import auditoria_service, decimo_service, planilla_service, vacaciones_service
+from app.services import (
+    auditoria_service,
+    decimo_service,
+    descuentos_service,
+    planilla_service,
+    vacaciones_service,
+)
 
 # Código de Trabajo, Título VI (Art. 210-229D), verificado contra
 # código-detrabajo.pdf el 2026-08-05 -- ver FASE10-plan-liquidaciones.txt
@@ -266,6 +272,64 @@ def _calcular_penalidad_renuncia_sin_aviso(
     return (SEMANA * _salario_diario_vigente(db, contrato, fecha_terminacion)).quantize(_CENTAVO)
 
 
+def _resolver_descuento_prestamo_empresa(
+    db: Session,
+    contrato: Contrato,
+    disponible: decimal.Decimal,
+    descontar: bool,
+    monto_manual: decimal.Decimal | None,
+    observacion: str | None,
+) -> tuple[decimal.Decimal, bool, str | None]:
+    """(monto a descontar, si fue manual, observación). Art. 164 CT:
+    al terminar se pueden descontar las deudas exigibles con el empleador.
+    Decisión del usuario 2026-11-17: con la casilla marcada se descuenta
+    el saldo completo de los préstamos de la empresa; si se quita, el
+    usuario indica el monto y una observación obligatoria. Lo que se deba
+    a bancos u otras instituciones no se toca. Sin préstamo de la empresa,
+    el resultado es el mismo de siempre.
+
+    La liquidación nunca queda negativa: si el saldo es mayor que lo que
+    hay para pagar, se descuenta solo hasta ahí y se deja constancia."""
+    saldo_prestamo = descuentos_service.saldo_prestamos_empresa(db, contrato)
+    if saldo_prestamo <= _CERO:
+        return _CERO, False, None
+
+    observacion = observacion.strip() if observacion else None
+    if descontar:
+        monto = min(saldo_prestamo, disponible)
+        if monto < saldo_prestamo:
+            observacion = (
+                f"Saldo del préstamo B/.{saldo_prestamo:,.2f}; se descontó solo B/.{monto:,.2f} "
+                "porque la liquidación no alcanzaba."
+            )
+        return monto, False, observacion
+
+    if monto_manual is None:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Indica el monto del préstamo de la empresa a descontar (puede ser 0).",
+        )
+    if not observacion:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Escribe una observación que explique por qué no se descuenta el saldo completo "
+            "del préstamo de la empresa.",
+        )
+    if monto_manual > saldo_prestamo:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"El monto a descontar (B/.{monto_manual:,.2f}) es mayor que el saldo del préstamo "
+            f"de la empresa (B/.{saldo_prestamo:,.2f}).",
+        )
+    if monto_manual > disponible:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"El monto a descontar (B/.{monto_manual:,.2f}) es mayor que lo que hay para pagar "
+            f"en la liquidación (B/.{disponible:,.2f}).",
+        )
+    return monto_manual.quantize(_CENTAVO), True, observacion
+
+
 def generar_liquidacion(
     db: Session,
     empresa_id: uuid.UUID,
@@ -277,6 +341,9 @@ def generar_liquidacion(
     monto_salarios_caidos: decimal.Decimal = _CERO,
     referencia_sentencia: str | None = None,
     fecha_aviso_renuncia: datetime.date | None = None,
+    descontar_prestamo_empresa: bool = True,
+    monto_prestamo_empresa: decimal.Decimal | None = None,
+    observacion_prestamo_empresa: str | None = None,
 ) -> Liquidacion:
     if motivo not in MOTIVOS_VALIDOS:
         raise HTTPException(
@@ -317,7 +384,7 @@ def generar_liquidacion(
         db, contrato, motivo, fecha_terminacion, fecha_aviso_renuncia
     )
 
-    monto_total = (
+    monto_antes_de_prestamo = (
         salario_pendiente
         + decimo_proporcional
         + vacaciones_pendientes
@@ -328,6 +395,15 @@ def generar_liquidacion(
         - otras_deducciones
         - penalidad_renuncia_sin_aviso
     ).quantize(_CENTAVO)
+    descuento_prestamo, prestamo_manual, observacion_prestamo = _resolver_descuento_prestamo_empresa(
+        db,
+        contrato,
+        max(monto_antes_de_prestamo, _CERO),
+        descontar_prestamo_empresa,
+        monto_prestamo_empresa,
+        observacion_prestamo_empresa,
+    )
+    monto_total = monto_antes_de_prestamo - descuento_prestamo
 
     liquidacion = Liquidacion(
         empresa_id=empresa_id,
@@ -344,10 +420,17 @@ def generar_liquidacion(
         salarios_caidos=monto_salarios_caidos,
         referencia_sentencia=referencia_sentencia,
         penalidad_renuncia_sin_aviso=penalidad_renuncia_sin_aviso,
+        descuento_prestamo_empresa=descuento_prestamo,
+        descuento_prestamo_manual=prestamo_manual,
+        observacion_descuento_prestamo=observacion_prestamo,
         monto_total=monto_total,
         estado="borrador",
     )
     liquidaciones_repo.crear(db, liquidacion)
+    if descuento_prestamo > _CERO:
+        descuentos_service.cobrar_en_liquidacion(
+            db, empresa_id, contrato, liquidacion.id, fecha_terminacion, descuento_prestamo
+        )
 
     contrato.estado = "terminado"
     contrato.fecha_fin_real = fecha_terminacion
@@ -366,6 +449,9 @@ def generar_liquidacion(
             "fecha_terminacion": fecha_terminacion.isoformat(),
             "monto_total": str(monto_total),
             "estado": liquidacion.estado,
+            "descuento_prestamo_empresa": str(descuento_prestamo),
+            "descuento_prestamo_manual": prestamo_manual,
+            "observacion_descuento_prestamo": observacion_prestamo,
         },
     )
 

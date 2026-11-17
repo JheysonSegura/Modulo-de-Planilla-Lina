@@ -9,7 +9,7 @@ from app.core.responses import respuesta_archivo
 from app.core.uploads import LIMITE_DOCUMENTO, leer_archivo_limitado
 from app.models import MovimientoPlanilla, Planilla, Usuario
 from app.schemas.planillas import GenerarPlanillaRequest, MovimientoPlanillaOut, PlanillaOut
-from app.schemas.reportes import FormatoExportacion, FormatoRecibo
+from app.schemas.reportes import FormatoAuditoria, FormatoExportacion, FormatoRecibo
 from app.services import planilla_service, reportes_service
 
 _TIPOS_CONSTANCIA_PAGO_PERMITIDOS = {"application/pdf", "image/png", "image/jpeg"}
@@ -213,4 +213,23 @@ def exportar_planilla(
             contenido = reportes_service.render_excel(filas, reportes_service.COLUMNAS_EXPORTAR_PLANILLA)
         else:
             contenido = reportes_service.render_csv(filas, reportes_service.COLUMNAS_EXPORTAR_PLANILLA)
+    return respuesta_archivo(contenido, formato, nombre_base)
+
+
+@router.get("/planillas/{planilla_id}/descuentos-acreedores")
+def exportar_descuentos_acreedores(
+    planilla_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db_rls)],
+    formato: Annotated[FormatoAuditoria, Query()] = "excel",
+) -> Response:
+    """Lo descontado por préstamos y demás descuentos recurrentes en esta
+    planilla, agrupado por acreedor, para pagarle a cada banco/entidad."""
+    planilla = planilla_service.obtener_planilla(db, planilla_id)
+    filas = reportes_service.exportar_descuentos_por_acreedor(db, planilla)
+    columnas = reportes_service.COLUMNAS_DESCUENTOS_ACREEDORES
+    if formato == "excel":
+        contenido = reportes_service.render_excel(filas, columnas)
+    else:
+        contenido = reportes_service.render_csv(filas, columnas)
+    nombre_base = f"descuentos-acreedores-{planilla.periodo_inicio}-{planilla.periodo_fin}"
     return respuesta_archivo(contenido, formato, nombre_base)

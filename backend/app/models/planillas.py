@@ -3,7 +3,7 @@ import decimal
 import uuid
 
 from sqlalchemy import Date, DateTime, ForeignKey, LargeBinary, Numeric, SmallInteger, String, Text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -81,6 +81,10 @@ class MovimientoPlanilla(Base):
         Numeric(12, 2), nullable=False, server_default="0"
     )
     salario_neto: Mapped[decimal.Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    # Avisos de los descuentos recurrentes (topes del Art. 161 CT, cuotas
+    # cobradas solo en parte por falta de neto). Informativos: no cambian
+    # ningún total -- ver descuentos_service.
+    advertencias: Mapped[list[str] | None] = mapped_column(JSONB)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

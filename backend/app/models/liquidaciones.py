@@ -2,7 +2,7 @@ import datetime
 import decimal
 import uuid
 
-from sqlalchemy import Date, DateTime, ForeignKey, LargeBinary, Numeric, String
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, LargeBinary, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
@@ -54,6 +54,16 @@ class Liquidacion(Base):
     penalidad_renuncia_sin_aviso: Mapped[decimal.Decimal] = mapped_column(
         Numeric(12, 2), nullable=False, server_default="0"
     )
+    # Art. 164 CT: saldo del préstamo de la empresa descontado al terminar
+    # (decisión del usuario 2026-11-17). Si el usuario no descuenta el saldo
+    # completo, descuento_prestamo_manual=True y la observación es obligatoria.
+    descuento_prestamo_empresa: Mapped[decimal.Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, server_default="0"
+    )
+    descuento_prestamo_manual: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
+    observacion_descuento_prestamo: Mapped[str | None] = mapped_column(Text)
     monto_total: Mapped[decimal.Decimal] = mapped_column(
         Numeric(12, 2), nullable=False, server_default="0"
     )

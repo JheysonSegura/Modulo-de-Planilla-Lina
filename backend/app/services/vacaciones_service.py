@@ -12,13 +12,15 @@ from app.models import (
     ProvisionVacaciones,
     VacacionTomada,
 )
+from app.repositories import conceptos_variables as conceptos_variables_repo
+from app.repositories import descuentos as descuentos_repo
 from app.repositories import empresas as empresas_repo
 from app.repositories import historial_salarial as historial_repo
 from app.repositories import movimientos_planilla as movimientos_repo
 from app.repositories import planillas as planillas_repo
 from app.repositories import provisiones_vacaciones as provisiones_vacaciones_repo
 from app.repositories import tasas as tasas_repo
-from app.services import ausencias_service
+from app.services import ausencias_service, descuentos_service
 
 # Código de Trabajo, Art. 54.1: "Treinta días por cada once meses
 # continuos de trabajo, a razón de un día por cada once días al
@@ -314,7 +316,11 @@ def _crear_planilla_de_vacaciones(
     Educativo, riesgo profesional), con las tasas vigentes a `fecha_pago`.
     El ISR es el del mes que reemplaza: impuesto anual proyectado ÷ 12 ×
     días/30 (decisión del usuario 2026-10-23), y la reconciliación anual
-    de las quincenas siguientes ajusta cualquier diferencia."""
+    de las quincenas siguientes ajusta cualquier diferencia.
+
+    Préstamos y demás descuentos recurrentes (decisión del usuario
+    2026-11-17): este pago cobra las cuotas cuyas fechas de cobro caen
+    dentro del descanso, y esas ya no se repiten en la quincena."""
     # Import local: planilla_service ya importa este módulo (anular una
     # planilla de vacaciones llama a revertir_toma_de_planilla).
     from app.services import planilla_service
@@ -350,6 +356,19 @@ def _crear_planilla_de_vacaciones(
         impuesto_anual / decimal.Decimal("12") * dias_tomados / DIAS_MES_COMERCIAL
     ).quantize(_CENTAVO)
 
+    neto_de_ley = salario_bruto - css_empleado - seguro_educativo_empleado - isr_retenido
+    cobro = descuentos_service.cobrar_en_periodo(
+        db,
+        empresa,
+        contrato,
+        fecha,
+        descuentos_service.fin_de_cobro_de_vacaciones(fecha_fin_goce),
+        neto_de_ley,
+        _CERO,
+        dias_tomados / DIAS_MES_COMERCIAL,
+        fecha_pago,
+    )
+
     planilla = Planilla(
         empresa_id=empresa_id,
         tipo="vacaciones",
@@ -376,10 +395,17 @@ def _crear_planilla_de_vacaciones(
         isr_renta_anual_proyectada=renta_bruta_anual,
         isr_impuesto_anual_proyectado=impuesto_anual,
         isr_decimo_tratamiento=decimo_tratamiento,
-        otras_deducciones=_CERO,
-        salario_neto=salario_bruto - css_empleado - seguro_educativo_empleado - isr_retenido,
+        otras_deducciones=cobro.total,
+        salario_neto=neto_de_ley - cobro.total,
+        advertencias=cobro.advertencias or None,
     )
     movimientos_repo.crear(db, movimiento)
+    for concepto in cobro.conceptos:
+        concepto.movimiento_planilla_id = movimiento.id
+        conceptos_variables_repo.crear(db, concepto)
+    for cuota in cobro.cuotas:
+        cuota.movimiento_planilla_id = movimiento.id
+        descuentos_repo.crear_cuota(db, cuota)
     return planilla, movimiento
 
 

@@ -10,6 +10,7 @@ from app.models import (
     ConceptoVariable,
     ConceptoVariablePendiente,
     Contrato,
+    CuotaDescuento,
     Empresa,
     MovimientoPlanilla,
     Planilla,
@@ -18,6 +19,7 @@ from app.models import (
 from app.repositories import conceptos_variables as conceptos_variables_repo
 from app.repositories import conceptos_variables_pendientes as pendientes_repo
 from app.repositories import contratos as contratos_repo
+from app.repositories import descuentos as descuentos_repo
 from app.repositories import empresas as empresas_repo
 from app.repositories import historial_salarial as historial_repo
 from app.repositories import horas_extra as horas_extra_repo
@@ -26,7 +28,13 @@ from app.repositories import parametros_isr as parametros_isr_repo
 from app.repositories import planillas as planillas_repo
 from app.repositories import tasas as tasas_repo
 from app.repositories import tramos_isr as tramos_isr_repo
-from app.services import ausencias_service, auditoria_service, decimo_service, vacaciones_service
+from app.services import (
+    ausencias_service,
+    auditoria_service,
+    decimo_service,
+    descuentos_service,
+    vacaciones_service,
+)
 
 # Períodos de pago por año según el tipo de planilla (no
 # contratos.periodicidad_pago -- el motor de Fase 6 es genérico por
@@ -82,7 +90,7 @@ def generar_planilla(
 
     contratos = contratos_repo.listar_vigentes_en_periodo(db, empresa_id, periodo_inicio, periodo_fin)
     for contrato in contratos:
-        movimiento, conceptos, pendientes_aplicados, horas_extra_aplicadas = (
+        movimiento, conceptos, pendientes_aplicados, horas_extra_aplicadas, cuotas_descuento = (
             _calcular_movimiento_de_contrato(db, empresa, contrato, tipo, periodo_inicio, periodo_fin)
         )
         movimiento.planilla_id = planilla.id
@@ -91,6 +99,10 @@ def generar_planilla(
         for concepto in conceptos:
             concepto.movimiento_planilla_id = movimiento.id
             conceptos_variables_repo.crear(db, concepto)
+
+        for cuota in cuotas_descuento:
+            cuota.movimiento_planilla_id = movimiento.id
+            descuentos_repo.crear_cuota(db, cuota)
 
         for pendiente in pendientes_aplicados:
             pendiente.aplicado = True
@@ -326,7 +338,7 @@ def _calcular_movimiento_de_contrato(
     periodo_fin: datetime.date,
 ) -> tuple[
     MovimientoPlanilla, list[ConceptoVariable], list[ConceptoVariablePendiente],
-    list[RegistroHorasExtra],
+    list[RegistroHorasExtra], list[CuotaDescuento],
 ]:
     salario_vigente = historial_repo.get_vigente_en_fecha(db, contrato.id, periodo_fin)
     if salario_vigente is None:
@@ -501,9 +513,25 @@ def _calcular_movimiento_de_contrato(
             isr_retenido * (dias_comerciales_periodo - dias_vacaciones) / dias_comerciales_periodo
         ).quantize(_CENTAVO)
 
-    salario_neto = (
-        salario_bruto - css_empleado - seguro_educativo_empleado - isr_retenido - otras_deducciones
+    # Préstamos y demás descuentos recurrentes (Art. 161 CT): se cobran del
+    # neto después de CSS/SE/ISR, que también es la base de sus topes
+    # (decisión del usuario 2026-11-17, ver PLAN-descuentos-prestamos.md).
+    neto_de_ley = salario_bruto - css_empleado - seguro_educativo_empleado - isr_retenido
+    cobro = descuentos_service.cobrar_en_periodo(
+        db,
+        empresa,
+        contrato,
+        periodo_inicio,
+        periodo_fin,
+        neto_de_ley,
+        otras_deducciones,
+        dias_comerciales_periodo / DIAS_MES_COMERCIAL,
+        periodo_fin,
     )
+    conceptos.extend(cobro.conceptos)
+    otras_deducciones += cobro.total
+
+    salario_neto = neto_de_ley - otras_deducciones
 
     movimiento = MovimientoPlanilla(
         empresa_id=empresa.id,
@@ -523,8 +551,9 @@ def _calcular_movimiento_de_contrato(
         isr_periodos_restantes_anio=isr_auditoria["isr_periodos_restantes_anio"],
         otras_deducciones=otras_deducciones,
         salario_neto=salario_neto,
+        advertencias=cobro.advertencias or None,
     )
-    return movimiento, conceptos, pendientes, registros_horas_extra
+    return movimiento, conceptos, pendientes, registros_horas_extra, cobro.cuotas
 
 
 def dias_de_vacaciones_en_rango(

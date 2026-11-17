@@ -28,6 +28,13 @@ class GenerarLiquidacionRequest(BaseModel):
     # evalúa la penalidad -- es un dato opcional que hay que capturar
     # explícitamente, ausencia de dato no implica incumplimiento.
     fecha_aviso_renuncia: datetime.date | None = None
+    # Art. 164 CT (decisión del usuario 2026-11-17): el saldo del préstamo
+    # de la empresa se descuenta por defecto. Si el usuario quita la
+    # casilla, indica cuánto descontar (puede ser 0) y una observación.
+    # Los préstamos con bancos u otras instituciones nunca se descuentan.
+    descontar_prestamo_empresa: bool = True
+    monto_prestamo_empresa: decimal.Decimal | None = Field(default=None, ge=0)
+    observacion_prestamo_empresa: str | None = Field(default=None, max_length=1000)
 
 
 class LiquidacionOut(BaseModel):
@@ -47,6 +54,9 @@ class LiquidacionOut(BaseModel):
     salarios_caidos: decimal.Decimal
     referencia_sentencia: str | None
     penalidad_renuncia_sin_aviso: decimal.Decimal
+    descuento_prestamo_empresa: decimal.Decimal
+    descuento_prestamo_manual: bool
+    observacion_descuento_prestamo: str | None
     monto_total: decimal.Decimal
     estado: str
 

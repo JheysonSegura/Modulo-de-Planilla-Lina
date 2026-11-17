@@ -42,6 +42,9 @@ def generar_liquidacion(
         monto_salarios_caidos=body.monto_salarios_caidos,
         referencia_sentencia=body.referencia_sentencia,
         fecha_aviso_renuncia=body.fecha_aviso_renuncia,
+        descontar_prestamo_empresa=body.descontar_prestamo_empresa,
+        monto_prestamo_empresa=body.monto_prestamo_empresa,
+        observacion_prestamo_empresa=body.observacion_prestamo_empresa,
     )
 
 

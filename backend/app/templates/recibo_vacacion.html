@@ -45,6 +45,9 @@
             <tr><td>CSS empleado</td><td class="monto">-{{ "%.2f"|format(pago.css_empleado) }}</td></tr>
             <tr><td>Seguro educativo empleado</td><td class="monto">-{{ "%.2f"|format(pago.seguro_educativo_empleado) }}</td></tr>
             <tr><td>ISR retenido</td><td class="monto">-{{ "%.2f"|format(pago.isr_retenido) }}</td></tr>
+            {% for c in pago.otras_deducciones_detalle %}
+            <tr><td>{{ (c.descripcion or c.codigo)|fechas_en_texto }}</td><td class="monto">-{{ "%.2f"|format(c.monto) }}</td></tr>
+            {% endfor %}
             <tr class="subtotal"><td>Total deducciones</td><td class="monto">-{{ "%.2f"|format(pago.total_deducciones) }}</td></tr>
             <tr class="total"><td>Neto a pagar</td><td class="monto">{{ "%.2f"|format(pago.salario_neto) }}</td></tr>
         </tbody>

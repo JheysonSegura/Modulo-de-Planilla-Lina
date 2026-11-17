@@ -22,6 +22,9 @@ export interface MovimientoPlanilla {
   isr_retenido: string
   otras_deducciones: string
   salario_neto: string
+  // Avisos de préstamos/descuentos (topes del Art. 161 CT, cuotas
+  // cobradas en parte). Informativos: no cambian ningún total.
+  advertencias: string[] | null
   conceptos_variables: { id: string, tipo: string, codigo: string, descripcion: string | null, monto: string }[]
 }
 
