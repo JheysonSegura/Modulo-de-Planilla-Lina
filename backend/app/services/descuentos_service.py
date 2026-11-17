@@ -32,10 +32,10 @@ ETIQUETAS = {
     "embargo": "Embargo",
 }
 TIPOS_DESCUENTO = frozenset(ETIQUETAS)
-# Préstamos con monto y plazo conocidos (la carta del banco o el acuerdo
-# con la empresa los fija). Préstamo de la empresa: solo capital, sin
-# intereses (Art. 165 CT). Externos: el total que indica la carta.
-TIPOS_CON_PLAZO_OBLIGATORIO = {"prestamo_empresa", "prestamo_bancario", "hipoteca"}
+# Corrección del usuario 2026-11-17: solo el préstamo de la empresa se
+# calcula (monto + plazo -> cuota; solo capital, sin intereses, Art. 165
+# CT). Los demás llevan la cuota que indica la carta u orden, tal cual, y
+# el n.º de pagos (obligatorio) -- el sistema no calcula la cuota.
 
 # Tope individual por tipo (tasas_vigentes, nunca hardcodeado) y el
 # artículo que lo fija, para el aviso.
@@ -94,12 +94,26 @@ def calcular_plan(
 
 
 def simular(
-    monto_total: decimal.Decimal, plazo_meses: int, frecuencia: str, fecha_inicio: datetime.date
+    frecuencia: str,
+    fecha_inicio: datetime.date,
+    monto_total: decimal.Decimal | None = None,
+    plazo_meses: int | None = None,
+    cuota: decimal.Decimal | None = None,
+    numero_cuotas: int | None = None,
 ) -> SimulacionDescuentoOut:
-    numero_cuotas, cuota, ultima = calcular_plan(monto_total, plazo_meses, frecuencia)
-    hasta = fecha_inicio + datetime.timedelta(days=31 * (plazo_meses + 1))
+    """Préstamo de la empresa: calcula la cuota con monto y plazo. Externo:
+    la cuota y el n.º de pagos vienen de la carta; solo se calculan las
+    fechas de cobro y el total."""
+    if monto_total is not None and plazo_meses is not None:
+        numero_cuotas, cuota, ultima = calcular_plan(monto_total, plazo_meses, frecuencia)
+    else:
+        ultima = cuota
+        monto_total = cuota * numero_cuotas
+    meses = numero_cuotas if frecuencia == "mensual" else (numero_cuotas + 1) // 2
+    hasta = fecha_inicio + datetime.timedelta(days=31 * (meses + 1))
     fechas = fechas_de_cobro(frecuencia, fecha_inicio, hasta)[:numero_cuotas]
     return SimulacionDescuentoOut(
+        monto_total=monto_total,
         numero_cuotas=numero_cuotas,
         cuota=cuota,
         ultima_cuota=ultima,
@@ -161,21 +175,22 @@ def registrar_descuento(
         raise HTTPException(
             status.HTTP_409_CONFLICT, "El contrato está terminado; no se le pueden agregar descuentos."
         )
-    if datos.tipo in TIPOS_CON_PLAZO_OBLIGATORIO and datos.monto_total is None:
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
-            f"{ETIQUETAS[datos.tipo]}: indica el monto del préstamo y el plazo en meses.",
-        )
     if datos.fecha_inicio < contrato.fecha_inicio:
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
             "La fecha del primer cobro no puede ser anterior al inicio del contrato.",
         )
 
-    numero_cuotas = None
+    monto_total = datos.monto_total
+    numero_cuotas = datos.numero_cuotas
     cuota = datos.cuota
-    if datos.monto_total is not None:
+    if datos.tipo == "prestamo_empresa":
         numero_cuotas, cuota, _ = calcular_plan(datos.monto_total, datos.plazo_meses, datos.frecuencia)
+    elif numero_cuotas is not None:
+        # Total a descontar según la carta (cuota × pagos), para llevar el
+        # saldo y detener el cobro solo al llegar al último pago. Sin n.º de
+        # pagos (solo pensión/cooperativa) no hay saldo: sigue hasta cerrarse.
+        monto_total = cuota * numero_cuotas
 
     descuento = descuentos_repo.crear(
         db,
@@ -185,7 +200,7 @@ def registrar_descuento(
             tipo=datos.tipo,
             acreedor=datos.acreedor.strip(),
             referencia=datos.referencia,
-            monto_total=datos.monto_total,
+            monto_total=monto_total,
             plazo_meses=datos.plazo_meses,
             frecuencia=datos.frecuencia,
             numero_cuotas=numero_cuotas,
