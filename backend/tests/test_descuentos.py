@@ -133,17 +133,19 @@ def test_simular_calcula_cuotas_y_la_ultima_absorbe_los_centavos(client, db):
 
 
 def test_prestamo_quincenal_se_cobra_del_neto_y_baja_el_saldo(client, db):
-    """B/.1,200 a 6 meses quincenal = 12 cuotas de 100.00. La cuota sale
-    del neto, no toca la base de CSS/SE/ISR."""
+    """Préstamo externo: la cuota (100.00) y el n.º de pagos (12) los indica
+    la carta; el sistema no los calcula. Total 1,200. La cuota sale del
+    neto, no toca la base de CSS/SE/ISR."""
     headers = _preparar_empresa(db, client)
     contrato_id = _crear_contrato(client, headers)
     resp = _registrar_descuento(
         client, headers, contrato_id, tipo="prestamo_bancario", referencia="PR-1",
-        monto_total="1200.00", plazo_meses=6, fecha_inicio=datetime.date(2026, 1, 1),
+        cuota="100.00", numero_cuotas=12, fecha_inicio=datetime.date(2026, 1, 1),
     )
     assert resp.status_code == 201, resp.text
     assert resp.json()["numero_cuotas"] == 12
     assert _d(resp.json()["cuota"]) == _d("100.00")
+    assert _d(resp.json()["monto_total"]) == _d("1200.00")
 
     planilla = _quincena(client, headers, 2026, 1, 1)
     mov = _movimiento(client, headers, planilla["id"], contrato_id)
@@ -204,7 +206,7 @@ def test_anular_la_planilla_devuelve_la_cuota_al_saldo(client, db):
     contrato_id = _crear_contrato(client, headers)
     _registrar_descuento(
         client, headers, contrato_id, tipo="prestamo_bancario",
-        monto_total="1200.00", plazo_meses=6, fecha_inicio=datetime.date(2026, 1, 1),
+        cuota="100.00", numero_cuotas=12, fecha_inicio=datetime.date(2026, 1, 1),
     )
     planilla = _quincena(client, headers, 2026, 1, 1)
     assert _d(_descuentos(client, headers, contrato_id)[0]["saldo"]) == _d("1100.00")
@@ -242,7 +244,7 @@ def test_vacaciones_cobran_las_cuotas_del_descanso_y_la_quincena_no_las_repite(c
     contrato_id = _crear_contrato(client, headers)
     _registrar_descuento(
         client, headers, contrato_id, tipo="prestamo_bancario",
-        monto_total="1200.00", plazo_meses=6, fecha_inicio=datetime.date(2026, 3, 1),
+        cuota="100.00", numero_cuotas=12, fecha_inicio=datetime.date(2026, 3, 1),
     )
     resp = client.post(
         f"/contratos/{contrato_id}/vacaciones-tomadas",
@@ -282,19 +284,20 @@ def test_embargo_avisa_si_pasa_el_15_por_ciento_del_excedente_sobre_el_minimo(cl
     contrato_id = _crear_contrato(client, headers)
     _registrar_descuento(
         client, headers, contrato_id, tipo="embargo", acreedor="Juzgado 1",
-        cuota="50.00", fecha_inicio=datetime.date(2026, 1, 1),
+        cuota="50.00", numero_cuotas=10, fecha_inicio=datetime.date(2026, 1, 1),
     )
     _registrar_descuento(
         client, headers, contrato_id, tipo="pension_alimenticia", acreedor="Juzgado de Niñez",
-        cuota="250.00", fecha_inicio=datetime.date(2026, 1, 1),
+        cuota="250.00", numero_cuotas=24, fecha_inicio=datetime.date(2026, 1, 1),
     )
     mov = _movimiento(client, headers, _quincena(client, headers, 2026, 1, 1)["id"], contrato_id)
     assert _d(mov["otras_deducciones"]) == _d("300.00")
     assert any("Embargo" in a and "B/.41.42" in a for a in mov["advertencias"])
     # Total sin pensión = 50.00 < 50% de 396.12: no hay aviso de tope total.
     assert not any("161.13" in a for a in mov["advertencias"])
-    # Sin monto total: no tienen saldo, siguen hasta que se cierren.
-    assert all(d["saldo"] is None for d in _descuentos(client, headers, contrato_id))
+    # Saldo = cuota × n.º de pagos − cobrado.
+    saldos = {d["tipo"]: _d(d["saldo"]) for d in _descuentos(client, headers, contrato_id)}
+    assert saldos == {"embargo": _d("450.00"), "pension_alimenticia": _d("5750.00")}
 
 
 def test_cerrar_detiene_el_cobro_y_borrar_solo_sin_cuotas(client, db):
@@ -302,12 +305,12 @@ def test_cerrar_detiene_el_cobro_y_borrar_solo_sin_cuotas(client, db):
     contrato_id = _crear_contrato(client, headers)
     resp = _registrar_descuento(
         client, headers, contrato_id, tipo="cooperativa", acreedor="Coop. Ahorro",
-        cuota="20.00", fecha_inicio=datetime.date(2026, 1, 1),
+        cuota="20.00", numero_cuotas=24, fecha_inicio=datetime.date(2026, 1, 1),
     )
     cooperativa_id = resp.json()["id"]
     resp = _registrar_descuento(
         client, headers, contrato_id, tipo="prestamo_bancario",
-        monto_total="600.00", plazo_meses=6, fecha_inicio=datetime.date(2026, 6, 1),
+        cuota="50.00", numero_cuotas=12, fecha_inicio=datetime.date(2026, 6, 1),
     )
     sin_cuotas_id = resp.json()["id"]
 
@@ -330,14 +333,49 @@ def test_cerrar_detiene_el_cobro_y_borrar_solo_sin_cuotas(client, db):
     assert [c["origen"] for c in resp.json()] == ["quincenal"]
 
 
-def test_prestamo_sin_monto_ni_plazo_es_rechazado(client, db):
+def test_solo_el_prestamo_de_la_empresa_se_calcula(client, db):
+    """Externo: cuota de la carta + cantidad de cuotas, ambas obligatorias;
+    nunca monto + plazo. Empresa: monto + plazo, nunca cuota a mano."""
     headers = _preparar_empresa(db, client)
     contrato_id = _crear_contrato(client, headers)
-    resp = _registrar_descuento(
-        client, headers, contrato_id, tipo="prestamo_bancario",
-        cuota="100.00", fecha_inicio=datetime.date(2026, 1, 1),
+    inicio = datetime.date(2026, 1, 1)
+    rechazados = [
+        dict(tipo="prestamo_bancario", monto_total="1200.00", plazo_meses=6),
+        dict(tipo="prestamo_bancario", cuota="100.00"),
+        dict(tipo="embargo", cuota="100.00"),
+        dict(tipo="hipoteca", cuota="100.00"),
+        dict(tipo="prestamo_empresa", cuota="100.00", numero_cuotas=6),
+        dict(tipo="prestamo_empresa", monto_total="600.00"),
+    ]
+    for datos in rechazados:
+        resp = _registrar_descuento(client, headers, contrato_id, fecha_inicio=inicio, **datos)
+        assert resp.status_code == 422, (datos, resp.text)
+    assert _descuentos(client, headers, contrato_id) == []
+
+    # Pensión alimenticia y cooperativa sí pueden quedar sin cantidad de
+    # cuotas: no tienen saldo y se cobran hasta que se cierren.
+    for tipo in ("pension_alimenticia", "cooperativa"):
+        resp = _registrar_descuento(
+            client, headers, contrato_id, tipo=tipo, cuota="40.00", fecha_inicio=inicio
+        )
+        assert resp.status_code == 201, (tipo, resp.text)
+        assert resp.json()["saldo"] is None
+        assert resp.json()["numero_cuotas"] is None
+    mov = _movimiento(client, headers, _quincena(client, headers, 2026, 1, 1)["id"], contrato_id)
+    assert _d(mov["otras_deducciones"]) == _d("80.00")
+
+    resp = client.post(
+        f"/contratos/{contrato_id}/descuentos/simular",
+        json={"cuota": "125.50", "numero_cuotas": 4, "frecuencia": "mensual",
+              "fecha_inicio": "2026-01-01"},
+        headers=headers,
     )
-    assert resp.status_code == 422, resp.text
+    assert resp.status_code == 200, resp.text
+    sim = resp.json()
+    assert _d(sim["cuota"]) == _d("125.50")
+    assert _d(sim["ultima_cuota"]) == _d("125.50")
+    assert _d(sim["monto_total"]) == _d("502.00")
+    assert sim["fecha_ultima_cuota"] == "2026-04-30"
 
 
 def test_reporte_por_acreedor(client, db):
@@ -345,7 +383,7 @@ def test_reporte_por_acreedor(client, db):
     contrato_id = _crear_contrato(client, headers)
     _registrar_descuento(
         client, headers, contrato_id, tipo="prestamo_bancario",
-        monto_total="1200.00", plazo_meses=6, fecha_inicio=datetime.date(2026, 1, 1),
+        cuota="100.00", numero_cuotas=12, fecha_inicio=datetime.date(2026, 1, 1),
     )
     planilla = _quincena(client, headers, 2026, 1, 1)
     resp = client.get(
@@ -371,13 +409,18 @@ def _liquidar(client, headers, contrato_id, **extra):
 
 
 def _contrato_con_prestamo(client, headers, tipo="prestamo_empresa"):
-    """Préstamo de 600 a 6 meses mensual, enero ya cobrado (100) -> saldo 500."""
+    """Préstamo de 600 en 6 pagos mensuales de 100, enero ya cobrado -> saldo
+    500. Empresa: monto + plazo; banco: cuota + cantidad de cuotas."""
     contrato_id = _crear_contrato(client, headers)
-    _registrar_descuento(
-        client, headers, contrato_id, tipo=tipo, acreedor="Empresa" if tipo == "prestamo_empresa"
-        else "Banco General", monto_total="600.00", plazo_meses=6, frecuencia="mensual",
-        fecha_inicio=datetime.date(2026, 1, 1),
+    if tipo == "prestamo_empresa":
+        datos = dict(acreedor="Empresa", monto_total="600.00", plazo_meses=6)
+    else:
+        datos = dict(acreedor="Banco General", cuota="100.00", numero_cuotas=6)
+    resp = _registrar_descuento(
+        client, headers, contrato_id, tipo=tipo, frecuencia="mensual",
+        fecha_inicio=datetime.date(2026, 1, 1), **datos,
     )
+    assert resp.status_code == 201, resp.text
     return contrato_id
 
 

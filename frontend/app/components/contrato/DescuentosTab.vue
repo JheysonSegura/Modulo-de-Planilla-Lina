@@ -2,7 +2,7 @@
 import { z } from 'zod'
 import type { FormSubmitEvent } from '@nuxt/ui'
 import type { Contrato } from '~/composables/useContratos'
-import type { CuotaDescuento, Descuento, SimulacionDescuento, TipoDescuento } from '~/composables/useDescuentos'
+import type { CuotaDescuento, Descuento, SimulacionDescuento } from '~/composables/useDescuentos'
 import { ETIQUETAS_TIPO_DESCUENTO } from '~/composables/useDescuentos'
 
 const props = defineProps<{ contrato: Contrato }>()
@@ -26,9 +26,9 @@ async function cargarDocumentos() {
 }
 await cargarDocumentos()
 
-// Préstamos con monto y plazo obligatorios; los demás pueden ser una
-// cuota fija sin fecha de fin (pensión, cooperativa, embargo).
-const TIPOS_CON_PLAZO: TipoDescuento[] = ['prestamo_empresa', 'prestamo_bancario', 'hipoteca']
+// Únicos tipos que pueden quedar sin cantidad de cuotas: se cobran hasta
+// que alguien los cierre (mismo criterio que el backend).
+const TIPOS_SIN_FIN = ['pension_alimenticia', 'cooperativa']
 
 const opcionesTipo = Object.entries(ETIQUETAS_TIPO_DESCUENTO).map(([value, label]) => ({ label, value }))
 const opcionesFrecuencia = [
@@ -41,19 +41,24 @@ const schema = z.object({
   tipo: z.enum(['prestamo_empresa', 'prestamo_bancario', 'hipoteca', 'cooperativa', 'pension_alimenticia', 'embargo']),
   acreedor: z.string().min(1, 'Obligatorio'),
   referencia: z.string().optional(),
-  cuota_fija: z.boolean(),
   monto_total: z.number().positive('Debe ser mayor que cero').optional(),
   plazo_meses: z.number().int().min(1, 'Mínimo 1 mes').optional(),
   cuota: z.number().positive('Debe ser mayor que cero').optional(),
+  numero_cuotas: z.number().int().min(1, 'Mínimo 1 cuota').optional(),
   frecuencia: z.enum(['quincenal', 'mensual']),
   fecha_inicio: z.string().min(1, 'Obligatorio'),
   observacion: z.string().optional()
 }).superRefine((datos, ctx) => {
-  if (datos.cuota_fija) {
-    if (!datos.cuota) ctx.addIssue({ code: 'custom', path: ['cuota'], message: 'Obligatorio' })
-  } else {
+  // Solo el préstamo de la empresa se calcula (monto + plazo). Los demás
+  // llevan la cuota de la carta y la cantidad de cuotas, ambas obligatorias.
+  if (datos.tipo === 'prestamo_empresa') {
     if (!datos.monto_total) ctx.addIssue({ code: 'custom', path: ['monto_total'], message: 'Obligatorio' })
     if (!datos.plazo_meses) ctx.addIssue({ code: 'custom', path: ['plazo_meses'], message: 'Obligatorio' })
+  } else {
+    if (!datos.cuota) ctx.addIssue({ code: 'custom', path: ['cuota'], message: 'Obligatorio' })
+    if (!datos.numero_cuotas && !TIPOS_SIN_FIN.includes(datos.tipo)) {
+      ctx.addIssue({ code: 'custom', path: ['numero_cuotas'], message: 'Obligatorio' })
+    }
   }
 })
 type Schema = z.output<typeof schema>
@@ -61,10 +66,10 @@ const state = reactive<Partial<Schema>>({
   tipo: 'prestamo_bancario',
   acreedor: '',
   referencia: '',
-  cuota_fija: false,
   monto_total: undefined,
   plazo_meses: undefined,
   cuota: undefined,
+  numero_cuotas: undefined,
   frecuencia: 'quincenal',
   fecha_inicio: '',
   observacion: ''
@@ -73,32 +78,30 @@ const guardando = ref(false)
 const archivoDocumento = ref<HTMLInputElement>()
 const nombreArchivoElegido = ref('')
 
-const permiteCuotaFija = computed(() => !TIPOS_CON_PLAZO.includes(state.tipo as TipoDescuento))
+const esPrestamoEmpresa = computed(() => state.tipo === 'prestamo_empresa')
+const permiteSinFin = computed(() => TIPOS_SIN_FIN.includes(state.tipo ?? ''))
 watch(() => state.tipo, (tipo) => {
-  if (tipo && TIPOS_CON_PLAZO.includes(tipo)) state.cuota_fija = false
-  else if (tipo === 'pension_alimenticia' || tipo === 'cooperativa') state.cuota_fija = true
   if (tipo === 'prestamo_empresa' && !state.acreedor) state.acreedor = 'Empresa'
 })
 
-const ayudaMonto = computed(() => state.tipo === 'prestamo_empresa'
-  ? 'Solo el capital prestado: un préstamo de la empresa no puede cobrar intereses (Art. 165 CT).'
-  : 'El total a pagar que indica la carta de descuento (capital más intereses).')
-
-// La cuota la calcula el backend (nunca el frontend): se pide una
-// simulación cada vez que cambian monto, plazo, frecuencia o fecha.
+// Cuotas, total y fechas los calcula el backend (nunca el frontend): se
+// pide una simulación cada vez que cambia algún dato del préstamo.
 const simulacion = ref<SimulacionDescuento | null>(null)
 let temporizadorSimulacion: ReturnType<typeof setTimeout> | undefined
 watch(
-  () => [state.cuota_fija, state.monto_total, state.plazo_meses, state.frecuencia, state.fecha_inicio],
+  () => [state.tipo, state.monto_total, state.plazo_meses, state.cuota, state.numero_cuotas, state.frecuencia, state.fecha_inicio],
   () => {
     clearTimeout(temporizadorSimulacion)
     simulacion.value = null
-    if (state.cuota_fija || !state.monto_total || !state.plazo_meses || !state.fecha_inicio) return
+    if (!state.fecha_inicio) return
+    const datos = esPrestamoEmpresa.value
+      ? { monto_total: state.monto_total, plazo_meses: state.plazo_meses }
+      : { cuota: state.cuota, numero_cuotas: state.numero_cuotas }
+    if (Object.values(datos).some(v => !v)) return
     temporizadorSimulacion = setTimeout(async () => {
       try {
         simulacion.value = await simular(props.contrato.id, {
-          monto_total: state.monto_total,
-          plazo_meses: state.plazo_meses,
+          ...datos,
           frecuencia: state.frecuencia,
           fecha_inicio: state.fecha_inicio
         })
@@ -125,18 +128,19 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
     }
     if (datos.referencia) body.referencia = datos.referencia
     if (datos.observacion) body.observacion = datos.observacion
-    if (datos.cuota_fija) {
-      body.cuota = datos.cuota
-    } else {
+    if (datos.tipo === 'prestamo_empresa') {
       body.monto_total = datos.monto_total
       body.plazo_meses = datos.plazo_meses
+    } else {
+      body.cuota = datos.cuota
+      body.numero_cuotas = datos.numero_cuotas
     }
     const descuento = await registrar(props.contrato.id, body)
     const archivo = archivoDocumento.value?.files?.[0]
     if (archivo) await subirDocumento(descuento.id, archivo)
     toast.add({ title: 'Descuento registrado', color: 'success' })
     mostrarFormulario.value = false
-    Object.assign(state, { acreedor: '', referencia: '', monto_total: undefined, plazo_meses: undefined, cuota: undefined, observacion: '' })
+    Object.assign(state, { acreedor: '', referencia: '', monto_total: undefined, plazo_meses: undefined, cuota: undefined, numero_cuotas: undefined, observacion: '' })
     if (archivoDocumento.value) archivoDocumento.value.value = ''
     nombreArchivoElegido.value = ''
     await refresh()
@@ -304,22 +308,11 @@ async function subirDocumentoExistente(descuentoId: string) {
           />
         </UFormField>
 
-        <UFormField
-          v-if="permiteCuotaFija"
-          name="cuota_fija"
-          class="col-span-2"
-        >
-          <UCheckbox
-            v-model="state.cuota_fija"
-            label="Cuota fija sin fecha de fin (se cobra hasta que se cierre)"
-          />
-        </UFormField>
-
-        <template v-if="!state.cuota_fija">
+        <template v-if="esPrestamoEmpresa">
           <UFormField
-            label="Monto del préstamo"
+            label="Monto prestado"
             name="monto_total"
-            :help="ayudaMonto"
+            help="Solo el capital: un préstamo de la empresa no puede cobrar intereses (Art. 165 CT). El sistema calcula la cuota."
           >
             <UInputNumber
               v-model="state.monto_total"
@@ -340,18 +333,34 @@ async function subirDocumentoExistente(descuentoId: string) {
             />
           </UFormField>
         </template>
-        <UFormField
-          v-else
-          label="Cuota por pago"
-          name="cuota"
-        >
-          <UInputNumber
-            v-model="state.cuota"
-            :min="0.01"
-            :step="0.01"
-            class="w-full"
-          />
-        </UFormField>
+        <template v-else>
+          <UFormField
+            label="Cuota a descontar"
+            name="cuota"
+            help="El monto exacto que indica la carta u orden para cada pago."
+          >
+            <UInputNumber
+              v-model="state.cuota"
+              :min="0.01"
+              :step="0.01"
+              class="w-full"
+            />
+          </UFormField>
+          <UFormField
+            label="Cantidad de cuotas"
+            name="numero_cuotas"
+            :help="permiteSinFin
+              ? 'Opcional: si se deja vacío, se descuenta hasta que se cierre.'
+              : 'Número de pagos que indica la carta u orden.'"
+          >
+            <UInputNumber
+              v-model="state.numero_cuotas"
+              :min="1"
+              :step="1"
+              class="w-full"
+            />
+          </UFormField>
+        </template>
 
         <UFormField
           label="Cobrar desde"
@@ -370,7 +379,7 @@ async function subirDocumentoExistente(descuentoId: string) {
           class="col-span-2 rounded-md bg-gray-50 dark:bg-gray-800/50 p-3 text-sm"
         >
           <span class="font-medium text-gray-900 dark:text-white">
-            {{ simulacion.numero_cuotas }} cuotas de ${{ simulacion.cuota }}
+            {{ simulacion.numero_cuotas }} cuotas de ${{ simulacion.cuota }} = ${{ simulacion.monto_total }}
           </span>
           <span
             v-if="simulacion.ultima_cuota !== simulacion.cuota"
@@ -483,7 +492,7 @@ async function subirDocumentoExistente(descuentoId: string) {
                   </div>
                 </td>
                 <td class="py-2 pr-4">
-                  <span v-if="d.monto_total">${{ d.monto_total }}<span class="text-xs text-gray-500"> / {{ d.plazo_meses }} meses</span></span>
+                  <span v-if="d.monto_total">${{ d.monto_total }}<span class="text-xs text-gray-500"> / {{ d.plazo_meses ? `${d.plazo_meses} meses` : `${d.numero_cuotas} pagos` }}</span></span>
                   <span
                     v-else
                     class="text-gray-500"

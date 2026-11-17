@@ -34,6 +34,7 @@ export interface Descuento {
 }
 
 export interface SimulacionDescuento {
+  monto_total: string
   numero_cuotas: number
   cuota: string
   ultima_cuota: string

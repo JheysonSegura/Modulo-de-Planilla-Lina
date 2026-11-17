@@ -66,6 +66,10 @@ Crear/cerrar descuentos: admin y contador (igual que el resto de la operación);
    - **El neto nunca queda negativo**: si lo disponible no alcanza, se cobra hasta dejar el neto en 0 y lo que falta queda en el saldo del préstamo (se cobra en las siguientes fechas de cobro), con advertencia.
 4. **Reporte para pagar a los acreedores**: SÍ, en esta fase — Excel por planilla con lo descontado agrupado por acreedor y referencia.
 
+### Corrección del usuario 2026-11-17 (después del primer commit)
+
+Solo el **préstamo de la empresa** se calcula (monto + plazo en meses → cuota). Para cualquier institución externa (banco, financiera, hipoteca, cooperativa) y para pensión/embargo, el sistema **no calcula la cuota**: se registra la cuota que indica la carta u orden y la **cantidad de cuotas, obligatoria** (no puede quedar vacía), salvo pensión alimenticia y cooperativa, que pueden quedar sin número y se cobran hasta que se cierren. Reemplaza el punto 2 de la sección 4 ("monto de la carta") y la opción de cuota fija sin fin.
+
 ## 5. Base de los topes — RESUELTO por el usuario 2026-11-17
 
 - Todos estos descuentos se hacen del **salario neto** (después de CSS, Seguro Educativo e ISR), y los topes (15/20/30/50%) se miden contra ese neto del período. El 50% total suma solo estos descuentos (no los de ley); la pensión alimenticia queda fuera.

@@ -15,15 +15,31 @@ TipoDescuento = Literal[
 ]
 FrecuenciaDescuento = Literal["mensual", "quincenal"]
 
+# Únicos tipos que pueden quedar sin cantidad de cuotas (decisión del usuario
+# 2026-11-17): se cobran hasta que alguien los cierre.
+TIPOS_SIN_FIN = {"pension_alimenticia", "cooperativa"}
+
 
 class SimularDescuentoRequest(BaseModel):
-    monto_total: decimal.Decimal = Field(gt=0)
-    plazo_meses: int = Field(ge=1, le=600)
+    """Préstamo de la empresa: monto + plazo (el sistema calcula la cuota).
+    Externo: cuota de la carta + n.º de pagos (solo se calculan fechas y total)."""
+
+    monto_total: decimal.Decimal | None = Field(default=None, gt=0)
+    plazo_meses: int | None = Field(default=None, ge=1, le=600)
+    cuota: decimal.Decimal | None = Field(default=None, gt=0)
+    numero_cuotas: int | None = Field(default=None, ge=1, le=1200)
     frecuencia: FrecuenciaDescuento
     fecha_inicio: datetime.date
 
+    @model_validator(mode="after")
+    def _validar_modo(self) -> "SimularDescuentoRequest":
+        if not (self.monto_total and self.plazo_meses) and not (self.cuota and self.numero_cuotas):
+            raise ValueError("Indica monto y plazo, o cuota y número de pagos.")
+        return self
+
 
 class SimulacionDescuentoOut(BaseModel):
+    monto_total: decimal.Decimal
     numero_cuotas: int
     cuota: decimal.Decimal
     ultima_cuota: decimal.Decimal
@@ -32,9 +48,13 @@ class SimulacionDescuentoOut(BaseModel):
 
 
 class DescuentoCreate(BaseModel):
-    """Con monto_total + plazo_meses la cuota la calcula el sistema; sin
-    ellos (pensión alimenticia, cooperativa, embargo sin deuda fija) se
-    registra la cuota directamente y el descuento no termina solo."""
+    """Corrección del usuario 2026-11-17: solo el préstamo de la empresa se
+    calcula (monto + plazo en meses -> cuota). Todo lo demás (banco,
+    financiera, hipoteca, cooperativa, pensión, embargo) lleva la cuota que
+    indica la carta u orden y el n.º de pagos (obligatorio, pedido del
+    usuario el mismo día): con eso se detiene solo al último pago. Pensión
+    alimenticia y cooperativa pueden quedar sin n.º de pagos (se cobran
+    hasta que se cierren)."""
 
     tipo: TipoDescuento
     acreedor: str = Field(min_length=1, max_length=150)
@@ -42,21 +62,32 @@ class DescuentoCreate(BaseModel):
     monto_total: decimal.Decimal | None = Field(default=None, gt=0)
     plazo_meses: int | None = Field(default=None, ge=1, le=600)
     cuota: decimal.Decimal | None = Field(default=None, gt=0)
+    numero_cuotas: int | None = Field(default=None, ge=1, le=1200)
     frecuencia: FrecuenciaDescuento
     fecha_inicio: datetime.date
     observacion: str | None = Field(default=None, max_length=1000)
 
     @model_validator(mode="after")
     def _validar_modo(self) -> "DescuentoCreate":
-        con_plazo = self.monto_total is not None or self.plazo_meses is not None
-        if con_plazo and (self.monto_total is None or self.plazo_meses is None):
-            raise ValueError("Indica el monto del préstamo y el plazo en meses (los dos).")
-        if con_plazo and self.cuota is not None:
-            raise ValueError(
-                "Con monto y plazo la cuota la calcula el sistema; no la envíes también."
-            )
-        if not con_plazo and self.cuota is None:
-            raise ValueError("Indica el monto y el plazo del préstamo, o la cuota fija.")
+        if self.tipo == "prestamo_empresa":
+            if self.monto_total is None or self.plazo_meses is None:
+                raise ValueError(
+                    "Préstamo de la empresa: indica el monto prestado y el plazo en meses."
+                )
+            if self.cuota is not None or self.numero_cuotas is not None:
+                raise ValueError(
+                    "Préstamo de la empresa: la cuota la calcula el sistema con el monto y el plazo."
+                )
+        else:
+            if self.cuota is None:
+                raise ValueError("Indica la cuota que se debe descontar según la carta u orden.")
+            if self.numero_cuotas is None and self.tipo not in TIPOS_SIN_FIN:
+                raise ValueError("Indica la cantidad de cuotas (número de pagos) que indica la carta.")
+            if self.monto_total is not None or self.plazo_meses is not None:
+                raise ValueError(
+                    "Solo el préstamo de la empresa se calcula con monto y plazo; para este tipo "
+                    "indica la cuota de la carta y el número de pagos."
+                )
         return self
 
 

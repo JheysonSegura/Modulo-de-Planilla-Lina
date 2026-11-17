@@ -40,7 +40,12 @@ def simular_descuento(
 ) -> SimulacionDescuentoOut:
     contratos_service.obtener_contrato(db, contrato_id)
     return descuentos_service.simular(
-        body.monto_total, body.plazo_meses, body.frecuencia, body.fecha_inicio
+        body.frecuencia,
+        body.fecha_inicio,
+        monto_total=body.monto_total,
+        plazo_meses=body.plazo_meses,
+        cuota=body.cuota,
+        numero_cuotas=body.numero_cuotas,
     )
 
 
