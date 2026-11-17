@@ -75,4 +75,7 @@ class MovimientoPlanillaOut(BaseModel):
     isr_periodos_restantes_anio: int | None
     otras_deducciones: decimal.Decimal
     salario_neto: decimal.Decimal
+    # Avisos de préstamos/descuentos recurrentes (topes Art. 161 CT, cuotas
+    # cobradas en parte). Informativos, no cambian ningún total.
+    advertencias: list[str] | None = None
     conceptos_variables: list[ConceptoVariableOut] = []

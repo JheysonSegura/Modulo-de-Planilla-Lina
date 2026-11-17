@@ -37,6 +37,10 @@
         </tbody>
     </table>
 
+    {% if observacion_descuento_prestamo %}
+    <p style="font-size: 8.5pt; color: #555;">Préstamo de la empresa: {{ observacion_descuento_prestamo }}</p>
+    {% endif %}
+
     {% if referencia_sentencia %}
     <p style="font-size: 8.5pt; color: #555;">Salarios caídos según sentencia: {{ referencia_sentencia }}</p>
     {% endif %}

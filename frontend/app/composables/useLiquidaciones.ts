@@ -21,6 +21,9 @@ export interface Liquidacion {
   salarios_caidos: string
   referencia_sentencia: string | null
   penalidad_renuncia_sin_aviso: string
+  descuento_prestamo_empresa: string
+  descuento_prestamo_manual: boolean
+  observacion_descuento_prestamo: string | null
   monto_total: string
   estado: 'borrador' | 'aprobada' | 'anulada' | 'pagada'
   tiene_constancia_pago: boolean

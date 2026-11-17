@@ -8,6 +8,7 @@ const emit = defineEmits<{ 'contrato-actualizado': [] }>()
 
 const { listarDeContrato, generar, aprobar, anular, pagar, obtenerConstanciaPagoUrl } = useLiquidaciones()
 const { descargar } = useReportes()
+const { listar: listarDescuentos } = useDescuentos()
 const { puedeEscribir } = useAuth()
 const toast = useToast()
 
@@ -26,6 +27,18 @@ async function cargarConstancias() {
 }
 await cargarConstancias()
 
+// Préstamos de la empresa con saldo (Art. 164 CT): por defecto se
+// descuentan de la liquidación. Los de bancos u otras instituciones no se
+// tocan -- cada persona sigue pagándolos por su cuenta.
+const { data: descuentos, refresh: refrescarDescuentos } = await useAsyncData(
+  `descuentos-liquidacion-${props.contrato.id}`, () => listarDescuentos(props.contrato.id)
+)
+const saldoPrestamoEmpresa = computed(() => (descuentos.value ?? [])
+  .filter(d => d.tipo === 'prestamo_empresa' && d.estado_actual === 'activo')
+  .reduce((total, d) => total + Number(d.saldo ?? 0), 0))
+const prestamosExternos = computed(() => (descuentos.value ?? [])
+  .filter(d => d.tipo !== 'prestamo_empresa' && d.estado_actual === 'activo'))
+
 const mostrarFormulario = ref(false)
 const schema = z.object({
   motivo: z.enum([
@@ -36,7 +49,19 @@ const schema = z.object({
   otras_deducciones: z.number().min(0).optional(),
   monto_salarios_caidos: z.number().min(0).optional(),
   referencia_sentencia: z.string().optional(),
-  fecha_aviso_renuncia: z.string().optional()
+  fecha_aviso_renuncia: z.string().optional(),
+  descontar_prestamo_empresa: z.boolean(),
+  monto_prestamo_empresa: z.number().min(0).optional(),
+  observacion_prestamo_empresa: z.string().optional()
+}).superRefine((datos, ctx) => {
+  if (saldoPrestamoEmpresa.value > 0 && !datos.descontar_prestamo_empresa) {
+    if (datos.monto_prestamo_empresa === undefined || datos.monto_prestamo_empresa === null) {
+      ctx.addIssue({ code: 'custom', path: ['monto_prestamo_empresa'], message: 'Indica el monto (puede ser 0)' })
+    }
+    if (!datos.observacion_prestamo_empresa?.trim()) {
+      ctx.addIssue({ code: 'custom', path: ['observacion_prestamo_empresa'], message: 'Obligatoria' })
+    }
+  }
 })
 type Schema = z.output<typeof schema>
 const state = reactive<Partial<Schema>>({
@@ -45,7 +70,10 @@ const state = reactive<Partial<Schema>>({
   otras_deducciones: 0,
   monto_salarios_caidos: 0,
   referencia_sentencia: '',
-  fecha_aviso_renuncia: ''
+  fecha_aviso_renuncia: '',
+  descontar_prestamo_empresa: true,
+  monto_prestamo_empresa: 0,
+  observacion_prestamo_empresa: ''
 })
 const guardando = ref(false)
 
@@ -64,10 +92,15 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
     const body: Record<string, unknown> = { ...event.data }
     if (!body.referencia_sentencia) delete body.referencia_sentencia
     if (!body.fecha_aviso_renuncia) delete body.fecha_aviso_renuncia
+    if (body.descontar_prestamo_empresa) {
+      delete body.monto_prestamo_empresa
+      delete body.observacion_prestamo_empresa
+    }
     await generar(props.contrato.id, body)
     toast.add({ title: 'Liquidación generada', color: 'success' })
     mostrarFormulario.value = false
     await refresh()
+    await refrescarDescuentos()
     emit('contrato-actualizado')
   } catch (error) {
     toast.add({ title: 'No se pudo generar la liquidación', description: extraerMensajeError(error), color: 'error' })
@@ -115,6 +148,7 @@ async function anularLiquidacion(liquidacionId: string) {
     await anular(liquidacionId)
     toast.add({ title: 'Liquidación anulada', color: 'success' })
     await refresh()
+    await refrescarDescuentos()
     emit('contrato-actualizado')
   } catch (error) {
     toast.add({ title: 'No se pudo anular', description: extraerMensajeError(error), color: 'error' })
@@ -236,6 +270,53 @@ async function onConfirmarPago({ archivo }: { archivo: File, motivo?: string }) 
             class="w-full"
           />
         </UFormField>
+
+        <div
+          v-if="saldoPrestamoEmpresa > 0"
+          class="col-span-2 rounded-md border border-gray-200 dark:border-gray-800 p-3 space-y-3"
+        >
+          <UFormField name="descontar_prestamo_empresa">
+            <UCheckbox
+              v-model="state.descontar_prestamo_empresa"
+              :label="`Descontar el saldo del préstamo de la empresa ($${saldoPrestamoEmpresa.toFixed(2)})`"
+            />
+          </UFormField>
+          <div
+            v-if="!state.descontar_prestamo_empresa"
+            class="grid grid-cols-2 gap-4"
+          >
+            <UFormField
+              label="Monto a descontar"
+              name="monto_prestamo_empresa"
+            >
+              <UInputNumber
+                v-model="state.monto_prestamo_empresa"
+                :min="0"
+                :max="saldoPrestamoEmpresa"
+                :step="0.01"
+                class="w-full"
+              />
+            </UFormField>
+            <UFormField
+              label="Observación"
+              name="observacion_prestamo_empresa"
+            >
+              <UInput
+                v-model="state.observacion_prestamo_empresa"
+                class="w-full"
+                placeholder="Por qué no se descuenta el saldo completo"
+              />
+            </UFormField>
+          </div>
+        </div>
+        <p
+          v-if="prestamosExternos.length"
+          class="col-span-2 text-xs text-gray-500"
+        >
+          Tiene {{ prestamosExternos.length }} préstamo(s) o descuento(s) con terceros
+          ({{ prestamosExternos.map(d => d.acreedor).join(', ') }}). No se descuentan de la liquidación:
+          la persona sigue pagándolos por su cuenta.
+        </p>
         <div class="col-span-2 flex gap-2">
           <UButton
             type="submit"
@@ -398,7 +479,20 @@ async function onConfirmarPago({ archivo }: { archivo: File, motivo?: string }) 
             -${{ liq.otras_deducciones }}
           </dd>
         </div>
+        <div v-if="Number(liq.descuento_prestamo_empresa) > 0 || liq.descuento_prestamo_manual">
+          <dt class="text-gray-500">
+            Préstamo de la empresa
+          </dt><dd class="text-error">
+            -${{ liq.descuento_prestamo_empresa }}
+          </dd>
+        </div>
       </dl>
+      <p
+        v-if="liq.observacion_descuento_prestamo"
+        class="mt-2 text-xs text-gray-500"
+      >
+        Préstamo de la empresa: {{ liq.observacion_descuento_prestamo }}
+      </p>
       <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-800 text-right">
         <span class="text-gray-500 mr-2">Total:</span>
         <span class="text-xl font-semibold text-gray-900 dark:text-white">${{ liq.monto_total }}</span>

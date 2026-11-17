@@ -16,11 +16,13 @@ from weasyprint import HTML
 
 from app.models import AuditoriaCambio, Liquidacion, MovimientoPlanilla, Planilla, VacacionTomada
 from app.repositories import contratos as contratos_repo
+from app.repositories import descuentos as descuentos_repo
 from app.repositories import empleados as empleados_repo
 from app.repositories import empresas as empresas_repo
 from app.repositories import horas_extra as horas_extra_repo
 from app.repositories import movimientos_planilla as movimientos_planilla_repo
 from app.repositories import usuarios as usuarios_repo
+from app.services.descuentos_service import ETIQUETAS as ETIQUETAS_DESCUENTO
 
 _CERO = decimal.Decimal("0")
 
@@ -84,6 +86,7 @@ COLUMNAS_RECIBO_VACACION = [
     ("css_empleado", "CSS empleado"),
     ("seguro_educativo_empleado", "Seguro educativo empleado"),
     ("isr_retenido", "ISR retenido"),
+    ("otras_deducciones", "Préstamos y otros descuentos"),
     ("salario_neto", "Neto a pagar"),
     ("saldo_despues", "Saldo después"),
 ]
@@ -102,7 +105,19 @@ COLUMNAS_RECIBO_LIQUIDACION = [
     ("salarios_caidos", "Salarios caídos"),
     ("otras_deducciones", "Otras deducciones"),
     ("penalidad_renuncia_sin_aviso", "Penalidad renuncia sin aviso"),
+    ("descuento_prestamo_empresa", "Préstamo de la empresa"),
+    ("observacion_descuento_prestamo", "Observación préstamo"),
     ("monto_total", "Monto total"),
+]
+
+COLUMNAS_DESCUENTOS_ACREEDORES = [
+    ("acreedor", "Acreedor"),
+    ("tipo", "Tipo"),
+    ("referencia", "Referencia"),
+    ("empleado", "Empleado"),
+    ("identificacion", "Identificación"),
+    ("fecha_cobro", "Fecha de cobro"),
+    ("monto", "Monto descontado"),
 ]
 
 COLUMNAS_AUDITORIA = [
@@ -259,10 +274,16 @@ def armar_recibo_vacacion(db: Session, evento: VacacionTomada) -> dict:
             "css_empleado": movimiento.css_empleado,
             "seguro_educativo_empleado": movimiento.seguro_educativo_empleado,
             "isr_retenido": movimiento.isr_retenido,
+            # Cuotas de préstamos/descuentos cobradas en este pago (2026-11-17).
+            "otras_deducciones_detalle": [
+                c for c in movimiento.conceptos_variables if c.tipo == "deduccion"
+            ],
+            "otras_deducciones": movimiento.otras_deducciones,
             "total_deducciones": (
                 movimiento.css_empleado
                 + movimiento.seguro_educativo_empleado
                 + movimiento.isr_retenido
+                + movimiento.otras_deducciones
             ),
             "salario_neto": movimiento.salario_neto,
             "css_patronal": movimiento.css_patronal,
@@ -277,6 +298,7 @@ def armar_recibo_vacacion(db: Session, evento: VacacionTomada) -> dict:
         "css_empleado": pago["css_empleado"] if pago else None,
         "seguro_educativo_empleado": pago["seguro_educativo_empleado"] if pago else None,
         "isr_retenido": pago["isr_retenido"] if pago else None,
+        "otras_deducciones": pago["otras_deducciones"] if pago else None,
         "salario_neto": pago["salario_neto"] if pago else None,
         "empresa": armar_contexto_empresa(empresa),
         "empleado_nombre": contrato.empleado.nombre_completo,
@@ -306,6 +328,10 @@ def armar_recibo_liquidacion(db: Session, liquidacion: Liquidacion) -> dict:
         ("Otras deducciones", -liquidacion.otras_deducciones),
         ("Penalidad renuncia sin aviso (Art. 222 CT)", -liquidacion.penalidad_renuncia_sin_aviso),
     ]
+    if liquidacion.descuento_prestamo_empresa:
+        conceptos.append(
+            ("Préstamo de la empresa (Art. 164 CT)", -liquidacion.descuento_prestamo_empresa)
+        )
     return {
         "empresa": armar_contexto_empresa(empresa),
         "empleado_nombre": contrato.empleado.nombre_completo,
@@ -324,6 +350,8 @@ def armar_recibo_liquidacion(db: Session, liquidacion: Liquidacion) -> dict:
         "salarios_caidos": liquidacion.salarios_caidos,
         "otras_deducciones": liquidacion.otras_deducciones,
         "penalidad_renuncia_sin_aviso": liquidacion.penalidad_renuncia_sin_aviso,
+        "descuento_prestamo_empresa": liquidacion.descuento_prestamo_empresa,
+        "observacion_descuento_prestamo": liquidacion.observacion_descuento_prestamo,
         "monto_total": liquidacion.monto_total,
     }
 
@@ -370,6 +398,44 @@ def armar_reporte_planilla(db: Session, planilla: Planilla) -> dict:
         "total_neto": total_neto,
         "elaborado_por": elaborado_por.nombre_completo if elaborado_por else None,
     }
+
+
+def exportar_descuentos_por_acreedor(db: Session, planilla: Planilla) -> list[dict]:
+    """Lo descontado en la planilla por préstamos y demás descuentos
+    recurrentes, agrupado por acreedor con un subtotal por cada uno, para
+    hacer las transferencias a bancos/financieras (pedido del usuario
+    2026-11-17). Las filas de subtotal llevan empleado vacío."""
+    filas: list[dict] = []
+    acreedor_actual = None
+    subtotal = _CERO
+    total = _CERO
+
+    def _cerrar_grupo():
+        if acreedor_actual is not None:
+            filas.append({"acreedor": f"Subtotal {acreedor_actual}", "monto": subtotal})
+
+    for cuota, descuento, contrato in descuentos_repo.listar_cuotas_de_planilla(db, planilla.id):
+        if descuento.acreedor != acreedor_actual:
+            _cerrar_grupo()
+            acreedor_actual = descuento.acreedor
+            subtotal = _CERO
+        filas.append(
+            {
+                "acreedor": descuento.acreedor,
+                "tipo": ETIQUETAS_DESCUENTO.get(descuento.tipo, descuento.tipo),
+                "referencia": descuento.referencia,
+                "empleado": contrato.empleado.nombre_completo,
+                "identificacion": contrato.empleado.identificacion,
+                "fecha_cobro": _formatear_fecha(cuota.fecha_cobro),
+                "monto": cuota.monto,
+            }
+        )
+        subtotal += cuota.monto
+        total += cuota.monto
+    _cerrar_grupo()
+    if filas:
+        filas.append({"acreedor": "TOTAL", "monto": total})
+    return filas
 
 
 def exportar_auditoria(db: Session, eventos: list[AuditoriaCambio]) -> list[dict]:

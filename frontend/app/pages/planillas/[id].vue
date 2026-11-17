@@ -38,6 +38,13 @@ function ajustesSalario(m: MovimientoPlanilla) {
   return m.conceptos_variables.filter(c => c.tipo === 'informativo')
 }
 
+// Detalle de "otras deducciones": cuotas de préstamos y demás descuentos.
+function deducciones(m: MovimientoPlanilla) {
+  return m.conceptos_variables.filter(c => c.tipo === 'deduccion')
+}
+
+const hayDescuentos = computed(() => (movs.value ?? []).some(m => deducciones(m).length > 0))
+
 const aprobando = ref(false)
 async function aprobarPlanilla() {
   aprobando.value = true
@@ -160,6 +167,24 @@ async function exportarPlanilla(formato: 'excel' | 'csv' | 'pdf') {
     exportando.value = false
   }
 }
+
+// Lo descontado por préstamos agrupado por acreedor, para hacer las
+// transferencias a cada banco/entidad.
+const exportandoAcreedores = ref(false)
+async function exportarDescuentosAcreedores() {
+  exportandoAcreedores.value = true
+  try {
+    await descargar(
+      `/planillas/${planillaId}/descuentos-acreedores`,
+      { formato: 'excel' },
+      `descuentos-acreedores-${planilla.value?.periodo_inicio}-${planilla.value?.periodo_fin}.xlsx`
+    )
+  } catch (error) {
+    toast.add({ title: 'No se pudo descargar el reporte', description: extraerMensajeError(error), color: 'error' })
+  } finally {
+    exportandoAcreedores.value = false
+  }
+}
 </script>
 
 <template>
@@ -223,6 +248,17 @@ async function exportarPlanilla(formato: 'excel' | 'csv' | 'pdf') {
           @click="descargarTodosLosRecibos"
         >
           Descargar todos los recibos
+        </UButton>
+        <UButton
+          v-if="hayDescuentos"
+          size="xs"
+          variant="soft"
+          color="neutral"
+          icon="i-lucide-landmark"
+          :loading="exportandoAcreedores"
+          @click="exportarDescuentosAcreedores"
+        >
+          Descuentos por acreedor
         </UButton>
         <template v-if="planilla.estado === 'borrador' && puedeEscribir">
           <template v-if="confirmandoAnular">
@@ -398,6 +434,35 @@ async function exportarPlanilla(formato: 'excel' | 'csv' | 'pdf') {
                   <span :class="Number(c.monto) < 0 ? 'text-error' : 'text-success'">
                     {{ Number(c.monto) < 0 ? '-' : '+' }}${{ c.monto.replace('-', '') }}
                   </span>
+                </div>
+              </td>
+            </tr>
+            <tr
+              v-if="deducciones(m).length > 0 || m.advertencias?.length"
+              class="border-b border-gray-100 dark:border-gray-800"
+            >
+              <td
+                colspan="8"
+                class="pb-2 pl-4 text-xs text-gray-500"
+              >
+                <div
+                  v-for="c in deducciones(m)"
+                  :key="c.id"
+                  class="flex justify-between gap-4 max-w-2xl"
+                >
+                  <span>{{ c.descripcion ? formatearFechasEnTexto(c.descripcion) : c.codigo }}</span>
+                  <span class="text-error">-${{ c.monto }}</span>
+                </div>
+                <div
+                  v-for="(aviso, i) in m.advertencias ?? []"
+                  :key="i"
+                  class="flex items-start gap-1 text-warning max-w-2xl"
+                >
+                  <UIcon
+                    name="i-lucide-triangle-alert"
+                    class="mt-0.5 shrink-0"
+                  />
+                  <span>{{ formatearFechasEnTexto(aviso) }}</span>
                 </div>
               </td>
             </tr>

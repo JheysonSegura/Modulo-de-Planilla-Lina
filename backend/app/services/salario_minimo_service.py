@@ -87,6 +87,34 @@ def validar_salario_minimo(
         )
 
 
+def salario_minimo_mensual(
+    db: Session,
+    empresa: Empresa,
+    fecha: datetime.date,
+    jornada_horas_semana: decimal.Decimal = JORNADA_TIEMPO_COMPLETO,
+) -> decimal.Decimal | None:
+    """Mismo mínimo mensual que usa validar_salario_minimo (fila elegida
+    por región/actividad/tamaño, tarifa por hora × 8 × 30, prorrateo por
+    jornada), pero devuelve None en vez de rechazar cuando no se puede
+    resolver. Lo usa el aviso de tope de embargo (Art. 161.7/162 CT) de
+    descuentos_service, que solo informa."""
+    filas = salario_minimo_repo.listar_vigente_en_fecha(db, fecha)
+    if not filas:
+        return None
+    fila = _elegir_fila_aplicable(
+        filas, empresa.region, empresa.actividad_economica, empresa.tamano_empresa
+    )
+    if fila is None:
+        return None
+    monto_base_mensual = fila.monto_mensual
+    if monto_base_mensual is None and fila.monto_hora is not None:
+        monto_base_mensual = fila.monto_hora * HORAS_JORNADA_DIARIA * DIAS_MES_COMERCIAL
+    if monto_base_mensual is None:
+        return None
+    factor = min(jornada_horas_semana / JORNADA_TIEMPO_COMPLETO, decimal.Decimal("1"))
+    return (monto_base_mensual * factor).quantize(decimal.Decimal("0.01"))
+
+
 def _elegir_fila_aplicable(
     filas: list[SalarioMinimoVigente],
     region: str | None,

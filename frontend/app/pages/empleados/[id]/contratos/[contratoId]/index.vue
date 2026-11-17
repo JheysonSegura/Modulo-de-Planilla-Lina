@@ -11,6 +11,7 @@ const tabs = [
   { value: 'historial', label: 'Historial salarial' },
   { value: 'horas-extra', label: 'Horas extra' },
   { value: 'conceptos', label: 'Conceptos variables' },
+  { value: 'descuentos', label: 'Préstamos y descuentos' },
   { value: 'decimo', label: 'Décimo' },
   { value: 'vacaciones', label: 'Vacaciones' },
   { value: 'ausencias', label: 'Ausencias' },
@@ -80,6 +81,10 @@ const tabActivo = ref((route.query.tab as string) || 'resumen')
     <ContratoConceptosVariablesTab
       v-else-if="tabActivo === 'conceptos'"
       :contrato-id="contratoId"
+    />
+    <ContratoDescuentosTab
+      v-else-if="tabActivo === 'descuentos'"
+      :contrato="contrato"
     />
     <ContratoDecimoTab
       v-else-if="tabActivo === 'decimo'"

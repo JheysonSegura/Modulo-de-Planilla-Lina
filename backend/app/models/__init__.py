@@ -3,6 +3,7 @@ from app.models.auth import RefreshToken
 from app.models.ausencias import Ausencia
 from app.models.base import Base
 from app.models.conceptos_variables_pendientes import ConceptoVariablePendiente
+from app.models.descuentos import CuotaDescuento, DescuentoRecurrente
 from app.models.empleados import Contrato, Empleado, HistorialCargo, HistorialSalarial
 from app.models.empresas import Empresa, UsuarioEmpresa
 from app.models.horas_extra import RegistroHorasExtra
@@ -40,6 +41,8 @@ __all__ = [
     "MovimientoPlanilla",
     "ConceptoVariable",
     "ConceptoVariablePendiente",
+    "DescuentoRecurrente",
+    "CuotaDescuento",
     "ProvisionDecimo",
     "ProvisionVacaciones",
     "VacacionTomada",
